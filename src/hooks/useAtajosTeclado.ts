@@ -2,9 +2,21 @@ import { useEffect } from 'react';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { usePizarraCampoStore } from '../store/pizarraCampoStore';
 import { useUiStore } from '../store/uiStore';
+import { useReproduccionStore } from '../store/reproduccionStore';
+import { tiempoHastaFrame } from '../utils/interpolacion';
 import { FORMACIONES } from '../data/formaciones';
 import { DEFINICION_PRESETS_CUADRICULA } from '../utils/constantes';
 import type { PresetCuadricula } from '../types';
+
+/**
+ * Controles que ya responden al espacio y a las flechas por su cuenta. Los
+ * atajos de la jugada los respetan, o pulsar espacio con el foco en el botón de
+ * reproducir lo alternaría dos veces.
+ */
+function elementoEsControl(elemento: EventTarget | null): boolean {
+  if (!(elemento instanceof HTMLElement)) return false;
+  return ['BUTTON', 'SELECT', 'A'].includes(elemento.tagName);
+}
 
 function elementoEsEditable(elemento: EventTarget | null): boolean {
   if (!(elemento instanceof HTMLElement)) return false;
@@ -37,6 +49,37 @@ export function useAtajosTeclado(): void {
         useAlineacionStore.getState().rehacer();
         return;
       }
+      // --- Jugada animada: espacio reproduce/pausa, flechas cambian de fase.
+      // Solo actúan con una jugada abierta; sin ella la pizarra se comporta igual.
+      const secuencia = useAlineacionStore.getState().historial.presente.secuencia;
+      if (secuencia && !modificador && !elementoEsControl(evento.target)) {
+        const repro = useReproduccionStore.getState();
+        const ultima = secuencia.frames.length - 1;
+
+        if (evento.key === ' ' || evento.key === 'Spacebar') {
+          evento.preventDefault();
+          if (repro.reproduciendo) {
+            repro.pausar();
+          } else {
+            repro.setPrevisualizando(false);
+            repro.reproducir();
+          }
+          return;
+        }
+
+        if (evento.key === 'ArrowLeft' || evento.key === 'ArrowRight') {
+          evento.preventDefault();
+          const actual = repro.reproduciendo || repro.previsualizando ? repro.indiceFrame : secuencia.indiceActivo;
+          const destino = Math.max(0, Math.min(ultima, actual + (evento.key === 'ArrowRight' ? 1 : -1)));
+          repro.pausar();
+          repro.setPrevisualizando(false);
+          repro.setTiempoMs(tiempoHastaFrame(secuencia.frames, destino));
+          repro.setIndiceFrame(destino);
+          useAlineacionStore.getState().irAFrame(destino);
+          return;
+        }
+      }
+
       if (!modificador && tecla === 'f') {
         evento.preventDefault();
         const { pantallaCompleta, setPantallaCompleta } = useUiStore.getState();

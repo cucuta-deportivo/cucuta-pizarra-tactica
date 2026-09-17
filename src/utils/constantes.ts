@@ -63,6 +63,12 @@ export const HERRAMIENTAS_DIBUJO: Array<{ id: Herramienta; etiqueta: string }> =
 export const CAPACIDAD_BANQUILLO = 12;
 export const LIMITE_HISTORIAL = 50;
 export const DEBOUNCE_AUTOGUARDADO_MS = 1000;
+/**
+ * Grabación de jugadas: pausa sin tocar el campo que cierra el frame en curso.
+ * Los movimientos más seguidos que esto se agrupan en un mismo paso, para que
+ * una línea entera se pueda mover a la vez sin que cada jugador abra su frame.
+ */
+export const PAUSA_GRABACION_MS = 700;
 export const LARGO_CAMPO_M = 105;
 export const ANCHO_CAMPO_M = 68;
 

@@ -3,6 +3,7 @@ import type { Orientacion, TemaCancha } from '../../types';
 import { useEscalaCampo } from '../../hooks/useCampoEscala';
 import { ANCHO_CAMPO_M, LARGO_CAMPO_M } from '../../utils/constantes';
 import { VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
+import { COLOR, GROSOR, OPACIDAD } from '../../tokens';
 
 interface PuntoCampo {
   u: number; // 0..ANCHO_CAMPO_M, banda a banda
@@ -80,13 +81,21 @@ function generarArcoEsquina(centroU: number, centroV: number, anguloInicio: numb
   return puntos;
 }
 
-/** Paleta por tema (FA5): estadio conserva el verde con tinte rojinegro sutil en las franjas exteriores. */
+/**
+ * Paleta por tema (FA5). Los cuatro temas derivan del par de verdes de los
+ * tokens: estadio y neutro los usan tal cual, entrenamiento los aclara un punto
+ * y táctico sustituye el césped por la superficie de panel. Así no queda ningún
+ * verde suelto fuera del archivo de tokens.
+ */
 const CESPED_TEMA: Record<TemaCancha, { a: string; b: string; tintaExtremos: string | null }> = {
-  estadio: { a: '#1E5B32', b: '#215F35', tintaExtremos: '#7a2430' },
-  neutro: { a: '#1E5B32', b: '#215F35', tintaExtremos: null },
-  entrenamiento: { a: '#2E7042', b: '#317645', tintaExtremos: null },
-  tactico: { a: '#111111', b: '#141414', tintaExtremos: null },
+  estadio: { a: COLOR.campo.cespedBase, b: COLOR.campo.cespedFranja, tintaExtremos: COLOR.marca.rojo },
+  neutro: { a: COLOR.campo.cespedBase, b: COLOR.campo.cespedFranja, tintaExtremos: null },
+  entrenamiento: { a: COLOR.campo.cespedBase, b: COLOR.campo.cespedBase, tintaExtremos: null },
+  tactico: { a: COLOR.superficie.panel, b: COLOR.superficie.panelSecundario, tintaExtremos: null },
 };
+
+/** Cuántas franjas de césped se dibujan a lo ancho del campo. */
+const FRANJAS_CESPED = 8;
 
 export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function LineasCampo(
   {
@@ -172,35 +181,51 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
 
   const paletaCesped = CESPED_TEMA[tema];
   const esTactico = tema === 'tactico';
+  // El grosor llega en píxeles de pantalla y se convierte a unidades de viewBox
+  // (metros): en el viewBox, 1.2 sería una línea de 1,2 metros de ancho.
   const trazo = {
-    stroke: esTactico ? 'rgba(212,17,30,0.85)' : 'rgba(255,255,255,0.55)',
-    strokeWidth: esTactico ? 0.22 : 0.28,
+    stroke: esTactico ? COLOR.marca.rojo : COLOR.campo.linea,
+    strokeOpacity: esTactico ? 0.85 : OPACIDAD.lineaCampo,
+    strokeWidth: GROSOR.lineaCampoPx * unidadPorPx,
     fill: 'none',
   } as const;
   const puntoRadio = 0.42;
-  const anchoFranja = orientacion === 'vertical' ? ANCHO_CAMPO_M / 9 : LARGO_CAMPO_M / 14;
+  // Las franjas dividen el LARGO del campo: con el tablero apaisado (el caso
+  // normal en tablet) el eje largo va de izquierda a derecha, así que se ven
+  // verticales, que es lo que pide el diseño.
+  const anchoFranja = LARGO_CAMPO_M / FRANJAS_CESPED;
 
   return (
     <svg ref={ref} viewBox={viewBox} className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
       <defs>
-        <pattern
-          id="franjas-cesped"
-          width={orientacion === 'vertical' ? anchoFranja : LARGO_CAMPO_M}
-          height={orientacion === 'vertical' ? LARGO_CAMPO_M : anchoFranja}
-          patternUnits="userSpaceOnUse"
-        >
-          <rect width="100%" height="100%" fill={paletaCesped.a} />
-          <rect width={orientacion === 'vertical' ? '50%' : '100%'} height={orientacion === 'vertical' ? '100%' : '50%'} fill={paletaCesped.b} />
-        </pattern>
         {mostrarValla && !esTactico && (
           <pattern id="patron-valla" width="4" height="4" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-            <rect width="4" height="4" fill="#111111" />
-            <rect width="2" height="4" fill="#D4111E" />
+            <rect width="4" height="4" fill={COLOR.superficie.fondo} />
+            <rect width="2" height="4" fill={COLOR.marca.rojo} />
           </pattern>
         )}
       </defs>
 
-      <rect {...rectUV(-grosorValla, -grosorValla, ANCHO_CAMPO_M + grosorValla * 2, LARGO_CAMPO_M + grosorValla * 2, orientacion)} fill="url(#franjas-cesped)" />
+      {/* Fondo del césped, con la valla incluida para que no quede un borde sin pintar. */}
+      <rect
+        {...rectUV(-grosorValla, -grosorValla, ANCHO_CAMPO_M + grosorValla * 2, LARGO_CAMPO_M + grosorValla * 2, orientacion)}
+        fill={paletaCesped.a}
+      />
+
+      {/*
+        Ocho franjas como rectángulos dentro del SVG, no como imagen de fondo ni
+        como <pattern>: así escalan con el campo y sobreviven a la serialización
+        que hace la exportación a PNG.
+      */}
+      {Array.from({ length: FRANJAS_CESPED }, (_, indice) =>
+        indice % 2 === 1 ? (
+          <rect
+            key={`franja-${indice}`}
+            {...rectUV(0, indice * anchoFranja, ANCHO_CAMPO_M, anchoFranja, orientacion)}
+            fill={paletaCesped.b}
+          />
+        ) : null,
+      )}
 
       {/* Tinte rojinegro sutil en las dos franjas exteriores del tema Estadio */}
       {paletaCesped.tintaExtremos && (
@@ -242,8 +267,8 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
                 fontSize={fontValla}
                 fontWeight={700}
                 letterSpacing={fontValla * 0.15}
-                fill="#FFFFFF"
-                opacity={0.7}
+                fill={COLOR.campo.linea}
+                opacity={OPACIDAD.marcaPunto}
                 transform={orientacion === 'horizontal' ? `rotate(-90 ${punto.x} ${punto.y})` : undefined}
               >
                 CÚCUTA DEPORTIVO
@@ -263,7 +288,8 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
               y={punto.y}
               textAnchor="end"
               fontSize={fontRotulo}
-              fill="rgba(156,163,175,0.4)"
+              fill={COLOR.campo.etiquetaSecundaria}
+              opacity={0.55}
               transform={orientacion === 'horizontal' ? `rotate(-90 ${punto.x} ${punto.y})` : undefined}
             >
               ESTADIO GENERAL SANTANDER
@@ -274,15 +300,15 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
       <path d={aRuta(geometria.perimetro, orientacion, rotado180, true)} {...trazo} />
       <path d={aRuta(geometria.medioCampo, orientacion, rotado180)} {...trazo} />
       <path d={aRuta(geometria.circuloCentral, orientacion, rotado180, true)} {...trazo} />
-      <circle {...mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill="rgba(255,255,255,0.7)" />
+      <circle {...mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
 
       {mostrarEscudo && (
         <g
           style={{ opacity: centroOcupado ? 0 : tema === 'tactico' ? 0.14 : 0.1, transition: 'opacity 150ms' }}
           transform={`translate(${mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).x}, ${mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).y})`}
         >
-          <circle r={RADIO_CENTRAL * 0.8} fill="none" stroke="#FFFFFF" strokeWidth={0.35} />
-          <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={RADIO_CENTRAL * 0.9} fontWeight={900} fill="#FFFFFF">
+          <circle r={RADIO_CENTRAL * 0.8} fill="none" stroke={COLOR.campo.linea} strokeWidth={0.35} />
+          <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={RADIO_CENTRAL * 0.9} fontWeight={900} fill={COLOR.campo.linea}>
             C
           </text>
         </g>
@@ -293,7 +319,7 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
           <path d={aRuta(extremo.areaGrande, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.areaChica, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.arco, orientacion, rotado180)} {...trazo} />
-          <circle {...mapear(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill="rgba(255,255,255,0.7)" />
+          <circle {...mapear(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
         </g>
       ))}
 

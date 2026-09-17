@@ -2,8 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Los valores de aquí son copia literal de `src/tokens.ts`: una hoja de estilos
+  no puede importar TypeScript, así que se declaran como variables CSS y todo lo
+  demás del archivo las consume. Si cambias un token, cambia también aquí.
+*/
 :root {
   color-scheme: dark;
+
+  --superficie-fondo: #101514;
+  --superficie-panel: #171d1b;
+  --superficie-panel-2: #202724;
+  --texto-principal: #f2f2f2;
+  --texto-secundario: #a7ada9;
+  --marca-rojo: #d4111e;
+  --interaccion-naranja: #ff6a00;
+  --borde-sutil: rgba(255, 255, 255, 0.08);
 }
 
 html,
@@ -11,7 +25,8 @@ body,
 #root {
   height: 100dvh;
   overflow: hidden;
-  background-color: #0b0b0c;
+  background-color: var(--superficie-fondo);
+  color: var(--texto-principal);
 }
 
 body {
@@ -32,7 +47,8 @@ body {
 }
 
 .superficie-vidrio {
-  background-color: rgba(17, 17, 17, 0.72);
+  /* El panel con algo de transparencia: deja intuir el césped sin restarle contraste al texto. */
+  background-color: color-mix(in srgb, var(--superficie-panel) 88%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -48,7 +64,7 @@ body {
   width: 6px;
 }
 .barra-scroll::-webkit-scrollbar-thumb {
-  background-color: #3a3a3f;
+  background-color: var(--superficie-panel-2);
   border-radius: 999px;
 }
 .barra-scroll::-webkit-scrollbar-track {
@@ -98,4 +114,46 @@ body {
 
 .animar-salida-objeto {
   animation: salida-objeto 300ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/*
+  Barra de posición de la jugada. Se estiliza a mano porque el aspecto nativo
+  del `input range` desentona con el resto, pero se mantiene el elemento nativo
+  para no perder el arrastre táctil ni el teclado. El pulsador es de 16px: por
+  debajo de eso cuesta agarrarlo con el dedo en una tablet.
+*/
+.barra-jugada {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.barra-jugada::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.barra-jugada::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.barra-jugada::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 16px;
+  width: 16px;
+  border-radius: 999px;
+  border: 2px solid var(--superficie-fondo);
+  background-color: var(--marca-rojo);
+}
+.barra-jugada::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 999px;
+  border: 2px solid var(--superficie-fondo);
+  background-color: var(--marca-rojo);
+}
+.barra-jugada:disabled {
+  opacity: 0.4;
 }

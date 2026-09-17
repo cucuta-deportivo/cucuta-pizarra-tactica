@@ -14,7 +14,7 @@ import { ModalZonas } from './components/ui/ModalZonas';
 import { ModalRival } from './components/ui/ModalRival';
 import { ModalCancha } from './components/ui/ModalCancha';
 import { ToastContainer } from './components/ui/ToastContainer';
-import { ModalGestionPlantilla } from './components/jugador/ModalGestionPlantilla';
+import { PantallaPlantilla } from './components/plantilla/PantallaPlantilla';
 import { ModalComparacion } from './components/ui/ModalComparacion';
 import { PanelActividad } from './components/auth/PanelActividad';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
@@ -22,6 +22,7 @@ import { useAlineacionStore } from './store/alineacionStore';
 import { useAuthStore } from './store/authStore';
 import { supabaseConfigurado } from './lib/supabaseClient';
 import { usePizarraStore } from './store/pizarraStore';
+import { useReproduccionStore } from './store/reproduccionStore';
 import { usePizarraCampoStore } from './store/pizarraCampoStore';
 import { usePlantillaStore } from './store/plantillaStore';
 import { useUiStore, type OrientacionForzada } from './store/uiStore';
@@ -277,6 +278,7 @@ function MenuOpciones({
   onAbrirActividad,
   onAbrirExportar,
   onCrearJugada,
+  onGrabarJugada,
   hayJugada,
 }: {
   onAbrirAlineaciones: () => void;
@@ -286,6 +288,7 @@ function MenuOpciones({
   onAbrirActividad: () => void;
   onAbrirExportar: () => void;
   onCrearJugada: () => void;
+  onGrabarJugada: () => void;
   hayJugada: boolean;
 }) {
   const pantallaCompleta = useUiStore((s) => s.pantallaCompleta);
@@ -339,7 +342,7 @@ function MenuOpciones({
               cerrar();
             }}
           >
-            👤 Gestionar plantilla
+            👤 Plantilla
           </ItemMenu>
           <ItemMenu
             onClick={() => {
@@ -350,14 +353,24 @@ function MenuOpciones({
             🏟️ Cancha
           </ItemMenu>
           {!hayJugada && (
-            <ItemMenu
-              onClick={() => {
-                onCrearJugada();
-                cerrar();
-              }}
-            >
-              🎬 Crear jugada
-            </ItemMenu>
+            <>
+              <ItemMenu
+                onClick={() => {
+                  onCrearJugada();
+                  cerrar();
+                }}
+              >
+                🎬 Crear jugada
+              </ItemMenu>
+              <ItemMenu
+                onClick={() => {
+                  onGrabarJugada();
+                  cerrar();
+                }}
+              >
+                ⏺ Grabar jugada
+              </ItemMenu>
+            </>
           )}
           <ItemMenu
             onClick={() => {
@@ -423,18 +436,21 @@ export default function App() {
   const modoDibujoActivo = usePizarraStore((s) => s.modoDibujoActivo);
   const toggleModoDibujo = usePizarraStore((s) => s.toggleModoDibujo);
 
-  const cargarFotos = usePlantillaStore((s) => s.cargarFotos);
-  const cargarDatosEditados = usePlantillaStore((s) => s.cargarDatosEditados);
+  const inicializarPlantilla = usePlantillaStore((s) => s.inicializar);
   const sincronizarPersonalizados = usePlantillaStore((s) => s.sincronizarPersonalizados);
   const jugadoresPersonalizados = useAlineacionStore((s) => s.historial.presente.jugadoresPersonalizados);
   const hayJugada = useAlineacionStore((s) => s.historial.presente.secuencia !== null);
   const iniciarSecuencia = useAlineacionStore((s) => s.iniciarSecuencia);
+  const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
 
   const modoObjetoActivo = usePizarraCampoStore((s) => s.modoObjetoActivo);
   const activarModoObjeto = usePizarraCampoStore((s) => s.activarModoObjeto);
   const desactivarModoObjeto = usePizarraCampoStore((s) => s.desactivarModoObjeto);
   const ultimoPresetCuadricula = usePizarraCampoStore((s) => s.ultimoPresetCuadricula);
   const setUltimoPresetCuadricula = usePizarraCampoStore((s) => s.setUltimoPresetCuadricula);
+  // La herramienta de movimiento añade una franja de ayuda a la timeline; el
+  // campo tiene que ceder ese alto o quedaría tapado por debajo.
+  const modoTrayectoriaActivo = usePizarraCampoStore((s) => s.modoTrayectoriaActivo);
 
   const cuadricula = useAlineacionStore((s) => s.historial.presente.cuadricula);
   const actualizarCuadricula = useAlineacionStore((s) => s.actualizarCuadricula);
@@ -482,9 +498,8 @@ export default function App() {
     if (inicializadoRef.current) return;
     inicializadoRef.current = true;
     void inicializar();
-    void cargarFotos();
-    void cargarDatosEditados();
-  }, [inicializar, cargarFotos, cargarDatosEditados]);
+    void inicializarPlantilla();
+  }, [inicializar, inicializarPlantilla]);
 
   // Punto único donde la plantilla en memoria recoge los jugadores personalizados
   // del tablero abierto. Al ser reactivo cubre de una sola vez cargar una alineación,
@@ -502,7 +517,11 @@ export default function App() {
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-club-negro text-white">
       {/* Con la jugada abierta, el campo cede el alto de la timeline para no quedar tapado. */}
-      <main className={`absolute inset-0 px-2 pt-[68px] sm:px-4 ${timelineVisible ? 'pb-[184px]' : 'pb-[76px]'}`}>
+      <main
+        className={`absolute inset-0 px-2 pt-[68px] sm:px-4 ${
+          timelineVisible ? (modoTrayectoriaActivo ? 'pb-[220px]' : 'pb-[184px]') : 'pb-[76px]'
+        }`}
+      >
         <Campo ref={campoRef} />
       </main>
 
@@ -525,6 +544,12 @@ export default function App() {
               onAbrirActividad={() => setPanelActividadAbierto(true)}
               onAbrirExportar={() => setModalExportarAbierto(true)}
               onCrearJugada={iniciarSecuencia}
+              onGrabarJugada={() => {
+                // Abre la jugada y arranca a grabar de una vez: el primer frame
+                // guarda la posición de partida y los movimientos ya cuentan.
+                iniciarSecuencia();
+                iniciarGrabacion();
+              }}
               hayJugada={hayJugada}
             />
           </div>
@@ -598,7 +623,7 @@ export default function App() {
 
       <ModalAlineaciones abierto={modalAlineacionesAbierto} onCerrar={() => setModalAlineacionesAbierto(false)} />
       <ModalHistorial abierto={modalHistorialAbierto} onCerrar={() => setModalHistorialAbierto(false)} />
-      <ModalGestionPlantilla abierto={modalGestionPlantillaAbierto} onCerrar={() => setModalGestionPlantillaAbierto(false)} />
+      <PantallaPlantilla abierto={modalGestionPlantillaAbierto} onCerrar={() => setModalGestionPlantillaAbierto(false)} />
       <ModalComparacion abierto={modalComparacionAbierto} onCerrar={() => setModalComparacionAbierto(false)} />
       <ModalZonas abierto={modalZonasAbierto} onCerrar={() => setModalZonasAbierto(false)} />
       <ModalRival abierto={modalRivalAbierto} onCerrar={() => setModalRivalAbierto(false)} />

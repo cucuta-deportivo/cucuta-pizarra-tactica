@@ -15,17 +15,38 @@ export type Posicion =
 
 export type PiePreferido = 'izquierdo' | 'derecho' | 'ambos';
 
-export interface Jugador {
+/** Categoría del club (Sub-13 … Sub-20). Se leen de la tabla `categorias`. */
+export interface Categoria {
   id: string;
   nombre: string;
+  orden: number;
+}
+
+export interface Jugador {
+  /** UUID generado por Supabase. */
+  id: string;
+  categoriaId: string;
+  nombre: string;
   apellido: string;
-  dorsal: number;
+  /** Opcional en la base de datos: un jugador puede no tener dorsal asignado. */
+  dorsal: number | null;
   posicionNatural: Posicion;
   posicionesSecundarias: Posicion[];
+  /**
+   * Enlace firmado para mostrar la foto. Es efímero (caduca) y NO se guarda:
+   * se pide al cargar la categoría y se renueva. La ruta persistente es `fotoPath`.
+   */
   fotoUrl: string | null;
+  /** Ruta dentro del bucket privado: `{categoria_id}/{jugador_id}.webp`. */
+  fotoPath: string | null;
   piePreferido: PiePreferido;
   activo: boolean;
 }
+
+/** Catálogo cerrado de posiciones que admite el formulario de plantilla. */
+export const POSICIONES_PLANTILLA: Posicion[] = [
+  'POR', 'LI', 'DFC', 'LD', 'MCD', 'MC', 'MCO', 'EI', 'ED', 'SD', 'DC',
+];
 
 export interface ZonaFormacion {
   id: string;
@@ -48,6 +69,8 @@ export interface JugadorEnCampo {
   zonaOrigenId?: string;
   esCapitan: boolean;
   nota?: string;
+  /** Hacia dónde mira, en grados. Opcional: sin ella no se dibuja indicador. */
+  rotacion?: number;
 }
 
 export type TipoTrazo = 'libre' | 'flecha' | 'discontinua' | 'zona' | 'texto';
@@ -175,12 +198,82 @@ export interface FrameTactico {
   objetos: ObjetoCampo[];
   trazos: Trazo[];
   celdasPintadas: Record<string, ColorCelda>;
+  /**
+   * Milisegundos que tarda la transición DESDE este frame HASTA el siguiente.
+   * La duración pertenece al tramo, no al frame, así que en el último frame no
+   * se usa. Opcional: las jugadas guardadas antes de existir esto caen en
+   * `DURACION_TRANSICION_MS`.
+   */
+  duracionMs?: number;
+  /**
+   * Recorridos por nodos que arrancan en este frame. Opcional: sin ellos, cada
+   * ficha va en línea recta hasta su posición del frame siguiente, que es como
+   * se comportaban las jugadas antes de existir esto.
+   */
+  trayectorias?: TrayectoriaMovimiento[];
 }
 
+/** Curva de movimiento de las transiciones. Ver `CURVAS_EASING` en utils/interpolacion. */
+export type TipoEasing = 'lineal' | 'entrada' | 'salida' | 'entrada-salida';
+
+export type TipoInterpolacionRuta = 'lineal' | 'catmull-rom';
+
+/** De dónde sale hacia dónde mira un actor mientras recorre su trayectoria. */
+export type ModoOrientacion = 'manual' | 'seguir-ruta';
+
+export interface NodoRuta {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Recorrido que sigue un jugador, un rival o un balón durante UNA transición
+ * entre fases; por eso vive dentro del frame en el que arranca.
+ *
+ * `nodos` guarda solo los puntos INTERMEDIOS. Los extremos no se almacenan: el
+ * inicial es la posición del elemento en este frame y el final la del frame
+ * siguiente. Así, mover una ficha reacomoda su ruta sola y es imposible que la
+ * ruta y las fases se desincronicen.
+ */
+export interface TrayectoriaMovimiento {
+  id: string;
+  jugadorId?: string;
+  jugadorRivalId?: string;
+  balonId?: string;
+  objetoId?: string;
+  nodos: NodoRuta[];
+  interpolacion: TipoInterpolacionRuta;
+  mostrarRuta: boolean;
+  /**
+   * Lo que tarda ESTE actor en recorrer su trayectoria. Opcional: si falta,
+   * tarda lo que dure el tramo entre fases, que es como se comportaban las
+   * jugadas antes. Nunca puede pasar de la duración del tramo — si acaba antes,
+   * el actor llega a su destino y espera ahí a que termine la fase.
+   */
+  duracionMs?: number;
+  /**
+   * 'seguir-ruta' orienta al actor según la tangente de la curva; 'manual' deja
+   * la rotación que tenga guardada. Opcional: si falta, 'manual'.
+   */
+  orientacion?: ModoOrientacion;
+  /** Dibujar los nodos al seleccionar la ruta. Opcional: si falta, sí. */
+  mostrarNodos?: boolean;
+  /** Dejar una huella de lo ya recorrido mientras se reproduce. Opcional: si falta, no. */
+  mostrarEstela?: boolean;
+}
+
+/** Quién recorre una trayectoria. */
+export type TipoDestinoRuta = 'titular' | 'rival' | 'balon' | 'objeto';
+
 export interface SecuenciaTactica {
+  /** Nombre de la jugada: "Salida ante presión", "ABP - Córner"… */
+  nombre?: string;
   frames: FrameTactico[];
   /** Frame que se está editando; es el que el campo muestra en modo edición. */
   indiceActivo: number;
+  /** Curva de toda la jugada. Opcional: si falta, 'entrada-salida'. */
+  easing?: TipoEasing;
 }
 
 export interface Alineacion {

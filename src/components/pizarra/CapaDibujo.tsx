@@ -108,13 +108,32 @@ function EntradaTextoPizarra({ punto, onConfirmar, onCancelar }: EntradaTextoPro
   );
 }
 
-export const CapaDibujo = forwardRef<HTMLCanvasElement>(function CapaDibujo(_props, refEstatico) {
+interface CapaDibujoProps {
+  /**
+   * Trazos a pintar en lugar de los del documento. Lo usa la reproducción para
+   * mostrar los dibujos de la fase que se está viendo, que no son los de la
+   * fase que se está editando. Si no se pasa, manda el documento y todo se
+   * comporta como siempre.
+   */
+  trazosMostrados?: Trazo[];
+}
+
+export const CapaDibujo = forwardRef<HTMLCanvasElement, CapaDibujoProps>(function CapaDibujo(
+  { trazosMostrados },
+  refEstatico,
+) {
   const { aPixeles, aPorcentaje, ancho, alto } = useEscalaCampo();
   const modoDibujoActivo = usePizarraStore((s) => s.modoDibujoActivo);
   const herramienta = usePizarraStore((s) => s.herramienta);
   const color = usePizarraStore((s) => s.color);
   const grosor = usePizarraStore((s) => s.grosor);
-  const trazos = useAlineacionStore((s) => s.historial.presente.trazos);
+  const trazosDelDocumento = useAlineacionStore((s) => s.historial.presente.trazos);
+  const trazos = trazosMostrados ?? trazosDelDocumento;
+  // Con trazos impuestos desde fuera la capa es un espejo de la reproducción: no
+  // se puede dibujar ni borrar sobre ella, porque lo que muestra no es el frame
+  // que se edita y cualquier cambio se escribiría en el sitio equivocado.
+  const soloLectura = trazosMostrados !== undefined;
+  const dibujoHabilitado = modoDibujoActivo && !soloLectura;
   const agregarTrazo = useAlineacionStore((s) => s.agregarTrazo);
   const eliminarTrazo = useAlineacionStore((s) => s.eliminarTrazo);
 
@@ -163,7 +182,7 @@ export const CapaDibujo = forwardRef<HTMLCanvasElement>(function CapaDibujo(_pro
   }
 
   function manejarPointerDown(evento: ReactPointerEvent<HTMLCanvasElement>): void {
-    if (!modoDibujoActivo) return;
+    if (!dibujoHabilitado) return;
     evento.currentTarget.setPointerCapture(evento.pointerId);
     const punto = aPorcentaje(evento.clientX, evento.clientY);
 
@@ -248,7 +267,7 @@ export const CapaDibujo = forwardRef<HTMLCanvasElement>(function CapaDibujo(_pro
           canvasTempRef.current = nodo;
         }}
         className="absolute inset-0 h-full w-full touch-none"
-        style={{ pointerEvents: modoDibujoActivo ? 'auto' : 'none', cursor: modoDibujoActivo ? 'crosshair' : 'default' }}
+        style={{ pointerEvents: dibujoHabilitado ? 'auto' : 'none', cursor: dibujoHabilitado ? 'crosshair' : 'default' }}
         onPointerDown={manejarPointerDown}
         onPointerMove={manejarPointerMove}
         onPointerUp={manejarPointerUp}

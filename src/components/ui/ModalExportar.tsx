@@ -35,6 +35,12 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [trabajo, setTrabajo] = useState<TrabajoExportacion>(null);
+  // Apagada por defecto: la exportación con fotos tarda más (hay que traerlas
+  // del bucket) y no siempre se quiere el nombre y la cara de un menor en un PDF.
+  const [incluirFotos, setIncluirFotos] = useState(false);
+
+  // Solo tiene sentido ofrecerlo si alguno de los que están en el campo tiene foto.
+  const hayFotos = documento.titulares.some((t) => obtenerJugador(t.jugadorId)?.fotoUrl);
 
   function construirAlineacion() {
     return alineacionDesdeDocumento({ id, nombre, creadaEn }, documento, modificadaEn);
@@ -58,6 +64,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
         anchoContenedor: elementos.ancho,
         altoContenedor: elementos.alto,
         orientacion: elementos.orientacion,
+        incluirFotos: incluirFotos && hayFotos,
       };
       if (tipo === 'png') {
         const blob = await exportarCampoAPng(datos);
@@ -105,6 +112,25 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   return (
     <Modal abierto={abierto} onCerrar={onCerrar} titulo="Exportar y compartir" ancho="sm">
       <div className="flex flex-col gap-2">
+        <label
+          className={`flex min-h-[44px] items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 ${
+            hayFotos ? 'cursor-pointer' : 'opacity-50'
+          }`}
+          title={hayFotos ? 'Dibuja la foto de cada jugador dentro de su ficha' : 'Ningún jugador del campo tiene foto'}
+        >
+          <input
+            type="checkbox"
+            checked={incluirFotos && hayFotos}
+            disabled={!hayFotos}
+            onChange={(e) => setIncluirFotos(e.target.checked)}
+            className="h-4 w-4 accent-club-naranja"
+          />
+          <span className="text-xs text-white">
+            Incluir fotos de los jugadores
+            {!hayFotos && <span className="text-club-plata"> · ninguno tiene foto</span>}
+          </span>
+        </label>
+
         <Boton variante="primario" onClick={() => void exportarImagen('png')} disabled={trabajo !== null}>
           {trabajo === 'png' ? 'Generando PNG…' : '⬇ Exportar a PNG (2×)'}
         </Boton>

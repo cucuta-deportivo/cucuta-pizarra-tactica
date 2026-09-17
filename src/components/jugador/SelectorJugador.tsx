@@ -62,7 +62,8 @@ export function SelectorJugador({
         const puntajeA = coincideFiltro(a, filtroPosicion);
         const puntajeB = coincideFiltro(b, filtroPosicion);
         if (puntajeA !== puntajeB) return puntajeA - puntajeB;
-        return a.dorsal - b.dorsal;
+        // Los jugadores sin dorsal van al final, no al principio como haría un null.
+        return (a.dorsal ?? 100) - (b.dorsal ?? 100);
       });
   }, [jugadores, busqueda, filtroPosicion, verTodos]);
 

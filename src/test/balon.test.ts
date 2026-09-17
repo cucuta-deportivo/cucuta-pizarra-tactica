@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { usePlantillaStore } from '../store/plantillaStore';
 import { obtenerFormacion } from '../data/formaciones';
@@ -18,6 +19,7 @@ describe('balón: posesión y posición efectiva', () => {
   let jugadorId: string;
 
   beforeEach(() => {
+    sembrarPlantilla();
     useAlineacionStore.getState().nuevaAlineacion();
     const formacion = obtenerFormacion(doc().formacionId)!;
     const zona = formacion.zonas[0]!;

@@ -105,7 +105,11 @@ export function ModalJugadorPersonalizado({
       onCrear({
         id: `pers-${generarId()}`,
         ...datos,
+        // Un jugador creado a mano en la pizarra no pertenece a ninguna
+        // categoría de la plantilla ni tiene foto en el bucket.
+        categoriaId: '',
         fotoUrl: null,
+        fotoPath: null,
         piePreferido: 'derecho',
         activo: true,
       });

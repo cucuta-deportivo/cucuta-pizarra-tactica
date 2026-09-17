@@ -266,3 +266,198 @@ create policy "entrenadores_ven_todos_los_intentos" on public.intentos_login
 
 insert into public.codigos_invitacion (codigo) values ('CUCUTA-2026')
   on conflict (codigo) do nothing;
+
+-------------------------------------------------------------------
+-- ============================================================
+-- Pizarra tactica Cucuta Deportivo
+-- Esquema: plantilla de jugadores y alineaciones guardadas
+-- Ejecutar completo en el SQL Editor de Supabase.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- Categorias del club
+-- ------------------------------------------------------------
+create table if not exists categorias (
+  id          text primary key,          -- 'profesional', 'sub20', ...
+  nombre      text not null,             -- 'Profesional', 'Sub-20', ...
+  orden       smallint not null default 0
+);
+
+insert into categorias (id, nombre, orden) values
+  ('profesional', 'Profesional', 1),
+  ('sub20',       'Sub-20',      2),
+  ('sub17',       'Sub-17',      3),
+  ('sub17b',      'Sub-17 B',    4),
+  ('sub15',       'Sub-15',      5),
+  ('sub13',       'Sub-13',      6)
+on conflict (id) do nothing;
+
+-- ------------------------------------------------------------
+-- Plantilla: un registro por jugador y categoria
+-- ------------------------------------------------------------
+create table if not exists jugadores (
+  id                   uuid primary key default gen_random_uuid(),
+  categoria_id         text not null references categorias (id),
+  dorsal               smallint,
+  nombre               text not null default '',
+  apellido             text not null,
+  posicion_principal   text,
+  posicion_secundaria  text,
+  foto_path            text,             -- ruta dentro del bucket: 'profesional/7.webp'
+  activo               boolean not null default true,
+  creado_en            timestamptz not null default now(),
+  actualizado_en       timestamptz not null default now(),
+
+  constraint jugadores_dorsal_rango
+    check (dorsal is null or (dorsal between 1 and 99)),
+
+  constraint jugadores_posiciones_distintas
+    check (posicion_secundaria is null
+           or posicion_secundaria is distinct from posicion_principal)
+);
+
+-- Un dorsal no se repite dentro de la misma categoria entre jugadores activos
+create unique index if not exists jugadores_dorsal_categoria_idx
+  on jugadores (categoria_id, dorsal)
+  where activo and dorsal is not null;
+
+create index if not exists jugadores_categoria_idx
+  on jugadores (categoria_id)
+  where activo;
+
+-- ------------------------------------------------------------
+-- Alineaciones guardadas
+-- ------------------------------------------------------------
+create table if not exists alineaciones (
+  id             uuid primary key default gen_random_uuid(),
+  categoria_id   text not null references categorias (id),
+  nombre         text not null,          -- 'Salida ante presion'
+  formacion      text,                   -- '4-3-3'
+  rival          text,
+  fecha_partido  date,
+  notas          text,
+  creada_por     uuid references auth.users (id) on delete set null,
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
+);
+
+create index if not exists alineaciones_categoria_idx
+  on alineaciones (categoria_id, creado_en desc);
+
+-- ------------------------------------------------------------
+-- Fichas dentro de una alineacion
+--
+-- Guardan copia de dorsal y apellido: si manana se edita la
+-- plantilla, la alineacion vieja conserva lo que se jugo ese dia.
+-- jugador_id es opcional: permite escribir un nombre suelto que
+-- no este en la plantilla, y en ese caso la ficha no lleva foto.
+-- ------------------------------------------------------------
+create table if not exists alineacion_jugadores (
+  id                   uuid primary key default gen_random_uuid(),
+  alineacion_id        uuid not null references alineaciones (id) on delete cascade,
+  jugador_id           uuid references jugadores (id) on delete set null,
+  dorsal               smallint,
+  apellido             text not null,
+  posicion_principal   text,
+  posicion_secundaria  text,
+  foto_path            text,             -- copia, para que el historico no se rompa
+  pos_x                numeric(5,2) not null,   -- 0 a 100
+  pos_y                numeric(5,2) not null,   -- 0 a 100
+  es_suplente          boolean not null default false,
+  orden                smallint not null default 0,
+
+  constraint alineacion_jugadores_x_rango check (pos_x between 0 and 100),
+  constraint alineacion_jugadores_y_rango check (pos_y between 0 and 100)
+);
+
+create index if not exists alineacion_jugadores_alineacion_idx
+  on alineacion_jugadores (alineacion_id);
+
+-- ------------------------------------------------------------
+-- Objetos dibujados sobre el campo (conos, vallas, flechas...)
+-- ------------------------------------------------------------
+create table if not exists alineacion_objetos (
+  id             uuid primary key default gen_random_uuid(),
+  alineacion_id  uuid not null references alineaciones (id) on delete cascade,
+  tipo           text not null,          -- 'cono', 'valla', 'flecha', ...
+  datos          jsonb not null default '{}'::jsonb,  -- posicion, escala, rotacion, puntos
+  orden          smallint not null default 0
+);
+
+create index if not exists alineacion_objetos_alineacion_idx
+  on alineacion_objetos (alineacion_id);
+
+-- ------------------------------------------------------------
+-- Marca de tiempo automatica
+-- ------------------------------------------------------------
+create or replace function tocar_actualizado_en()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.actualizado_en = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists jugadores_tocar on jugadores;
+create trigger jugadores_tocar
+  before update on jugadores
+  for each row execute function tocar_actualizado_en();
+
+drop trigger if exists alineaciones_tocar on alineaciones;
+create trigger alineaciones_tocar
+  before update on alineaciones
+  for each row execute function tocar_actualizado_en();
+
+-- ------------------------------------------------------------
+-- Seguridad
+--
+-- Hoy los entrenadores comparten una cuenta, asi que cualquier
+-- usuario con sesion iniciada ve y edita todo. Cuando cada uno
+-- tenga la suya, estas politicas son el unico sitio a cambiar.
+-- ------------------------------------------------------------
+alter table categorias            enable row level security;
+alter table jugadores             enable row level security;
+alter table alineaciones          enable row level security;
+alter table alineacion_jugadores  enable row level security;
+alter table alineacion_objetos    enable row level security;
+
+drop policy if exists "categorias lectura" on categorias;
+create policy "categorias lectura"
+  on categorias for select to authenticated using (true);
+
+drop policy if exists "jugadores acceso" on jugadores;
+create policy "jugadores acceso"
+  on jugadores for all to authenticated using (true) with check (true);
+
+drop policy if exists "alineaciones acceso" on alineaciones;
+create policy "alineaciones acceso"
+  on alineaciones for all to authenticated using (true) with check (true);
+
+drop policy if exists "alineacion jugadores acceso" on alineacion_jugadores;
+create policy "alineacion jugadores acceso"
+  on alineacion_jugadores for all to authenticated using (true) with check (true);
+
+drop policy if exists "alineacion objetos acceso" on alineacion_objetos;
+create policy "alineacion objetos acceso"
+  on alineacion_objetos for all to authenticated using (true) with check (true);
+
+-- ------------------------------------------------------------
+-- Acceso a las fotos del bucket privado 'jugadores'
+-- Crear antes el bucket en Storage, sin marcarlo como publico.
+-- ------------------------------------------------------------
+drop policy if exists "fotos lectura entrenadores" on storage.objects;
+create policy "fotos lectura entrenadores"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'jugadores');
+
+drop policy if exists "fotos escritura entrenadores" on storage.objects;
+create policy "fotos escritura entrenadores"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'jugadores');
+
+drop policy if exists "fotos reemplazo entrenadores" on storage.objects;
+create policy "fotos reemplazo entrenadores"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'jugadores');

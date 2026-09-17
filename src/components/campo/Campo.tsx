@@ -36,8 +36,9 @@ import { useReproduccionStore } from '../../store/reproduccionStore';
 import { useUiStore } from '../../store/uiStore';
 import { obtenerFormacion } from '../../data/formaciones';
 import type { ColorObjeto, Orientacion, Posicion, PuntoNormalizado, TipoObjeto, ZonaFormacion } from '../../types';
-import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M } from '../../utils/constantes';
+import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS } from '../../utils/constantes';
 import { posicionEfectivaBalon } from '../../utils/balon';
+import { muestrearRuta, puntosDeControl, segmentoEnPunto, trayectoriaDe } from '../../utils/trayectorias';
 import { pixelesAPorcentaje, VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
 import { generarPuntosFila, generarPuntosRejilla, generarPuntosSlalom, ubicarZonaEnLado } from '../../utils/anexoA';
 import { LineasCampo } from './LineasCampo';
@@ -56,6 +57,7 @@ import { CapaTrayectorias } from './CapaTrayectorias';
 import { IconoObjeto } from './IconoObjeto';
 import { ObjetoCampoDraggable, type DatosArrastreObjeto } from './ObjetoCampoDraggable';
 import { BalonDraggable, type DatosArrastreBalon } from './BalonDraggable';
+import { NodoRutaDraggable, type DatosArrastreNodo } from './NodoRutaDraggable';
 import { TarjetaRivalDraggable, type DatosArrastreRival } from './TarjetaRivalDraggable';
 import { CapaMarcajes } from './CapaMarcajes';
 import { ModalAgregarRival } from './ModalAgregarRival';
@@ -229,7 +231,19 @@ function calcularVentana(vista: 'completo' | 'medio' | 'tercio'): VentanaRecorte
   return VENTANA_CAMPO_COMPLETO;
 }
 
-type DatosArrastreCampo = DatosArrastreJugador | DatosArrastreObjeto | DatosArrastreBalon | DatosArrastreRival;
+type DatosArrastreCampo =
+  | DatosArrastreJugador
+  | DatosArrastreObjeto
+  | DatosArrastreBalon
+  | DatosArrastreRival
+  | DatosArrastreNodo;
+
+/** Radio en píxeles para dar por tocada una ficha con la herramienta Movimiento. */
+const RADIO_TOQUE_FICHA_PX = 36;
+const RADIO_TOQUE_BALON_PX = 20;
+const RADIO_TOQUE_OBJETO_PX = 22;
+/** Cuánto puede desviarse un toque de la línea y seguir contando como "sobre la ruta". */
+const TOLERANCIA_LINEA_PX = 22;
 
 export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   const esAnchoMedio = useMediaQuery('(min-width: 640px)');
@@ -408,10 +422,69 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   // Durante la reproducción manda `CapaReproduccion`: las fichas interactivas se
   // ocultan para que no se puedan arrastrar por accidente ni se dupliquen en pantalla.
   const reproduciendo = useReproduccionStore((s) => s.reproduciendo);
+  // Previsualizar (barra arrastrada a un instante intermedio) manda lo mismo que
+  // reproducir: lo que se ve es un cálculo, no un estado que se pueda editar.
+  const previsualizando = useReproduccionStore((s) => s.previsualizando);
+  const enAnimacion = reproduciendo || previsualizando;
+  // Dibujos y celdas pintadas viven en cada fase, así que durante la animación
+  // hay que mostrar los de la fase que se ve, no los de la que se edita. Se
+  // dirige con el índice de fase (cambia una vez por tramo) y no con el reloj,
+  // que cambiaría 60 veces por segundo y re-renderizaría todo el campo.
+  const indiceEnReproduccion = useReproduccionStore((s) => s.indiceFrame);
+  const frameMostrado = enAnimacion ? documento.secuencia?.frames[indiceEnReproduccion] : undefined;
+
+  // --- Herramienta "Movimiento" (trayectorias por nodos) ---
+  const modoTrayectoriaActivo = usePizarraCampoStore((s) => s.modoTrayectoriaActivo);
+  const sujetoTrayectoria = usePizarraCampoStore((s) => s.sujetoTrayectoria);
+  const setSujetoTrayectoria = usePizarraCampoStore((s) => s.setSujetoTrayectoria);
+  const agregarNodoTrayectoria = useAlineacionStore((s) => s.agregarNodoTrayectoria);
+  const moverNodoTrayectoria = useAlineacionStore((s) => s.moverNodoTrayectoria);
+  const eliminarNodoTrayectoria = useAlineacionStore((s) => s.eliminarNodoTrayectoria);
+  const indiceFrameActivo = documento.secuencia?.indiceActivo ?? 0;
+  const rutasDelFrame = documento.secuencia?.frames[indiceFrameActivo]?.trayectorias;
+  const rutaEnEdicion = sujetoTrayectoria
+    ? trayectoriaDe(rutasDelFrame, sujetoTrayectoria.tipo, sujetoTrayectoria.id)
+    : undefined;
   const rivalVisible =
-    !reproduciendo && Boolean(documento.rival?.visible) && documento.rival?.modoVista !== 'solo_nosotros';
-  const propioVisible = !reproduciendo && documento.rival?.modoVista !== 'solo_rival';
-  const interaccionBloqueada = modoDibujoActivo || modoObjetoActivo || reproduciendo;
+    !enAnimacion && Boolean(documento.rival?.visible) && documento.rival?.modoVista !== 'solo_nosotros';
+  const propioVisible = !enAnimacion && documento.rival?.modoVista !== 'solo_rival';
+  const interaccionBloqueada = modoDibujoActivo || modoObjetoActivo || enAnimacion;
+
+  // --- Modo grabación ---
+  // Los movimientos seguidos se agrupan: el frame se cierra cuando pasan
+  // PAUSA_GRABACION_MS sin tocar el campo. Así una línea defensiva entera se
+  // mueve en un solo paso de la jugada en vez de abrir un frame por jugador.
+  const grabando = useReproduccionStore((s) => s.grabando);
+  const grabarFrame = useAlineacionStore((s) => s.grabarFrame);
+  const temporizadorGrabacionRef = useRef<number | null>(null);
+
+  function registrarMovimientoGrabado(): void {
+    // Se lee del store en vez de la variable de render: `onDragEnd` puede
+    // dispararse con una clausura vieja si la grabación se activó hace nada.
+    if (!useReproduccionStore.getState().grabando) return;
+    if (temporizadorGrabacionRef.current !== null) window.clearTimeout(temporizadorGrabacionRef.current);
+    temporizadorGrabacionRef.current = window.setTimeout(() => {
+      temporizadorGrabacionRef.current = null;
+      useAlineacionStore.getState().grabarFrame();
+    }, PAUSA_GRABACION_MS);
+  }
+
+  useEffect(() => {
+    if (grabando) return;
+    // Al parar de grabar se cierra el frame pendiente: si no, el último
+    // movimiento se perdería por haber caído dentro de la ventana de pausa.
+    if (temporizadorGrabacionRef.current === null) return;
+    window.clearTimeout(temporizadorGrabacionRef.current);
+    temporizadorGrabacionRef.current = null;
+    grabarFrame();
+  }, [grabando, grabarFrame]);
+
+  useEffect(
+    () => () => {
+      if (temporizadorGrabacionRef.current !== null) window.clearTimeout(temporizadorGrabacionRef.current);
+    },
+    [],
+  );
 
   function manejarClicColocacion(evento: ReactMouseEvent<HTMLDivElement>): void {
     const punto = escala.aPorcentaje(evento.clientX, evento.clientY);
@@ -429,6 +502,90 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
     else puntos = generarPuntosRejilla(puntoDistribucionA, punto);
     agregarObjetosMultiples(tipoObjetoActivo, puntos, colorObjetoActivo);
     setPuntoDistribucionA(null);
+  }
+
+  /**
+   * Toques con la herramienta Movimiento activa. Se hace acierto manual contra
+   * las posiciones en vez de poner  en las fichas porque el sensor de
+   * dnd-kit llama a preventDefault y los clics nunca llegan a un draggable.
+   *
+   * Primer toque sobre una ficha: pasa a ser el sujeto. Toques siguientes en el
+   * campo: van añadiendo nodos a su recorrido.
+   */
+  function manejarClicTrayectoria(evento: ReactMouseEvent<HTMLDivElement>): void {
+    const punto = escala.aPorcentaje(evento.clientX, evento.clientY);
+    const px = escala.aPixeles(punto);
+    const cerca = (destino: PuntoNormalizado, radio: number): boolean => {
+      const p = escala.aPixeles(destino);
+      return Math.hypot(p.x - px.x, p.y - px.y) <= radio;
+    };
+
+    const titular = documento.titulares.find((t) => cerca(t, RADIO_TOQUE_FICHA_PX));
+    if (titular) {
+      setSujetoTrayectoria({ tipo: 'titular', id: titular.jugadorId });
+      return;
+    }
+    const rival = rivalVisible ? documento.rival?.jugadores.find((r) => cerca(r, RADIO_TOQUE_FICHA_PX)) : undefined;
+    if (rival) {
+      setSujetoTrayectoria({ tipo: 'rival', id: rival.id });
+      return;
+    }
+    const balon = documento.balones.find((b) =>
+      cerca(posicionEfectivaBalon(b, documento.titulares), RADIO_TOQUE_BALON_PX),
+    );
+    if (balon) {
+      setSujetoTrayectoria({ tipo: 'balon', id: balon.id });
+      return;
+    }
+    // Los objetos van los últimos: son pequeños y suelen quedar debajo de las
+    // fichas, así que tocar un jugador que esté encima de un cono elige al jugador.
+    const objeto = documento.objetos.find((o) => cerca(o, RADIO_TOQUE_OBJETO_PX));
+    if (objeto) {
+      setSujetoTrayectoria({ tipo: 'objeto', id: objeto.id });
+      return;
+    }
+
+    // Sin sujeto no hay a qué añadir el nodo: el primer toque elige la ficha.
+    if (!sujetoTrayectoria) return;
+
+    // Si el toque cae sobre la línea ya dibujada, el nodo se mete EN ESE TRAMO
+    // en vez de al final: es la diferencia entre dar forma al recorrido y solo
+    // ir alargándolo.
+    const insercion = indiceDeInsercion(punto, px);
+    agregarNodoTrayectoria(indiceFrameActivo, sujetoTrayectoria.tipo, sujetoTrayectoria.id, punto, insercion);
+  }
+
+  /**
+   * Devuelve en qué posición de la lista de nodos debe entrar uno nuevo, o
+   * `undefined` para añadirlo al final. El acierto se mide en píxeles, no en
+   * porcentaje, para que la tolerancia se sienta igual en cualquier zoom.
+   */
+  function indiceDeInsercion(punto: PuntoNormalizado, px: PuntoNormalizado): number | undefined {
+    if (!rutaEnEdicion || !sujetoTrayectoria) return undefined;
+    const siguienteFrame = documento.secuencia?.frames[indiceFrameActivo + 1];
+    if (!siguienteFrame) return undefined;
+
+    const posicionEn = (frame: typeof siguienteFrame, sujeto: typeof sujetoTrayectoria): PuntoNormalizado | undefined => {
+      if (sujeto.tipo === 'titular') return frame.titulares.find((t) => t.jugadorId === sujeto.id);
+      if (sujeto.tipo === 'rival') return frame.jugadoresRival.find((r) => r.id === sujeto.id);
+      if (sujeto.tipo === 'objeto') return frame.objetos.find((o) => o.id === sujeto.id);
+      const balon = frame.balones.find((b) => b.id === sujeto.id);
+      return balon ? posicionEfectivaBalon(balon, frame.titulares) : undefined;
+    };
+    const frameActual = documento.secuencia?.frames[indiceFrameActivo];
+    const origen = frameActual ? posicionEn(frameActual, sujetoTrayectoria) : undefined;
+    const destino = posicionEn(siguienteFrame, sujetoTrayectoria);
+    if (!origen || !destino) return undefined;
+
+    const muestreada = muestrearRuta(
+      puntosDeControl(origen, rutaEnEdicion.nodos, destino),
+      rutaEnEdicion.interpolacion,
+    );
+    const cercano = segmentoEnPunto(muestreada, punto);
+    if (!cercano) return undefined;
+    const enPx = escala.aPixeles(cercano.puntoEnRuta);
+    if (Math.hypot(enPx.x - px.x, enPx.y - px.y) > TOLERANCIA_LINEA_PX) return undefined;
+    return cercano.indiceSegmento;
   }
 
   function manejarFinArrastre(evento: DragEndEvent): void {
@@ -505,6 +662,14 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
       return;
     }
 
+    if (datos.tipoArrastre === 'nodo') {
+      const nodo = rutasDelFrame?.find((t) => t.id === datos.trayectoriaId)?.nodos.find((n) => n.id === datos.nodoId);
+      if (!nodo) return;
+      const punto = posicionTrasArrastre(nodo.x, nodo.y);
+      moverNodoTrayectoria(indiceFrameActivo, datos.trayectoriaId, datos.nodoId, punto.x, punto.y);
+      return;
+    }
+
     const { origen, jugadorId } = datos;
 
     if (idDestino === 'banquillo') {
@@ -573,7 +738,10 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
         sensors={sensores}
         collisionDetection={detectarColision}
         measuring={CONFIG_MEDICION}
-        onDragEnd={manejarFinArrastre}
+        onDragEnd={(evento) => {
+          manejarFinArrastre(evento);
+          registrarMovimientoGrabado();
+        }}
       >
         <MonitorArrastreJugador onCambio={setArrastreJugadorActivo} />
         <EscalaCampoProvider value={escala}>
@@ -627,7 +795,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
                 />
               ))}
 
-            {!reproduciendo &&
+            {!enAnimacion &&
               documento.objetos.map((objeto) => (
               <ObjetoCampoDraggable
                 key={objeto.id}
@@ -654,7 +822,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
               );
             })}
 
-            {!reproduciendo &&
+            {!enAnimacion &&
               documento.balones.map((balon) => {
               const propietario = balon.jugadorPoseedorId ? documento.titulares.find((t) => t.jugadorId === balon.jugadorPoseedorId) : undefined;
               const { x: xPct, y: yPct } = posicionEfectivaBalon(balon, documento.titulares);
@@ -675,7 +843,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
               );
             })}
 
-            {documento.rival && !reproduciendo && (
+            {documento.rival && !enAnimacion && (
               <CapaMarcajes
                 marcajes={documento.marcajes}
                 titulares={documento.titulares}
@@ -717,11 +885,39 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
                 );
               })}
 
+            {/*
+              Captura de toques de la herramienta Movimiento. Va POR ENCIMA de
+              las fichas (zIndex 20) para recibir el toque antes que ellas: los
+              draggables se comen los clics, así que el acierto se hace a mano.
+            */}
+            {modoTrayectoriaActivo && !enAnimacion && (
+              <div
+                className="absolute inset-0"
+                style={{ zIndex: 20, cursor: 'crosshair' }}
+                onClick={manejarClicTrayectoria}
+              />
+            )}
+
+            {/* Los nodos solo se ven mientras se edita esa trayectoria (§6). */}
+            {modoTrayectoriaActivo &&
+              !enAnimacion &&
+              rutaEnEdicion?.mostrarNodos !== false &&
+              rutaEnEdicion?.nodos.map((nodo, indice) => (
+                <NodoRutaDraggable
+                  key={nodo.id}
+                  nodo={nodo}
+                  trayectoriaId={rutaEnEdicion.id}
+                  indice={indice}
+                  color={sujetoTrayectoria?.tipo === 'balon' ? '#D4111E' : '#FFFFFF'}
+                  onEliminar={() => eliminarNodoTrayectoria(indiceFrameActivo, rutaEnEdicion.id, nodo.id)}
+                />
+              ))}
+
             <CapaTrayectorias />
 
-            {reproduciendo && <CapaReproduccion />}
+            {enAnimacion && <CapaReproduccion />}
 
-            <CapaDibujo ref={canvasRef} />
+            <CapaDibujo ref={canvasRef} trazosMostrados={frameMostrado?.trazos} />
           </ZonaCampoDroppable>
 
           {menu && jugadorMenu && (

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { usePlantillaStore } from '../store/plantillaStore';
 import { alineacionRepository } from '../data/repositorio';
@@ -17,6 +18,7 @@ import { canchaVacia, cuadriculaVacia } from '../utils/anexoA';
  */
 describe('flujo: formación → asignación → arrastre → guardado → recarga', () => {
   beforeEach(() => {
+    sembrarPlantilla();
     const ahora = new Date().toISOString();
     useAlineacionStore.setState({
       id: generarId(),

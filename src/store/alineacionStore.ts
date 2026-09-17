@@ -29,6 +29,8 @@ import { generarId } from '../utils/id';
 import { CAPACIDAD_BANQUILLO, DEBOUNCE_AUTOGUARDADO_MS, ETIQUETAS_OBJETO, LIMITE_BALONES, LIMITE_OBJETOS } from '../utils/constantes';
 import { canchaVacia, claveCelda, cuadriculaVacia, recortarAMitad, siguienteColorCelda, ubicarZonaEnLado } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
+import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
+import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
 import { usePlantillaStore } from './plantillaStore';
 import type {
@@ -37,8 +39,12 @@ import type {
   FrameTactico,
   IdentidadCancha,
   Marcaje,
+  ModoOrientacion,
   Posicion,
   SecuenciaTactica,
+  TipoDestinoRuta,
+  TipoEasing,
+  TipoInterpolacionRuta,
 } from '../types';
 
 export interface DocumentoTactico {
@@ -89,11 +95,22 @@ function documentoVacio(formacionId: string): DocumentoTactico {
   };
 }
 
-/** Toma del documento vivo lo que se anima en una jugada. */
-function frameDesdeDocumento(doc: DocumentoTactico, id: string, nombre?: string): FrameTactico {
+/**
+ * Toma del documento vivo lo que se anima en una jugada. `base` es el frame que
+ * se está reemplazando: de él se heredan los datos que NO viven en el documento
+ * (nombre, duración y trayectorias). Sin esto, cada recaptura del frame activo
+ * borraría lo que el entrenador acaba de definir.
+ */
+function frameDesdeDocumento(
+  doc: DocumentoTactico,
+  id: string,
+  base?: Pick<FrameTactico, 'nombre' | 'duracionMs' | 'trayectorias'>,
+): FrameTactico {
   return {
     id,
-    nombre,
+    nombre: base?.nombre,
+    duracionMs: base?.duracionMs,
+    trayectorias: base?.trayectorias,
     titulares: doc.titulares,
     jugadoresRival: doc.rival?.jugadores ?? [],
     balones: doc.balones,
@@ -123,13 +140,27 @@ function capturarFrameActivo(doc: DocumentoTactico): void {
   if (!secuencia) return;
   const activo = secuencia.frames[secuencia.indiceActivo];
   if (!activo) return;
-  const candidato = frameDesdeDocumento(doc, activo.id, activo.nombre);
+  const candidato = frameDesdeDocumento(doc, activo.id, activo);
   // Solo se escribe si de verdad cambió algo. `frameDesdeDocumento` devuelve
   // siempre un objeto nuevo, y asignarlo a ciegas haría que Immer marcase el
   // documento como modificado y el historial se llenase de pasos vacíos cada
   // vez que se pulsa play o se toca un chip de la timeline.
-  if (JSON.stringify(candidato) === JSON.stringify(activo)) return;
+  if (mismoContenidoFrame(candidato, activo)) return;
   secuencia.frames[secuencia.indiceActivo] = candidato;
+}
+
+/** Compara dos frames por su contenido táctico; el id y el nombre no cuentan. */
+function mismoContenidoFrame(a: FrameTactico, b: FrameTactico): boolean {
+  const soloContenido = ({ id: _id, nombre: _nombre, ...resto }: FrameTactico) => JSON.stringify(resto);
+  return soloContenido(a) === soloContenido(b);
+}
+
+/** Mete un frame nuevo con el estado actual justo detrás del activo, y se planta en él. */
+function insertarFrameTrasActivo(doc: DocumentoTactico): void {
+  const secuencia = doc.secuencia;
+  if (!secuencia) return;
+  secuencia.frames.splice(secuencia.indiceActivo + 1, 0, frameDesdeDocumento(doc, generarId()));
+  secuencia.indiceActivo += 1;
 }
 
 /** Convierte una `Alineacion` guardada a `DocumentoTactico`, rellenando con valores por
@@ -312,7 +343,37 @@ interface AlineacionState {
   iniciarSecuencia: () => void;
   descartarSecuencia: () => void;
   agregarFrame: () => void;
+  /** Cierra un frame con lo que hay en pantalla sin tocar el activo (modo grabación). */
+  grabarFrame: () => void;
   duplicarFrame: (indice: number) => void;
+  /** Duración de la transición que arranca en ese frame. */
+  setDuracionFrame: (indice: number, duracionMs: number) => void;
+  setEasingSecuencia: (easing: TipoEasing) => void;
+  /** Cambia una fase de sitio dentro de la jugada. */
+  moverFrame: (desde: number, hasta: number) => void;
+  renombrarSecuencia: (nombre: string) => void;
+  agregarFrameAlFinal: () => void;
+  /** Añade un nodo a la ruta de un elemento en ese frame, creándola si no existía. */
+  agregarNodoTrayectoria: (
+    indiceFrame: number,
+    tipo: TipoDestinoRuta,
+    id: string,
+    punto: PuntoNormalizado,
+    indiceInsercion?: number,
+  ) => void;
+  moverNodoTrayectoria: (indiceFrame: number, trayectoriaId: string, nodoId: string, x: number, y: number) => void;
+  eliminarNodoTrayectoria: (indiceFrame: number, trayectoriaId: string, nodoId: string) => void;
+  eliminarTrayectoria: (indiceFrame: number, trayectoriaId: string) => void;
+  setInterpolacionTrayectoria: (indiceFrame: number, trayectoriaId: string, tipo: TipoInterpolacionRuta) => void;
+  /** Duración propia de una ruta; `undefined` la devuelve a la de la fase. */
+  setDuracionTrayectoria: (indiceFrame: number, trayectoriaId: string, duracionMs: number | undefined) => void;
+  setOrientacionTrayectoria: (indiceFrame: number, trayectoriaId: string, modo: ModoOrientacion) => void;
+  /** Enciende o apaga una de las tres cosas visibles de una ruta. */
+  alternarVisibilidadTrayectoria: (
+    indiceFrame: number,
+    trayectoriaId: string,
+    que: 'ruta' | 'nodos' | 'estela',
+  ) => void;
   eliminarFrame: (indice: number) => void;
   irAFrame: (indice: number) => void;
   renombrarFrame: (indice: number, nombre: string) => void;
@@ -849,7 +910,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     iniciarSecuencia: () =>
       mutar((doc) => {
         if (doc.secuencia) return;
-        doc.secuencia = { frames: [frameDesdeDocumento(doc, generarId(), 'Inicio')], indiceActivo: 0 };
+        doc.secuencia = { frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })], indiceActivo: 0 };
       }, 'Jugada iniciada'),
 
     descartarSecuencia: () =>
@@ -864,10 +925,24 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // El frame nuevo arranca como copia del estado actual: así el entrenador
         // mueve solo lo que cambia en ese paso, en vez de recolocarlo todo.
         capturarFrameActivo(doc);
-        const nuevo = frameDesdeDocumento(doc, generarId());
-        secuencia.frames.splice(secuencia.indiceActivo + 1, 0, nuevo);
-        secuencia.indiceActivo += 1;
+        insertarFrameTrasActivo(doc);
       }, 'Frame añadido'),
+
+    grabarFrame: () =>
+      mutar((doc) => {
+        const secuencia = doc.secuencia;
+        const activo = secuencia?.frames[secuencia.indiceActivo];
+        if (!secuencia || !activo) return;
+        // Un arrastre que no llegó a mover nada (se soltó fuera del campo, o
+        // sobre el mismo sitio) no debe abrir un frame: la jugada se llenaría
+        // de pasos idénticos y la reproducción se quedaría congelada en ellos.
+        if (mismoContenidoFrame(frameDesdeDocumento(doc, activo.id, activo), activo)) return;
+        // A diferencia de `agregarFrame`, aquí NO se vuelca el frame activo: el
+        // documento ya trae los movimientos recién hechos, y volcarlos machacaría
+        // las posiciones de partida. El activo conserva el "antes" y el nuevo
+        // guarda el "después", que es lo que hace que la jugada se anime.
+        insertarFrameTrasActivo(doc);
+      }, 'Movimiento grabado'),
 
     duplicarFrame: (indice) =>
       mutar((doc) => {
@@ -906,6 +981,127 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         secuencia.indiceActivo = indice;
         aplicarFrameADocumento(doc, destino);
       }, `Frame ${indice + 1}`),
+
+    setDuracionFrame: (indice, duracionMs) =>
+      mutar((doc) => {
+        const frame = doc.secuencia?.frames[indice];
+        if (!frame) return;
+        frame.duracionMs = Math.min(DURACION_MAXIMA_MS, Math.max(DURACION_MINIMA_MS, Math.round(duracionMs)));
+      }, 'Duración de la fase'),
+
+    setEasingSecuencia: (easing) =>
+      mutar((doc) => {
+        if (doc.secuencia) doc.secuencia.easing = easing;
+      }, 'Curva de movimiento'),
+
+    moverFrame: (desde, hasta) =>
+      mutar((doc) => {
+        const secuencia = doc.secuencia;
+        if (!secuencia) return;
+        const ultimo = secuencia.frames.length - 1;
+        if (desde < 0 || desde > ultimo || hasta < 0 || hasta > ultimo || desde === hasta) return;
+        const [frame] = secuencia.frames.splice(desde, 1);
+        if (!frame) return;
+        secuencia.frames.splice(hasta, 0, frame);
+        // La fase activa viaja con ella: mover algo y perderlo de vista desorienta.
+        secuencia.indiceActivo = hasta;
+      }, 'Fase movida'),
+
+    renombrarSecuencia: (nombre) =>
+      mutar((doc) => {
+        if (doc.secuencia) doc.secuencia.nombre = nombre.trim() || undefined;
+      }, 'Jugada renombrada'),
+
+    agregarFrameAlFinal: () =>
+      mutar((doc) => {
+        const secuencia = doc.secuencia;
+        if (!secuencia) return;
+        capturarFrameActivo(doc);
+        secuencia.frames.push(frameDesdeDocumento(doc, generarId()));
+        secuencia.indiceActivo = secuencia.frames.length - 1;
+      }, 'Fase añadida al final'),
+
+    agregarNodoTrayectoria: (indiceFrame, tipo, id, punto, indiceInsercion) =>
+      mutar((doc) => {
+        const frame = doc.secuencia?.frames[indiceFrame];
+        if (!frame) return;
+        if (!frame.trayectorias) frame.trayectorias = [];
+        let ruta = trayectoriaDe(frame.trayectorias, tipo, id);
+        if (!ruta) {
+          ruta = {
+            id: generarId(),
+            ...destinoDeTrayectoria(tipo, id),
+            nodos: [],
+            interpolacion: 'catmull-rom',
+            mostrarRuta: true,
+          };
+          frame.trayectorias.push(ruta);
+        }
+        const nodo = { id: generarId(), x: punto.x, y: punto.y };
+        const donde = indiceInsercion ?? ruta.nodos.length;
+        ruta.nodos.splice(Math.max(0, Math.min(ruta.nodos.length, donde)), 0, nodo);
+      }, 'Nodo añadido'),
+
+    moverNodoTrayectoria: (indiceFrame, trayectoriaId, nodoId, x, y) =>
+      mutar((doc) => {
+        const ruta = doc.secuencia?.frames[indiceFrame]?.trayectorias?.find((t) => t.id === trayectoriaId);
+        const nodo = ruta?.nodos.find((n) => n.id === nodoId);
+        if (!nodo) return;
+        nodo.x = Math.max(0, Math.min(100, x));
+        nodo.y = Math.max(0, Math.min(100, y));
+      }, 'Nodo movido'),
+
+    eliminarNodoTrayectoria: (indiceFrame, trayectoriaId, nodoId) =>
+      mutar((doc) => {
+        const frame = doc.secuencia?.frames[indiceFrame];
+        const ruta = frame?.trayectorias?.find((t) => t.id === trayectoriaId);
+        if (!frame || !ruta) return;
+        ruta.nodos = ruta.nodos.filter((n) => n.id !== nodoId);
+        // Sin nodos intermedios la ruta ya no aporta nada: el movimiento vuelve
+        // a ser la recta de siempre, así que se retira en vez de dejarla vacía.
+        if (ruta.nodos.length === 0) frame.trayectorias = frame.trayectorias!.filter((t) => t.id !== ruta.id);
+      }, 'Nodo eliminado'),
+
+    eliminarTrayectoria: (indiceFrame, trayectoriaId) =>
+      mutar((doc) => {
+        const frame = doc.secuencia?.frames[indiceFrame];
+        if (!frame?.trayectorias) return;
+        frame.trayectorias = frame.trayectorias.filter((t) => t.id !== trayectoriaId);
+      }, 'Trayectoria eliminada'),
+
+    setInterpolacionTrayectoria: (indiceFrame, trayectoriaId, tipo) =>
+      mutar((doc) => {
+        const ruta = doc.secuencia?.frames[indiceFrame]?.trayectorias?.find((t) => t.id === trayectoriaId);
+        if (ruta) ruta.interpolacion = tipo;
+      }, 'Curva de la trayectoria'),
+
+    setDuracionTrayectoria: (indiceFrame, trayectoriaId, duracionMs) =>
+      mutar((doc) => {
+        const ruta = doc.secuencia?.frames[indiceFrame]?.trayectorias?.find((t) => t.id === trayectoriaId);
+        if (!ruta) return;
+        if (duracionMs === undefined || !Number.isFinite(duracionMs)) {
+          delete ruta.duracionMs;
+          return;
+        }
+        ruta.duracionMs = Math.min(DURACION_MAXIMA_MS, Math.max(DURACION_MINIMA_MS, Math.round(duracionMs)));
+      }, 'Duración del recorrido'),
+
+    setOrientacionTrayectoria: (indiceFrame, trayectoriaId, modo) =>
+      mutar((doc) => {
+        const ruta = doc.secuencia?.frames[indiceFrame]?.trayectorias?.find((t) => t.id === trayectoriaId);
+        if (ruta) ruta.orientacion = modo;
+      }, 'Orientación del recorrido'),
+
+    alternarVisibilidadTrayectoria: (indiceFrame, trayectoriaId, que) =>
+      mutar((doc) => {
+        const ruta = doc.secuencia?.frames[indiceFrame]?.trayectorias?.find((t) => t.id === trayectoriaId);
+        if (!ruta) return;
+        if (que === 'ruta') ruta.mostrarRuta = !ruta.mostrarRuta;
+        // Nodos y estela son opcionales con distinto valor por defecto: los
+        // nodos se ven salvo que se apaguen, la estela solo si se enciende.
+        else if (que === 'nodos') ruta.mostrarNodos = ruta.mostrarNodos === false;
+        else ruta.mostrarEstela = !ruta.mostrarEstela;
+      }, 'Visibilidad del recorrido'),
 
     renombrarFrame: (indice, nombre) =>
       mutar((doc) => {

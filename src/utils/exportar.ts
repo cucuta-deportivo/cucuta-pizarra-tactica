@@ -1,3 +1,4 @@
+import { COLOR, GROSOR, OPACIDAD, SOMBRA_FICHA_OFFSET_PX } from '../tokens';
 import type { Alineacion, Formacion, Jugador, JugadorEnCampo, Orientacion } from '../types';
 import { porcentajeAPixeles } from './coordenadas';
 
@@ -14,6 +15,29 @@ export interface DatosExportacion {
   altoContenedor: number;
   orientacion: Orientacion;
   nombreClub?: string;
+  /** Dibujar la foto de cada jugador en su ficha. Por defecto, no. */
+  incluirFotos?: boolean;
+}
+
+/**
+ * Carga una foto para poder dibujarla en el lienzo.
+ *
+ * `crossOrigin` es obligatorio: sin él el navegador marca el canvas como
+ * "contaminado" y `toBlob()` falla, con lo que se rompería la exportación
+ * ENTERA, no solo las fotos. Los enlaces firmados de Supabase responden con
+ * `access-control-allow-origin: *`, así que la petición es legítima.
+ *
+ * Una foto que no carga devuelve null y esa ficha cae a su respaldo: nunca
+ * debe impedir que el entrenador se lleve su alineación.
+ */
+function cargarFoto(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const imagen = new Image();
+    imagen.crossOrigin = 'anonymous';
+    imagen.onload = () => resolve(imagen);
+    imagen.onerror = () => resolve(null);
+    imagen.src = url;
+  });
 }
 
 function svgAImagen(svg: SVGSVGElement): Promise<HTMLImageElement> {
@@ -42,40 +66,101 @@ function dibujarJugadorEnLienzo(
   alto: number,
   offsetY: number,
   orientacion: Orientacion,
+  foto?: HTMLImageElement,
 ): void {
   const punto = porcentajeAPixeles({ x: titular.x, y: titular.y }, { ancho, alto }, orientacion);
   const cx = punto.x;
   const cy = punto.y + offsetY;
   const radio = 20;
 
-  const degradado = ctx.createLinearGradient(cx - radio, cy - radio, cx + radio, cy + radio);
-  degradado.addColorStop(0, '#D4111E');
-  degradado.addColorStop(1, '#1a1a1d');
+  // Esta función es el espejo en canvas de `TarjetaJugador`. Si cambia una,
+  // tiene que cambiar la otra: si no, el PNG deja de ser lo que se ve en
+  // pantalla, que es un criterio explícito del rediseño.
+
+  // Sombra simulada: círculo negro desplazado, dibujado ANTES que la ficha.
+  ctx.beginPath();
+  ctx.arc(cx + SOMBRA_FICHA_OFFSET_PX, cy + SOMBRA_FICHA_OFFSET_PX, radio, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR.sombra;
+  ctx.globalAlpha = OPACIDAD.sombraFicha;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Ficha: con foto recortada en círculo, o relleno plano si no la hay.
+  if (foto) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(foto, cx - radio, cy - radio, radio * 2, radio * 2);
+    ctx.restore();
+  } else {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+    ctx.fillStyle = COLOR.marca.rojoFicha;
+    ctx.fill();
+  }
   ctx.beginPath();
   ctx.arc(cx, cy, radio, 0, Math.PI * 2);
-  ctx.fillStyle = degradado;
-  ctx.fill();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = titular.esCapitan ? '#FFC107' : '#111111';
+  ctx.lineWidth = GROSOR.bordeFicha;
+  ctx.strokeStyle = COLOR.campo.linea;
   ctx.stroke();
 
-  ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = '700 15px Arial';
-  ctx.fillText(String(jugador.dorsal), cx, cy - 3);
+  if (jugador.dorsal != null) {
+    if (foto) {
+      // Con foto, el dorsal va en una chapa arriba a la izquierda, como en
+      // pantalla: encima de la cara no se leería.
+      const bx = cx - radio * 0.78;
+      const by = cy - radio * 0.78;
+      ctx.beginPath();
+      ctx.arc(bx, by, 9, 0, Math.PI * 2);
+      ctx.fillStyle = COLOR.superficie.fondo;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = COLOR.campo.linea;
+      ctx.stroke();
+      ctx.fillStyle = COLOR.campo.linea;
+      ctx.font = '700 11px Arial';
+      ctx.fillText(String(jugador.dorsal), bx, by);
+    } else {
+      ctx.fillStyle = COLOR.campo.linea;
+      ctx.font = '700 15px Arial';
+      ctx.fillText(String(jugador.dorsal), cx, cy);
+    }
+  }
+  ctx.fillStyle = COLOR.campo.linea;
 
-  const etiqueta = jugador.apellido.toUpperCase();
-  const anchoEtiqueta = Math.max(38, etiqueta.length * 6.4);
-  ctx.fillStyle = '#0b0b0c';
-  ctx.fillRect(cx - anchoEtiqueta / 2, cy + radio + 3, anchoEtiqueta, 15);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '600 10px Arial';
-  ctx.fillText(etiqueta, cx, cy + radio + 11);
+  // Apellido sobre el césped, sin recuadro.
+  ctx.font = '600 11px Arial';
+  ctx.fillText(jugador.apellido.toUpperCase(), cx, cy + radio + 10);
+
+  // Y debajo, las posiciones en el color de etiqueta secundaria.
+  const posiciones = [jugador.posicionNatural, jugador.posicionesSecundarias[0]].filter(Boolean).join(' · ');
+  if (posiciones) {
+    ctx.fillStyle = COLOR.campo.etiquetaSecundaria;
+    ctx.font = '600 9px Arial';
+    ctx.fillText(posiciones, cx, cy + radio + 21);
+  }
 }
 
 export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
-  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub } = datos;
+  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos } = datos;
+
+  // Las fotos se cargan TODAS antes de empezar a dibujar: el lienzo es síncrono
+  // y no se puede esperar a una imagen en mitad del trazado.
+  const fotos = new Map<string, HTMLImageElement>();
+  if (incluirFotos) {
+    const cargadas = await Promise.all(
+      alineacion.titulares.map(async (titular) => {
+        const jugador = obtenerJugador(titular.jugadorId);
+        if (!jugador?.fotoUrl) return null;
+        const imagen = await cargarFoto(jugador.fotoUrl);
+        return imagen ? ([titular.jugadorId, imagen] as const) : null;
+      }),
+    );
+    for (const par of cargadas) if (par) fotos.set(par[0], par[1]);
+  }
 
   const lienzo = document.createElement('canvas');
   lienzo.width = Math.round(anchoContenedor * ESCALA_EXPORTACION);
@@ -84,12 +169,12 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   if (!ctx) throw new Error('No se pudo crear el contexto de exportación.');
   ctx.scale(ESCALA_EXPORTACION, ESCALA_EXPORTACION);
 
-  ctx.fillStyle = '#0b0b0c';
+  ctx.fillStyle = COLOR.superficie.fondo;
   ctx.fillRect(0, 0, anchoContenedor, altoContenedor + ALTO_ENCABEZADO);
 
-  ctx.fillStyle = '#D4111E';
+  ctx.fillStyle = COLOR.marca.rojo;
   ctx.fillRect(0, 0, anchoContenedor, ALTO_ENCABEZADO);
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = COLOR.texto.principal;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.font = '700 20px Arial';
@@ -112,7 +197,9 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   for (const titular of alineacion.titulares) {
     const jugador = obtenerJugador(titular.jugadorId);
     if (!jugador) continue;
-    dibujarJugadorEnLienzo(ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion);
+    dibujarJugadorEnLienzo(
+      ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion, fotos.get(titular.jugadorId),
+    );
   }
 
   return new Promise<Blob>((resolve, reject) => {

@@ -287,8 +287,10 @@ create table if not exists categorias (
   orden       smallint not null default 0
 );
 
+-- 'profesional' no se crea por defecto: la pizarra es para las
+-- categorias formativas. Se agrega cuando el club la necesite:
+--   insert into categorias (id, nombre, orden) values ('profesional', 'Profesional', 1);
 insert into categorias (id, nombre, orden) values
-  ('profesional', 'Profesional', 1),
   ('sub20',       'Sub-20',      2),
   ('sub17',       'Sub-17',      3),
   ('sub17b',      'Sub-17 B',    4),

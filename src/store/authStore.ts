@@ -131,18 +131,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { ok: false, mensaje: 'Demasiados intentos fallidos. Vuelve a intentarlo en 15 minutos.' };
       }
 
-      let correo = usuarioOCorreo;
-      if (!correo.includes('@')) {
-        const { data } = await supabase.rpc('resolver_correo_por_usuario', { p_usuario: usuarioOCorreo });
-        if (!data) {
+      // Antes de crear la sesión: decide en qué almacenamiento se guarda.
+      establecerRecordarDispositivo(recordar);
+      let respuesta;
+      if (usuarioOCorreo.includes('@')) {
+        respuesta = await supabase.auth.signInWithPassword({ email: usuarioOCorreo, password });
+      } else {
+        // Con usuario, el correo se resuelve y la sesión se abre en el servidor
+        // (Edge Function `login-usuario`): el navegador nunca ve el correo.
+        const { data: tokens } = await supabase.functions.invoke<{ access_token: string; refresh_token: string }>(
+          'login-usuario',
+          { body: { usuario: usuarioOCorreo, password } },
+        );
+        if (!tokens) {
           await registrarIntento(usuarioOCorreo, 'fallido');
           return { ok: false, mensaje: MENSAJE_GENERICO };
         }
-        correo = data as string;
+        respuesta = await supabase.auth.setSession(tokens);
       }
-
-      establecerRecordarDispositivo(recordar);
-      const { data: inicio, error } = await supabase.auth.signInWithPassword({ email: correo, password });
+      const { data: inicio, error } = respuesta;
       if (error || !inicio.session) {
         await registrarIntento(usuarioOCorreo, 'fallido');
         return { ok: false, mensaje: MENSAJE_GENERICO };
@@ -150,14 +157,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const perfil = await obtenerPerfil(inicio.session.user.id);
       if (perfil?.estado === 'bloqueado') {
-        await registrarIntento(usuarioOCorreo, 'fallido', inicio.session.access_token.slice(0, 16));
+        await registrarIntento(usuarioOCorreo, 'fallido');
         await supabase.auth.signOut();
         return { ok: false, mensaje: 'Esta cuenta está bloqueada. Contacta a un entrenador del cuerpo técnico.' };
       }
 
       set({ session: inicio.session, perfil });
       marcarActividad();
-      await registrarIntento(usuarioOCorreo, 'exito', inicio.session.access_token.slice(0, 16));
+      await registrarIntento(usuarioOCorreo, 'exito');
       return { ok: true };
     } finally {
       set({ enviando: false });

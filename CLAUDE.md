@@ -11,7 +11,7 @@ Aplicación web de pizarra táctica para el cuerpo técnico de las categorías f
 - Despliegue en Vercel (equipo del club). Repositorio: `cucuta-pizarra-tactica` (organización del club)
 
 ## Reglas del producto (no romper)
-- El campo es un SVG que ocupa al menos el 70 % del viewport.
+- El campo es un SVG que ocupa al menos el 70 % del viewport, medido por el lado que lo limita (el alto o el ancho, según cuál tope primero), no por área.
 - Al elegir una formación se muestran zonas fantasma. **Nunca** se colocan jugadores automáticamente.
 - El arrastre es libre, sin imantación a la cuadrícula.
 - Capa de dibujo vectorial (flechas, líneas, zonas) con deshacer y rehacer.

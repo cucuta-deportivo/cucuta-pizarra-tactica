@@ -68,6 +68,7 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   limpiarError: () => set({ error: null }),
 
   inicializar: async () => {
+    iniciarRenovacionAutomatica();
     set({ cargando: true, error: null });
     try {
       const categorias = await listarCategorias();
@@ -210,9 +211,9 @@ function mensajeDe(fallo: unknown): string {
 }
 
 /**
- * Renueva los enlaces firmados que estén a punto de caducar. Lo llama la
- * pantalla de plantilla con un temporizador; así una sesión larga no acaba
- * mostrando fotos rotas.
+ * Renueva los enlaces firmados que estén a punto de caducar. Lo llaman la
+ * renovación automática de abajo y la pantalla de plantilla; así una sesión
+ * larga no acaba mostrando fotos rotas.
  */
 export async function renovarEnlacesCaducados(): Promise<void> {
   const { jugadores, enlaces } = usePlantillaStore.getState();
@@ -231,4 +232,23 @@ export async function renovarEnlacesCaducados(): Promise<void> {
     // Si falla la renovación las tarjetas caen a su respaldo del dorsal; no
     // merece la pena molestar al entrenador con un error por esto.
   }
+}
+
+/** Cada cuánto se mira si algún enlace está por caducar. Menor que el margen de renovación. */
+const INTERVALO_REVISION_ENLACES_MS = 30 * 1000;
+let renovacionAutomaticaIniciada = false;
+
+/**
+ * Mantiene vigentes los enlaces mientras la app esté abierta, no solo con la
+ * pantalla de plantilla: la pizarra y la exportación también usan las fotos.
+ * Además se revisa al volver a la pestaña, porque una tablet suspendida no
+ * dispara temporizadores mientras duerme.
+ */
+function iniciarRenovacionAutomatica(): void {
+  if (renovacionAutomaticaIniciada) return;
+  renovacionAutomaticaIniciada = true;
+  window.setInterval(() => void renovarEnlacesCaducados(), INTERVALO_REVISION_ENLACES_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void renovarEnlacesCaducados();
+  });
 }

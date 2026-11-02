@@ -100,6 +100,23 @@ as $$
   limit 1;
 $$;
 
+-- Para el registro: dice solo si un nombre de usuario está libre, nunca de
+-- quién es ni su correo. SECURITY DEFINER porque quien se registra no tiene
+-- sesión y el RLS de perfiles le ocultaría las filas de los demás (siempre
+-- vería "disponible").
+create or replace function public.usuario_disponible(p_usuario text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select not exists (
+    select 1 from public.perfiles
+    where lower(usuario) = lower(p_usuario)
+  );
+$$;
+
 -- Cuenta intentos fallidos recientes para el bloqueo temporal (5 en 15 min).
 create or replace function public.verificar_bloqueo_usuario(p_usuario text)
 returns table (bloqueado boolean, intentos_recientes int)
@@ -135,6 +152,10 @@ set search_path = public
 as $$
 declare
   v_user_id uuid;
+  -- La sesión la decide el servidor, desde el JWT ya validado de esta petición;
+  -- p_session_id se ignora (se mantiene solo para no romper la firma). En un
+  -- intento fallido no hay sesión y queda NULL.
+  v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
 begin
   select u.id into v_user_id
   from auth.users u
@@ -145,7 +166,7 @@ begin
   insert into public.intentos_login
     (user_id, usuario_intentado, resultado, metodo, dispositivo, user_agent, ip, ciudad, pais, session_id)
   values
-    (v_user_id, p_usuario_intentado, p_resultado, p_metodo, p_dispositivo, p_user_agent, p_ip, p_ciudad, p_pais, p_session_id);
+    (v_user_id, p_usuario_intentado, p_resultado, p_metodo, p_dispositivo, p_user_agent, p_ip, p_ciudad, p_pais, v_session_id);
 end;
 $$;
 
@@ -167,6 +188,8 @@ $$;
 
 grant execute on function public.verificar_codigo_invitacion(text) to anon, authenticated;
 grant execute on function public.resolver_correo_por_usuario(text) to anon, authenticated;
+revoke execute on function public.usuario_disponible(text) from public;
+grant execute on function public.usuario_disponible(text) to anon, authenticated;
 grant execute on function public.verificar_bloqueo_usuario(text) to anon, authenticated;
 grant execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) to anon, authenticated;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;
@@ -283,8 +306,10 @@ create table if not exists categorias (
   orden       smallint not null default 0
 );
 
+-- 'profesional' no se crea por defecto: la pizarra es para las
+-- categorias formativas. Se agrega cuando el club la necesite:
+--   insert into categorias (id, nombre, orden) values ('profesional', 'Profesional', 1);
 insert into categorias (id, nombre, orden) values
-  ('profesional', 'Profesional', 1),
   ('sub20',       'Sub-20',      2),
   ('sub17',       'Sub-17',      3),
   ('sub17b',      'Sub-17 B',    4),
@@ -413,9 +438,11 @@ create trigger alineaciones_tocar
 -- ------------------------------------------------------------
 -- Seguridad
 --
--- Hoy los entrenadores comparten una cuenta, asi que cualquier
--- usuario con sesion iniciada ve y edita todo. Cuando cada uno
--- tenga la suya, estas politicas son el unico sitio a cambiar.
+-- Solo entrenadores con cuenta activa (es_entrenador_activo):
+-- tener sesion no basta, porque una cuenta "pendiente" o un
+-- "invitado" tambien la tienen. Todos los entrenadores activos
+-- comparten plantilla y alineaciones. Si algun dia cada uno debe
+-- ver solo lo suyo, estas politicas son el unico sitio a cambiar.
 -- ------------------------------------------------------------
 alter table categorias            enable row level security;
 alter table jugadores             enable row level security;
@@ -425,39 +452,59 @@ alter table alineacion_objetos    enable row level security;
 
 drop policy if exists "categorias lectura" on categorias;
 create policy "categorias lectura"
-  on categorias for select to authenticated using (true);
+  on categorias for select to authenticated
+  using ((select public.es_entrenador_activo()));
 
 drop policy if exists "jugadores acceso" on jugadores;
 create policy "jugadores acceso"
-  on jugadores for all to authenticated using (true) with check (true);
+  on jugadores for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineaciones acceso" on alineaciones;
 create policy "alineaciones acceso"
-  on alineaciones for all to authenticated using (true) with check (true);
+  on alineaciones for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineacion jugadores acceso" on alineacion_jugadores;
 create policy "alineacion jugadores acceso"
-  on alineacion_jugadores for all to authenticated using (true) with check (true);
+  on alineacion_jugadores for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineacion objetos acceso" on alineacion_objetos;
 create policy "alineacion objetos acceso"
-  on alineacion_objetos for all to authenticated using (true) with check (true);
+  on alineacion_objetos for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 -- ------------------------------------------------------------
 -- Acceso a las fotos del bucket privado 'jugadores'
 -- Crear antes el bucket en Storage, sin marcarlo como publico.
+--
+-- Solo entrenadores con cuenta activa (es_entrenador_activo): tener sesión
+-- no basta, porque una cuenta "pendiente" o un "invitado" también la tienen.
+-- El `(select ...)` hace que Postgres evalúe la función una vez por consulta,
+-- no una vez por fila.
 -- ------------------------------------------------------------
 drop policy if exists "fotos lectura entrenadores" on storage.objects;
 create policy "fotos lectura entrenadores"
   on storage.objects for select to authenticated
-  using (bucket_id = 'jugadores');
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
 
 drop policy if exists "fotos escritura entrenadores" on storage.objects;
 create policy "fotos escritura entrenadores"
   on storage.objects for insert to authenticated
-  with check (bucket_id = 'jugadores');
+  with check (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
 
 drop policy if exists "fotos reemplazo entrenadores" on storage.objects;
 create policy "fotos reemplazo entrenadores"
   on storage.objects for update to authenticated
-  using (bucket_id = 'jugadores');
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()))
+  with check (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
+
+drop policy if exists "fotos borrado entrenadores" on storage.objects;
+create policy "fotos borrado entrenadores"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));

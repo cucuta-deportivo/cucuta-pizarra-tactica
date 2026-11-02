@@ -37,12 +37,12 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
     }
     setDisponibilidad('verificando');
     temporizadorRef.current = setTimeout(async () => {
-      const { data, error } = await supabase.rpc('resolver_correo_por_usuario', { p_usuario: nombre });
+      const { data, error } = await supabase.rpc('usuario_disponible', { p_usuario: nombre });
       if (error) {
         setDisponibilidad('sin-verificar');
         return;
       }
-      setDisponibilidad(data ? 'ocupado' : 'disponible');
+      setDisponibilidad(data ? 'disponible' : 'ocupado');
     }, 400);
     return () => {
       if (temporizadorRef.current) clearTimeout(temporizadorRef.current);

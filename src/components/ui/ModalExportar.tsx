@@ -35,9 +35,10 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [trabajo, setTrabajo] = useState<TrabajoExportacion>(null);
-  // Apagada por defecto: la exportación con fotos tarda más (hay que traerlas
-  // del bucket) y no siempre se quiere el nombre y la cara de un menor en un PDF.
-  const [incluirFotos, setIncluirFotos] = useState(false);
+  // Encendida por defecto: las fotos deben salir en la imagen exportada (regla
+  // del producto). Se puede desmarcar para una exportación concreta, por ejemplo
+  // si no se quiere la cara de un menor en un PDF que se va a compartir.
+  const [incluirFotos, setIncluirFotos] = useState(true);
 
   // Solo tiene sentido ofrecerlo si alguno de los que están en el campo tiene foto.
   const hayFotos = documento.titulares.some((t) => obtenerJugador(t.jugadorId)?.fotoUrl);

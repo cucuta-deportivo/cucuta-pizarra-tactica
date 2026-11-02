@@ -183,27 +183,16 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
 }
 
 /**
- * Reacomoda a los jugadores ya colocados según el modo de vista (FA4): con los
- * dos equipos en pantalla cada uno se recoge en su mitad, y con uno solo vuelve
- * a desplegarse por todo el campo. Se parte de la zona de origen de cada jugador
- * (no de su posición actual) para que alternar de modo sea siempre reversible y
- * no vaya arrastrando errores; quien entró desde el banquillo y no tiene zona
- * solo se recorta a su mitad.
+ * Reacomoda a los jugadores RIVALES según el modo de vista (FA4): con los dos
+ * equipos en pantalla se recogen en su mitad, y solos vuelven a desplegarse por
+ * todo el campo. Se parte de la zona de origen de cada uno (no de su posición
+ * actual) para que alternar de modo sea siempre reversible; quien no tiene zona
+ * solo se recorta a su mitad. Los nuestros NO se tocan: activar, ocultar o
+ * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
+ * nuestras zonas fantasma, en Campo).
  */
 function recolocarPorModo(doc: DocumentoTactico): void {
   const enAmbos = Boolean(doc.rival?.visible) && doc.rival?.modoVista === 'ambos';
-
-  const formacionPropia = obtenerFormacion(doc.formacionId);
-  for (const titular of doc.titulares) {
-    const zona = formacionPropia?.zonas.find((z) => z.id === titular.zonaOrigenId);
-    if (zona) {
-      const destino = ubicarZonaEnLado(zona, { espejo: false, mediaCancha: enAmbos });
-      titular.x = destino.x;
-      titular.y = destino.y;
-    } else if (enAmbos) {
-      titular.y = recortarAMitad(titular.y, false);
-    }
-  }
 
   if (!doc.rival) return;
   const formacionRival = obtenerFormacion(doc.rival.formacionId);
@@ -846,7 +835,6 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         doc.rival = null;
         doc.marcajes = [];
-        recolocarPorModo(doc);
       }, 'Equipo rival desactivado'),
 
     actualizarRival: (cambios) =>

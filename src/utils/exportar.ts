@@ -12,6 +12,19 @@ const ALTO_ENCABEZADO = 56;
  * conserven el tamaño relativo que tienen en pantalla.
  */
 const ESCALA_FICHAS = 20 / 32;
+/** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
+const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
+const PESOS_FUENTE = ['500', '600', '700', '800'];
+
+/**
+ * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
+ * pantalla, el texto saldría en la fuente de respaldo. Se piden todos antes de
+ * dibujar; si no hay red, la exportación sigue con el respaldo.
+ */
+async function cargarFuentes(): Promise<void> {
+  if (!document.fonts) return;
+  await Promise.all(PESOS_FUENTE.map((peso) => document.fonts.load(`${peso} 16px "Barlow Condensed"`))).catch(() => undefined);
+}
 
 export interface DatosExportacion {
   alineacion: Alineacion;
@@ -129,25 +142,25 @@ function dibujarJugadorEnLienzo(
       ctx.strokeStyle = COLOR.campo.linea;
       ctx.stroke();
       ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = '700 11px Arial';
+      ctx.font = `700 11px ${FUENTE}`;
       ctx.fillText(String(jugador.dorsal), bx, by);
     } else {
       ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = '700 15px Arial';
+      ctx.font = `700 15px ${FUENTE}`;
       ctx.fillText(String(jugador.dorsal), cx, cy);
     }
   }
   ctx.fillStyle = COLOR.campo.linea;
 
   // Apellido sobre el césped, sin recuadro.
-  ctx.font = '600 11px Arial';
+  ctx.font = `600 11px ${FUENTE}`;
   ctx.fillText(jugador.apellido.toUpperCase(), cx, cy + radio + 10);
 
   // Y debajo, las posiciones en el color de etiqueta secundaria.
   const posiciones = [jugador.posicionNatural, jugador.posicionesSecundarias[0]].filter(Boolean).join(' · ');
   if (posiciones) {
     ctx.fillStyle = COLOR.campo.etiquetaSecundaria;
-    ctx.font = '600 9px Arial';
+    ctx.font = `600 9px ${FUENTE}`;
     ctx.fillText(posiciones, cx, cy + radio + 21);
   }
 }
@@ -265,10 +278,10 @@ function dibujarRivalEnLienzo(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = colores.texto;
-  ctx.font = '800 12px Arial';
+  ctx.font = `800 12px ${FUENTE}`;
   ctx.fillText(String(jugador.dorsal), cx, cy);
 
-  ctx.font = '600 7px Arial';
+  ctx.font = `600 7px ${FUENTE}`;
   const anchoPastilla = ctx.measureText(jugador.posicion).width + 8;
   trazarPastilla(ctx, cx, cy + radio, anchoPastilla, 10);
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
@@ -278,7 +291,7 @@ function dibujarRivalEnLienzo(
 
   if (jugador.apellido) {
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = '600 9px Arial';
+    ctx.font = `600 9px ${FUENTE}`;
     ctx.fillText(jugador.apellido.toUpperCase(), cx, cy + radio + 13);
   }
   ctx.restore();
@@ -332,6 +345,7 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
     );
     for (const par of cargadas) if (par) fotos.set(par[0], par[1]);
   }
+  await cargarFuentes();
 
   const lienzo = document.createElement('canvas');
   lienzo.width = Math.round(anchoContenedor * ESCALA_EXPORTACION);
@@ -348,9 +362,9 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   ctx.fillStyle = COLOR.texto.principal;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = '700 20px Arial';
+  ctx.font = `700 20px ${FUENTE}`;
   ctx.fillText(alineacion.nombre || 'Alineación sin nombre', 16, ALTO_ENCABEZADO / 2 - 4);
-  ctx.font = '400 12px Arial';
+  ctx.font = `500 12px ${FUENTE}`;
   const fecha = new Date(alineacion.modificadaEn).toLocaleDateString('es-CO');
   ctx.fillText(
     `${nombreClub ?? 'Cúcuta Deportivo'} · ${formacion?.nombre ?? '—'}${formacion?.variante ? ' ' + formacion.variante : ''} · ${fecha}`,

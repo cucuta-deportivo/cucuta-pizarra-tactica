@@ -40,7 +40,6 @@ export function cuadriculaVacia(): CuadriculaCampo {
     opacidad: OPACIDAD_CUADRICULA_DEFECTO,
     estiloLinea: 'solida',
     mostrarEtiquetas: false,
-    imantar: false,
     celdasPintadas: {},
   };
 }

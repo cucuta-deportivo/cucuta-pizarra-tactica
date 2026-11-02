@@ -600,17 +600,6 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
       return pixelesAPorcentaje(finalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
     }
 
-    // "imantar" (FA3): con la cuadrícula activa y el imán encendido, el jugador
-    // queda en el centro de la celda más cercana; con el imán apagado (o sin
-    // cuadrícula) manda el arrastre libre, sin tocar el punto.
-    function snapACeldaSiCorresponde(punto: PuntoNormalizado): PuntoNormalizado {
-      const { preset, columnas, filas, imantar } = documento.cuadricula;
-      if (!imantar || preset === 'off' || columnas === 0 || filas === 0) return punto;
-      const col = Math.min(columnas - 1, Math.max(0, Math.floor((punto.x / 100) * columnas)));
-      const fila = Math.min(filas - 1, Math.max(0, Math.floor((punto.y / 100) * filas)));
-      return { x: ((col + 0.5) / columnas) * 100, y: ((fila + 0.5) / filas) * 100 };
-    }
-
     if (datos.tipoArrastre === 'objeto') {
       if (!dentroDelCampo) {
         const objetoEliminado = documento.objetos.find((o) => o.id === datos.objetoId);
@@ -709,8 +698,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
         };
       }
       const puntoFinalPx = { x: basePx.x + evento.delta.x, y: basePx.y + evento.delta.y };
-      const puntoCrudo = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
-      const punto = snapACeldaSiCorresponde(puntoCrudo);
+      const punto = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
       if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y);
       else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y);
     }

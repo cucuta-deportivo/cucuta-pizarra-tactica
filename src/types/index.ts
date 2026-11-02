@@ -134,7 +134,6 @@ export interface CuadriculaCampo {
   opacidad: number;
   estiloLinea: EstiloLineaCuadricula;
   mostrarEtiquetas: boolean;
-  imantar: boolean;
   celdasPintadas: Record<string, ColorCelda>;
 }
 

@@ -4,7 +4,6 @@ import type {
   Balon,
   ColorObjeto,
   EstadoGuardado,
-  EstrategiaCambioFormacion,
   Jugador,
   JugadorEnCampo,
   JugadorRival,
@@ -284,7 +283,8 @@ interface AlineacionState {
   eliminarAlineacion: (id: string) => Promise<void>;
   reemplazarDocumentoCompleto: (alineacion: Alineacion) => void;
 
-  seleccionarFormacion: (formacionId: string, estrategia: EstrategiaCambioFormacion) => void;
+  seleccionarFormacion: (formacionId: string) => void;
+  vaciarCampo: () => void;
   agregarJugadorPersonalizado: (jugador: Jugador) => void;
   actualizarJugadorPersonalizado: (jugadorId: string, datos: Partial<Jugador>) => void;
   asignarJugador: (zonaId: string, x: number, y: number, jugadorId: string) => void;
@@ -520,36 +520,43 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       marcarPendiente();
     },
 
-    seleccionarFormacion: (formacionId, estrategia) => {
+    // Cambiar de formación no mueve a nadie (CLAUDE.md): solo cambian las zonas
+    // fantasma. Cada titular se une, sin moverse, a la zona libre de su misma
+    // posición más cercana a la que tenía; quien no encuentra ninguna queda
+    // "fuera del esquema" y su hueco se ve como zona fantasma.
+    seleccionarFormacion: (formacionId) => {
       const formacion = obtenerFormacion(formacionId);
-      if (!formacion || estrategia === 'cancelar') return;
-      const etiqueta =
-        estrategia === 'vaciar' ? `Formación cambiada a ${formacion.nombre} (campo vaciado)` : `Formación cambiada a ${formacion.nombre}`;
+      if (!formacion) return;
       mutar((doc) => {
-        if (estrategia === 'vaciar') {
-          doc.formacionId = formacionId;
-          doc.titulares = [];
-          return;
-        }
         const formacionAnterior = obtenerFormacion(doc.formacionId);
-        const zonasDisponibles = [...formacion.zonas];
-        const nuevosTitulares: JugadorEnCampo[] = [];
+        const zonasLibres = [...formacion.zonas];
         for (const titular of doc.titulares) {
-          const zonaOrigen = formacionAnterior?.zonas.find((z) => z.id === titular.zonaOrigenId);
-          const indice = zonasDisponibles.findIndex((z) => z.posicion === zonaOrigen?.posicion);
-          if (indice >= 0) {
-            const zonaDestino = zonasDisponibles.splice(indice, 1)[0]!;
-            nuevosTitulares.push({ ...titular, x: zonaDestino.x, y: zonaDestino.y, zonaOrigenId: zonaDestino.id });
-          } else if (doc.banquillo.length < CAPACIDAD_BANQUILLO) {
-            doc.banquillo.push(titular.jugadorId);
+          const zonaAnterior = formacionAnterior?.zonas.find((z) => z.id === titular.zonaOrigenId);
+          if (!zonaAnterior) {
+            // Ya no tenía zona (entró desde el panel o quedó fuera antes): sigue igual.
+            delete titular.zonaOrigenId;
+            continue;
+          }
+          const distancia = (z: { x: number; y: number }) => Math.hypot(z.x - zonaAnterior.x, z.y - zonaAnterior.y);
+          const destino = zonasLibres
+            .filter((z) => z.posicion === zonaAnterior.posicion)
+            .sort((a, b) => distancia(a) - distancia(b))[0];
+          if (destino) {
+            zonasLibres.splice(zonasLibres.indexOf(destino), 1);
+            titular.zonaOrigenId = destino.id;
+          } else {
+            delete titular.zonaOrigenId;
+            titular.fueraDeEsquema = true;
           }
         }
         doc.formacionId = formacionId;
-        doc.titulares = nuevosTitulares;
-        // Las zonas de la formación vienen a campo completo: recolocar deja a
-        // cada uno en la mitad que le toca según el modo de vista activo (FA4).
-        recolocarPorModo(doc);
-      }, etiqueta);
+      }, `Formación cambiada a ${formacion.nombre}`);
+    },
+
+    vaciarCampo: () => {
+      mutar((doc) => {
+        if (doc.titulares.length > 0) doc.titulares = [];
+      }, 'Campo vaciado');
     },
 
     // Se registra en el documento antes de asignarlo a una zona o al banquillo, para
@@ -641,11 +648,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         const titular = doc.titulares.find((t) => t.jugadorId === jugadorEnCampoId);
         if (!titular) return;
-        const { x, y, zonaOrigenId } = titular;
+        const { x, y, zonaOrigenId, fueraDeEsquema } = titular;
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorEnCampoId);
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorDesdeBanquilloId);
         if (doc.banquillo.length < CAPACIDAD_BANQUILLO) doc.banquillo.push(jugadorEnCampoId);
-        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, esCapitan: false });
+        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, fueraDeEsquema, esCapitan: false });
       }, etiqueta);
     },
 

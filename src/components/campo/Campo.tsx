@@ -865,6 +865,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
                     yPct={titular.y}
                     esCapitan={titular.esCapitan}
                     nota={titular.nota}
+                    fueraDeEsquema={titular.fueraDeEsquema}
                     tamano={enModoAmbos ? 'compacto' : 'md'}
                     esSlotDestino
                     deshabilitado={interaccionBloqueada}

@@ -12,6 +12,7 @@ interface DraggableJugadorProps {
   esCapitan?: boolean;
   atenuado?: boolean;
   nota?: string;
+  fueraDeEsquema?: boolean;
   tamano?: TamanoTarjeta;
   esSlotDestino?: boolean;
   deshabilitado?: boolean;
@@ -28,6 +29,7 @@ export function DraggableJugador({
   esCapitan = false,
   atenuado = false,
   nota,
+  fueraDeEsquema = false,
   tamano = 'md',
   esSlotDestino = false,
   deshabilitado = false,
@@ -87,7 +89,15 @@ export function DraggableJugador({
         onMenuContextual?.(jugador.id, evento.clientX, evento.clientY);
       }}
     >
-      <TarjetaJugador jugador={jugador} tamano={tamano} esCapitan={esCapitan} atenuado={atenuado} nota={nota} arrastrando={isDragging} />
+      <TarjetaJugador
+        jugador={jugador}
+        tamano={tamano}
+        esCapitan={esCapitan}
+        atenuado={atenuado}
+        nota={nota}
+        fueraDeEsquema={fueraDeEsquema}
+        arrastrando={isDragging}
+      />
     </div>
   );
 }

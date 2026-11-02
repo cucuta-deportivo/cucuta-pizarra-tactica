@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import { Dropdown } from '../ui/Dropdown';
-import { Modal } from '../ui/Modal';
-import { Boton } from '../ui/Boton';
 import { useAlineacionStore } from '../../store/alineacionStore';
+import { useUiStore } from '../../store/uiStore';
 import { FORMACIONES, obtenerFormacion } from '../../data/formaciones';
-import type { EstrategiaCambioFormacion, Formacion } from '../../types';
+import type { Formacion } from '../../types';
 
 function MiniCampo({ formacion, activa }: { formacion: Formacion; activa: boolean }) {
   return (
@@ -28,26 +26,26 @@ function MiniCampo({ formacion, activa }: { formacion: Formacion; activa: boolea
 
 export function SelectorFormacion() {
   const formacionActualId = useAlineacionStore((s) => s.historial.presente.formacionId);
-  const titularesCount = useAlineacionStore((s) => s.historial.presente.titulares.length);
   const seleccionarFormacion = useAlineacionStore((s) => s.seleccionarFormacion);
+  const mostrarToast = useUiStore((s) => s.mostrarToast);
   const formacionActual = obtenerFormacion(formacionActualId);
-  const [pendienteId, setPendienteId] = useState<string | null>(null);
 
+  // Sin pregunta previa: nadie se mueve y el cambio se deshace desde el aviso.
   function elegir(id: string): void {
     if (id === formacionActualId) return;
-    if (titularesCount === 0) {
-      seleccionarFormacion(id, 'reubicar');
-      return;
-    }
-    setPendienteId(id);
+    seleccionarFormacion(id);
+    const titulares = useAlineacionStore.getState().historial.presente.titulares;
+    if (titulares.length === 0) return;
+    const fuera = titulares.filter((t) => t.fueraDeEsquema).length;
+    mostrarToast({
+      tipo: 'info',
+      mensaje:
+        fuera === 0
+          ? `Formación ${obtenerFormacion(id)?.nombre}. Nadie se ha movido.`
+          : `Formación ${obtenerFormacion(id)?.nombre}. ${fuera === 1 ? '1 jugador queda' : `${fuera} jugadores quedan`} fuera del esquema (aro ámbar): toca una zona fantasma para ubicarlo.`,
+      accion: { etiqueta: 'Deshacer', ejecutar: () => useAlineacionStore.getState().deshacer() },
+    });
   }
-
-  function resolverCambio(estrategia: EstrategiaCambioFormacion): void {
-    if (pendienteId) seleccionarFormacion(pendienteId, estrategia);
-    setPendienteId(null);
-  }
-
-  const formacionPendiente = pendienteId ? obtenerFormacion(pendienteId) : undefined;
 
   return (
     <>
@@ -100,24 +98,6 @@ export function SelectorFormacion() {
           </div>
         )}
       </Dropdown>
-
-      <Modal abierto={pendienteId !== null} onCerrar={() => setPendienteId(null)} titulo="Cambiar de formación" ancho="sm">
-        <p className="text-sm text-club-plata">
-          Ya hay jugadores ubicados en el campo. ¿Qué quieres hacer al cambiar a{' '}
-          <span className="font-semibold text-white">{formacionPendiente?.nombre}</span>?
-        </p>
-        <div className="mt-4 flex flex-col gap-2">
-          <Boton variante="primario" onClick={() => resolverCambio('reubicar')}>
-            Reubicar jugadores actuales
-          </Boton>
-          <Boton variante="secundario" onClick={() => resolverCambio('vaciar')}>
-            Vaciar campo
-          </Boton>
-          <Boton variante="fantasma" onClick={() => resolverCambio('cancelar')}>
-            Cancelar
-          </Boton>
-        </div>
-      </Modal>
     </>
   );
 }

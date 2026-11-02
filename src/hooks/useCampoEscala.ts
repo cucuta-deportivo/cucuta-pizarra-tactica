@@ -79,3 +79,15 @@ export function useEscalaCampo(): EscalaCampo {
   if (!contexto) throw new Error('useEscalaCampo debe usarse dentro de <Campo>.');
   return contexto;
 }
+
+/**
+ * Igual que `useEscalaCampo`, pero devuelve `null` en lugar de reventar cuando
+ * no hay un `<Campo>` alrededor. Es para los dibujos estáticos del campo (la
+ * comparación de alineaciones, por ejemplo), que pintan la cancha sin que haya
+ * nada arrastrable y por tanto sin contenedor que medir. Lo que necesita la
+ * escala de verdad debe seguir usando `useEscalaCampo`, para que avise si
+ * alguien lo coloca donde no toca.
+ */
+export function useEscalaCampoOpcional(): EscalaCampo | null {
+  return useContext(EscalaCampoContext);
+}

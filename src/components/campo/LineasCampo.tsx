@@ -1,9 +1,16 @@
 import { forwardRef, useMemo } from 'react';
 import type { Orientacion, TemaCancha } from '../../types';
-import { useEscalaCampo } from '../../hooks/useCampoEscala';
+import { useEscalaCampoOpcional } from '../../hooks/useCampoEscala';
 import { ANCHO_CAMPO_M, LARGO_CAMPO_M } from '../../utils/constantes';
 import { VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
 import { COLOR, GROSOR, OPACIDAD } from '../../tokens';
+
+/**
+ * Ancho de referencia para los dibujos estáticos del campo, que se pintan
+ * fuera de un `<Campo>` y por tanto no tienen contenedor que medir (la
+ * comparación de alineaciones). Es el ancho aproximado de esas tarjetas.
+ */
+const ANCHO_NOMINAL_SIN_CAMPO_PX = 360;
 
 interface PuntoCampo {
   u: number; // 0..ANCHO_CAMPO_M, banda a banda
@@ -119,9 +126,13 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
   // grosor de la valla y el tamaño de sus textos deben verse igual de gruesos/
   // legibles sin importar el zoom, así que no pueden ser una constante fija en
   // metros como el resto de la geometría (que sí debe escalar con el campo).
-  const escala = useEscalaCampo();
+  const escala = useEscalaCampoOpcional();
+  // Sin <Campo> alrededor no hay contenedor que medir y se usa el ancho nominal.
+  // Dentro de <Campo>, mientras todavía no se ha medido, se deja en cero igual
+  // que antes: más vale una valla invisible un fotograma que una desproporcionada.
+  const anchoEnPantalla = escala ? escala.ancho : ANCHO_NOMINAL_SIN_CAMPO_PX;
   const anchoViewBoxUnidades = orientacion === 'vertical' ? ANCHO_CAMPO_M : alturaV;
-  const unidadPorPx = escala.ancho > 0 ? anchoViewBoxUnidades / escala.ancho : 0;
+  const unidadPorPx = anchoEnPantalla > 0 ? anchoViewBoxUnidades / anchoEnPantalla : 0;
   const grosorValla = 12 * unidadPorPx;
   const fontValla = 8 * unidadPorPx;
   const fontRotulo = 9 * unidadPorPx;

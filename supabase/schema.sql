@@ -100,6 +100,23 @@ as $$
   limit 1;
 $$;
 
+-- Para el registro: dice solo si un nombre de usuario está libre, nunca de
+-- quién es ni su correo. SECURITY DEFINER porque quien se registra no tiene
+-- sesión y el RLS de perfiles le ocultaría las filas de los demás (siempre
+-- vería "disponible").
+create or replace function public.usuario_disponible(p_usuario text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select not exists (
+    select 1 from public.perfiles
+    where lower(usuario) = lower(p_usuario)
+  );
+$$;
+
 -- Cuenta intentos fallidos recientes para el bloqueo temporal (5 en 15 min).
 create or replace function public.verificar_bloqueo_usuario(p_usuario text)
 returns table (bloqueado boolean, intentos_recientes int)
@@ -171,6 +188,8 @@ $$;
 
 grant execute on function public.verificar_codigo_invitacion(text) to anon, authenticated;
 grant execute on function public.resolver_correo_por_usuario(text) to anon, authenticated;
+revoke execute on function public.usuario_disponible(text) from public;
+grant execute on function public.usuario_disponible(text) to anon, authenticated;
 grant execute on function public.verificar_bloqueo_usuario(text) to anon, authenticated;
 grant execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) to anon, authenticated;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;

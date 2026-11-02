@@ -5,3 +5,6 @@ dist-ssr
 *.tsbuildinfo
 .DS_Store
 coverage
+
+# Estado local de la CLI de Supabase
+supabase/.temp/

@@ -17,6 +17,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 12 | Bundle: reducir la carga inicial (hoy 215 KB gzip, límite 250 KB) y corregir la cifra del README | Pendiente |
 | 13 | Comprimir el PDF exportado para que pese poco (pensado para WhatsApp) | Pendiente |
 | 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve | Pendiente |
+| 15 | Menor: quitar el temporizador sobrante de `PantallaPlantilla.tsx` (la renovación de enlaces ya la hace `plantillaStore` cada 30 s) | Pendiente |
 
 ## Fase 2 · Sincronización con Supabase
 

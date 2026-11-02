@@ -417,9 +417,11 @@ create trigger alineaciones_tocar
 -- ------------------------------------------------------------
 -- Seguridad
 --
--- Hoy los entrenadores comparten una cuenta, asi que cualquier
--- usuario con sesion iniciada ve y edita todo. Cuando cada uno
--- tenga la suya, estas politicas son el unico sitio a cambiar.
+-- Solo entrenadores con cuenta activa (es_entrenador_activo):
+-- tener sesion no basta, porque una cuenta "pendiente" o un
+-- "invitado" tambien la tienen. Todos los entrenadores activos
+-- comparten plantilla y alineaciones. Si algun dia cada uno debe
+-- ver solo lo suyo, estas politicas son el unico sitio a cambiar.
 -- ------------------------------------------------------------
 alter table categorias            enable row level security;
 alter table jugadores             enable row level security;
@@ -429,23 +431,32 @@ alter table alineacion_objetos    enable row level security;
 
 drop policy if exists "categorias lectura" on categorias;
 create policy "categorias lectura"
-  on categorias for select to authenticated using (true);
+  on categorias for select to authenticated
+  using ((select public.es_entrenador_activo()));
 
 drop policy if exists "jugadores acceso" on jugadores;
 create policy "jugadores acceso"
-  on jugadores for all to authenticated using (true) with check (true);
+  on jugadores for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineaciones acceso" on alineaciones;
 create policy "alineaciones acceso"
-  on alineaciones for all to authenticated using (true) with check (true);
+  on alineaciones for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineacion jugadores acceso" on alineacion_jugadores;
 create policy "alineacion jugadores acceso"
-  on alineacion_jugadores for all to authenticated using (true) with check (true);
+  on alineacion_jugadores for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 drop policy if exists "alineacion objetos acceso" on alineacion_objetos;
 create policy "alineacion objetos acceso"
-  on alineacion_objetos for all to authenticated using (true) with check (true);
+  on alineacion_objetos for all to authenticated
+  using ((select public.es_entrenador_activo()))
+  with check ((select public.es_entrenador_activo()));
 
 -- ------------------------------------------------------------
 -- Acceso a las fotos del bucket privado 'jugadores'

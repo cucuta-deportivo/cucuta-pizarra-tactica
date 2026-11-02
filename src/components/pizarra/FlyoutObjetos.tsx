@@ -42,7 +42,7 @@ export function FlyoutObjetos({ onCerrar }: FlyoutObjetosProps) {
             aria-pressed={tipoObjetoActivo === tipo}
             title={ETIQUETAS_OBJETO[tipo]}
             aria-label={ETIQUETAS_OBJETO[tipo]}
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-rapido ${
+            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors duration-rapido ${
               tipoObjetoActivo === tipo ? 'bg-club-rojo/25 ring-1 ring-club-rojo' : 'hover:bg-white/10'
             }`}
           >
@@ -53,7 +53,8 @@ export function FlyoutObjetos({ onCerrar }: FlyoutObjetosProps) {
 
       <span className="mx-1 h-6 w-px bg-white/10" />
 
-      <div className="flex items-center gap-1.5" role="group" aria-label="Color del objeto">
+      {/* El círculo de color sigue midiendo 24 px; el botón que lo envuelve da los 44 px táctiles. */}
+      <div className="flex items-center" role="group" aria-label="Color del objeto">
         {ORDEN_COLOR_OBJETO.map((color) => (
           <button
             key={color}
@@ -61,11 +62,15 @@ export function FlyoutObjetos({ onCerrar }: FlyoutObjetosProps) {
             aria-label={`Color ${color}`}
             aria-pressed={colorObjetoActivo === color}
             onClick={() => setColorObjetoActivo(color)}
-            className={`h-6 w-6 rounded-full border-2 transition-transform duration-rapido active:scale-90 ${
-              colorObjetoActivo === color ? 'scale-110 border-white' : 'border-white/20'
-            }`}
-            style={{ backgroundColor: COLORES_OBJETO[color] }}
-          />
+            className="group flex h-11 w-11 items-center justify-center"
+          >
+            <span
+              className={`h-6 w-6 rounded-full border-2 transition-transform duration-rapido group-active:scale-90 ${
+                colorObjetoActivo === color ? 'scale-110 border-white' : 'border-white/20'
+              }`}
+              style={{ backgroundColor: COLORES_OBJETO[color] }}
+            />
+          </button>
         ))}
       </div>
 
@@ -86,7 +91,7 @@ export function FlyoutObjetos({ onCerrar }: FlyoutObjetosProps) {
               max={12}
               value={nDistribucion}
               onChange={(e) => setNDistribucion(Math.max(2, Math.min(12, Number(e.target.value) || 2)))}
-              className="h-8 w-12 rounded-md border border-white/10 bg-white/5 px-1 text-center text-white outline-none focus:border-club-rojo"
+              className="h-11 w-12 rounded-md border border-white/10 bg-white/5 px-1 text-center text-white outline-none focus:border-club-rojo"
             />
           </label>
         )}

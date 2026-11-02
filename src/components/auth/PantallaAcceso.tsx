@@ -105,10 +105,10 @@ export function PantallaAcceso({ onIrARegistro }: PantallaAccesoProps) {
             </Boton>
 
             <div className="mt-1 flex items-center justify-between text-xs">
-              <button type="button" onClick={() => setModo('recuperar')} className="text-club-plata/70 hover:text-white">
+              <button type="button" onClick={() => setModo('recuperar')} className="-ml-2 inline-flex min-h-[44px] items-center px-2 text-club-plata/70 hover:text-white">
                 He olvidado mi contraseña
               </button>
-              <button type="button" onClick={onIrARegistro} className="font-semibold text-club-rojo hover:text-white">
+              <button type="button" onClick={onIrARegistro} className="-mr-2 inline-flex min-h-[44px] items-center px-2 font-semibold text-club-rojo hover:text-white">
                 Crear cuenta
               </button>
             </div>

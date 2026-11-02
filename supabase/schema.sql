@@ -85,8 +85,9 @@ $$;
 
 -- Resuelve un nombre de usuario a su correo, para permitir "iniciar sesión
 -- con usuario o correo" (Supabase Auth solo acepta correo/teléfono). Devuelve
--- NULL si no existe: el código que llama a esto nunca debe mostrar esa
--- diferencia al usuario final (mensaje de error siempre genérico).
+-- NULL si no existe. SOLO la llama la Edge Function `login-usuario` con la
+-- service_role: el navegador nunca debe poder ejecutarla, porque revelaría el
+-- correo de cualquier entrenador (ver los revoke más abajo).
 create or replace function public.resolver_correo_por_usuario(p_usuario text)
 returns text
 language sql
@@ -187,7 +188,9 @@ end;
 $$;
 
 grant execute on function public.verificar_codigo_invitacion(text) to anon, authenticated;
-grant execute on function public.resolver_correo_por_usuario(text) to anon, authenticated;
+-- PUBLIC no basta: Supabase también da EXECUTE explícito a anon y authenticated.
+revoke execute on function public.resolver_correo_por_usuario(text) from public, anon, authenticated;
+grant execute on function public.resolver_correo_por_usuario(text) to service_role;
 revoke execute on function public.usuario_disponible(text) from public;
 grant execute on function public.usuario_disponible(text) to anon, authenticated;
 grant execute on function public.verificar_bloqueo_usuario(text) to anon, authenticated;

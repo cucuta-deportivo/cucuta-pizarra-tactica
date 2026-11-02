@@ -11,11 +11,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const ORIGENES_PERMITIDOS = [
-  'https://cucuta-pizarra-tactica-kappa.vercel.app',
-  // Preview fija de la rama correcciones-reglas; quitarla cuando se fusione con main.
-  'https://cucuta-pizarra-tactica-git-correcciones-reglas-cucuta-deportivo.vercel.app',
-];
+const ORIGENES_PERMITIDOS = ['https://cucuta-pizarra-tactica-kappa.vercel.app'];
 const ORIGEN_LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 /**

@@ -411,7 +411,7 @@ function MenuOpciones({
                   type="button"
                   onClick={() => setOrientacionForzada(valor)}
                   aria-pressed={orientacionForzada === valor}
-                  className={`min-h-[36px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
+                  className={`min-h-[44px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
                     orientacionForzada === valor ? 'bg-club-rojo text-white' : 'bg-white/5 text-club-plata hover:bg-white/10'
                   }`}
                 >

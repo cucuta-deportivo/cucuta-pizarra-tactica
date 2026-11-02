@@ -1,4 +1,4 @@
-import type { ColorCelda, CuadriculaCampo, IdentidadCancha, PuntoNormalizado, ZonaFormacion } from '../types';
+import type { ColorCelda, CuadriculaCampo, EquipoRival, IdentidadCancha, JugadorEnCampo, PuntoNormalizado, ZonaFormacion } from '../types';
 import { OPACIDAD_CUADRICULA_DEFECTO } from './constantes';
 
 interface OpcionesLadoZona {
@@ -30,6 +30,25 @@ const LIMITE_MITAD = 48;
  */
 export function recortarAMitad(y: number, espejo: boolean): number {
   return espejo ? Math.max(y, 100 - LIMITE_MITAD) : Math.min(y, LIMITE_MITAD);
+}
+
+/** Con los dos equipos en pantalla a la vez, cada uno juega en su mitad (FA4). */
+export function seVenAmbosEquipos(rival: EquipoRival | null): boolean {
+  return Boolean(rival?.visible) && rival?.modoVista === 'ambos';
+}
+
+/** Solo se ve nuestro equipo: sin rival, rival oculto o modo "Solo nosotros". */
+export function seVeSoloNuestroEquipo(rival: EquipoRival | null): boolean {
+  return !seVenAmbosEquipos(rival) && rival?.modoVista !== 'solo_rival';
+}
+
+/** Nuestra mitad va de nuestra portería (y=0) al mediocampo (y=50). */
+export function hayJugadoresEnCampoRival(titulares: JugadorEnCampo[]): boolean {
+  return titulares.some((t) => t.y > 50);
+}
+
+export function equipoEnSuMitad(titulares: JugadorEnCampo[]): boolean {
+  return titulares.length > 0 && !hayJugadoresEnCampoRival(titulares);
 }
 
 export function cuadriculaVacia(): CuadriculaCampo {

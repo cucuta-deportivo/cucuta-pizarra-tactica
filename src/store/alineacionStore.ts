@@ -26,7 +26,18 @@ import {
 } from './historial';
 import { generarId } from '../utils/id';
 import { CAPACIDAD_BANQUILLO, DEBOUNCE_AUTOGUARDADO_MS, ETIQUETAS_OBJETO, LIMITE_BALONES, LIMITE_OBJETOS } from '../utils/constantes';
-import { canchaVacia, claveCelda, cuadriculaVacia, recortarAMitad, siguienteColorCelda, ubicarZonaEnLado } from '../utils/anexoA';
+import {
+  canchaVacia,
+  claveCelda,
+  cuadriculaVacia,
+  equipoEnSuMitad,
+  hayJugadoresEnCampoRival,
+  recortarAMitad,
+  seVeSoloNuestroEquipo,
+  seVenAmbosEquipos,
+  siguienteColorCelda,
+  ubicarZonaEnLado,
+} from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
@@ -319,6 +330,8 @@ interface AlineacionState {
   desactivarRival: () => void;
   actualizarRival: (cambios: Partial<Omit<EquipoRival, 'jugadores'>>) => void;
   seleccionarFormacionRival: (formacionId: string) => void;
+  acomodarEnMiMitad: () => void;
+  extenderPorTodoElCampo: () => void;
   asignarJugadorRivalAZona: (zonaId: string, x: number, y: number, posicion: Posicion, dorsal: number, apellido?: string) => void;
   moverJugadorRival: (id: string, x: number, y: number) => void;
   eliminarJugadorRival: (id: string) => void;
@@ -389,6 +402,31 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string): void {
     set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
     marcarPendiente();
+  }
+
+  // Paso 7b: cambiar qué equipos se ven nunca mueve a los nuestros; si hace
+  // falta, se OFRECE recolocarlos con un toque. Solo lo llaman las acciones del
+  // rival, así que deshacer o cargar otra alineación no lo dispara.
+  function ofrecerRecolocar(antes: DocumentoTactico): void {
+    const ahora = get().historial.presente;
+    const { mostrarToast } = useUiStore.getState();
+    if (!seVenAmbosEquipos(antes.rival) && seVenAmbosEquipos(ahora.rival) && hayJugadoresEnCampoRival(ahora.titulares)) {
+      mostrarToast({
+        tipo: 'info',
+        mensaje: 'Hay jugadores tuyos en campo rival.',
+        accion: { etiqueta: 'Acomodar mi equipo en mi mitad', ejecutar: () => get().acomodarEnMiMitad() },
+      });
+    } else if (seVenAmbosEquipos(antes.rival) && seVeSoloNuestroEquipo(ahora.rival) && equipoEnSuMitad(ahora.titulares)) {
+      mostrarToast({
+        tipo: 'info',
+        mensaje: 'Tu equipo está recogido en tu mitad.',
+        accion: { etiqueta: 'Extender mi equipo por todo el campo', ejecutar: () => get().extenderPorTodoElCampo() },
+      });
+    }
+  }
+
+  function avisarConDeshacer(mensaje: string): void {
+    useUiStore.getState().mostrarToast({ tipo: 'info', mensaje, accion: { etiqueta: 'Deshacer', ejecutar: () => get().deshacer() } });
   }
 
   const ahoraInicial = new Date().toISOString();
@@ -825,19 +863,26 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     // --- Anexo A — FA4 rival ---
-    activarRival: (formacionId) =>
+    activarRival: (formacionId) => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' };
         recolocarPorModo(doc);
-      }, 'Equipo rival activado'),
+      }, 'Equipo rival activado');
+      ofrecerRecolocar(antes);
+    },
 
-    desactivarRival: () =>
+    desactivarRival: () => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         doc.rival = null;
         doc.marcajes = [];
-      }, 'Equipo rival desactivado'),
+      }, 'Equipo rival desactivado');
+      ofrecerRecolocar(antes);
+    },
 
-    actualizarRival: (cambios) =>
+    actualizarRival: (cambios) => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         if (!doc.rival) return;
         const cambiaReparto = cambios.modoVista !== undefined || cambios.visible !== undefined;
@@ -845,7 +890,28 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // Solo se reacomoda si cambió qué equipos se ven: renombrar o cambiar la
         // paleta no debe mover a nadie del campo.
         if (cambiaReparto) recolocarPorModo(doc);
-      }, 'Rival actualizado'),
+      }, 'Rival actualizado');
+      ofrecerRecolocar(antes);
+    },
+
+    // Misma regla que las zonas fantasma en "Ambos" (y/2, ancho intacto): quien
+    // está sobre su zona cae justo en su zona fantasma comprimida, y se conserva
+    // la forma que el entrenador ajustó a mano. Extender (y×2) la deshace exacta.
+    acomodarEnMiMitad: () => {
+      if (!hayJugadoresEnCampoRival(get().historial.presente.titulares)) return;
+      mutar((doc) => {
+        for (const titular of doc.titulares) titular.y = titular.y / 2;
+      }, 'Equipo acomodado en su mitad');
+      avisarConDeshacer('Equipo acomodado en tu mitad.');
+    },
+
+    extenderPorTodoElCampo: () => {
+      if (!equipoEnSuMitad(get().historial.presente.titulares)) return;
+      mutar((doc) => {
+        for (const titular of doc.titulares) titular.y = titular.y * 2;
+      }, 'Equipo extendido por todo el campo');
+      avisarConDeshacer('Equipo extendido por todo el campo.');
+    },
 
     seleccionarFormacionRival: (formacionId) => {
       const formacion = obtenerFormacion(formacionId);

@@ -10,18 +10,25 @@ export function Toast({ toast }: { toast: ToastType }) {
   const cerrarToast = useUiStore((s) => s.cerrarToast);
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-3 rounded-lg border px-4 py-3 text-sm text-white shadow-elevada backdrop-blur ${COLORES[toast.tipo]}`}
+      className={`pointer-events-auto flex items-center gap-3 rounded-lg border py-1 pl-4 pr-1 text-sm text-white shadow-elevada backdrop-blur ${COLORES[toast.tipo]}`}
     >
       <span>{toast.mensaje}</span>
+      {/* La acción cierra el aviso: así no se repite por un segundo toque (p. ej. deshacer dos veces). */}
       {toast.accion && (
-        <button onClick={toast.accion.ejecutar} className="font-semibold underline underline-offset-2">
+        <button
+          onClick={() => {
+            toast.accion?.ejecutar();
+            cerrarToast(toast.id);
+          }}
+          className="min-h-[44px] px-1 font-semibold underline underline-offset-2"
+        >
           {toast.accion.etiqueta}
         </button>
       )}
       <button
         onClick={() => cerrarToast(toast.id)}
         aria-label="Cerrar aviso"
-        className="ml-1 opacity-70 hover:opacity-100"
+        className="min-h-[44px] min-w-[44px] opacity-70 hover:opacity-100"
       >
         ✕
       </button>

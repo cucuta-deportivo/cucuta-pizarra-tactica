@@ -150,14 +150,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const perfil = await obtenerPerfil(inicio.session.user.id);
       if (perfil?.estado === 'bloqueado') {
-        await registrarIntento(usuarioOCorreo, 'fallido', inicio.session.access_token.slice(0, 16));
+        await registrarIntento(usuarioOCorreo, 'fallido');
         await supabase.auth.signOut();
         return { ok: false, mensaje: 'Esta cuenta está bloqueada. Contacta a un entrenador del cuerpo técnico.' };
       }
 
       set({ session: inicio.session, perfil });
       marcarActividad();
-      await registrarIntento(usuarioOCorreo, 'exito', inicio.session.access_token.slice(0, 16));
+      await registrarIntento(usuarioOCorreo, 'exito');
       return { ok: true };
     } finally {
       set({ enviando: false });

@@ -135,6 +135,10 @@ set search_path = public
 as $$
 declare
   v_user_id uuid;
+  -- La sesión la decide el servidor, desde el JWT ya validado de esta petición;
+  -- p_session_id se ignora (se mantiene solo para no romper la firma). En un
+  -- intento fallido no hay sesión y queda NULL.
+  v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
 begin
   select u.id into v_user_id
   from auth.users u
@@ -145,7 +149,7 @@ begin
   insert into public.intentos_login
     (user_id, usuario_intentado, resultado, metodo, dispositivo, user_agent, ip, ciudad, pais, session_id)
   values
-    (v_user_id, p_usuario_intentado, p_resultado, p_metodo, p_dispositivo, p_user_agent, p_ip, p_ciudad, p_pais, p_session_id);
+    (v_user_id, p_usuario_intentado, p_resultado, p_metodo, p_dispositivo, p_user_agent, p_ip, p_ciudad, p_pais, v_session_id);
 end;
 $$;
 
@@ -446,18 +450,29 @@ create policy "alineacion objetos acceso"
 -- ------------------------------------------------------------
 -- Acceso a las fotos del bucket privado 'jugadores'
 -- Crear antes el bucket en Storage, sin marcarlo como publico.
+--
+-- Solo entrenadores con cuenta activa (es_entrenador_activo): tener sesión
+-- no basta, porque una cuenta "pendiente" o un "invitado" también la tienen.
+-- El `(select ...)` hace que Postgres evalúe la función una vez por consulta,
+-- no una vez por fila.
 -- ------------------------------------------------------------
 drop policy if exists "fotos lectura entrenadores" on storage.objects;
 create policy "fotos lectura entrenadores"
   on storage.objects for select to authenticated
-  using (bucket_id = 'jugadores');
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
 
 drop policy if exists "fotos escritura entrenadores" on storage.objects;
 create policy "fotos escritura entrenadores"
   on storage.objects for insert to authenticated
-  with check (bucket_id = 'jugadores');
+  with check (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
 
 drop policy if exists "fotos reemplazo entrenadores" on storage.objects;
 create policy "fotos reemplazo entrenadores"
   on storage.objects for update to authenticated
-  using (bucket_id = 'jugadores');
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()))
+  with check (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));
+
+drop policy if exists "fotos borrado entrenadores" on storage.objects;
+create policy "fotos borrado entrenadores"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'jugadores' and (select public.es_entrenador_activo()));

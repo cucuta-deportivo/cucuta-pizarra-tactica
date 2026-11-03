@@ -203,11 +203,18 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
  * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
  * nuestras zonas fantasma, en Campo).
  */
-/** La zona de la formación actual con ese id, si ningún titular la ocupa. */
-function zonaLibre(doc: DocumentoTactico, zonaId: string | undefined): ZonaFormacion | undefined {
+/**
+ * La zona fantasma sobre la que se soltó a un jugador, si puede ocuparla: es
+ * de la formación actual, nadie la ocupa y es de SU posición (la natural o
+ * cualquiera de las secundarias).
+ */
+function zonaQueOcupa(doc: DocumentoTactico, jugadorId: string, zonaId: string | undefined): ZonaFormacion | undefined {
   if (!zonaId) return undefined;
   const zona = obtenerFormacion(doc.formacionId)?.zonas.find((z) => z.id === zonaId);
-  return zona && !doc.titulares.some((t) => t.zonaOrigenId === zonaId) ? zona : undefined;
+  if (!zona || doc.titulares.some((t) => t.zonaOrigenId === zonaId)) return undefined;
+  const jugador = usePlantillaStore.getState().obtenerPorId(jugadorId);
+  const esSuPosicion = jugador?.posicionNatural === zona.posicion || Boolean(jugador?.posicionesSecundarias.includes(zona.posicion));
+  return esSuPosicion ? zona : undefined;
 }
 
 function recolocarPorModo(doc: DocumentoTactico): void {
@@ -296,7 +303,7 @@ interface AlineacionState {
   agregarJugadorPersonalizado: (jugador: Jugador) => void;
   actualizarJugadorPersonalizado: (jugadorId: string, datos: Partial<Jugador>) => void;
   asignarJugador: (zonaId: string, x: number, y: number, jugadorId: string) => void;
-  /** `zonaId`: zona fantasma sobre la que se soltó; solo la ocupa quien no tenía zona. */
+  /** `zonaId`: zona fantasma sobre la que se soltó; solo la ocupa un jugador de esa posición. */
   moverJugador: (jugadorId: string, x: number, y: number, zonaId?: string) => void;
   intercambiarPosiciones: (jugadorIdA: string, jugadorIdB: string) => void;
   quitarDelCampo: (jugadorId: string) => void;
@@ -642,25 +649,31 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} asignado${zona ? ` (${zona.posicion})` : ''}`);
     },
 
-    // Soltar sobre una zona fantasma libre la ocupa sin mover al jugador del
-    // punto donde se soltó (no hay imantación). Solo para quien no tenía zona:
-    // uno que ya la tiene no cambia de zona por pasar por encima de otra.
+    // Soltar sobre una zona fantasma libre de su posición la ocupa sin mover al
+    // jugador del punto donde se soltó (no hay imantación). Si ya tenía zona,
+    // se cambia a esta y la suya vuelve a verse como fantasma. Sobre una zona
+    // de otra posición nadie cambia de zona. Todo en un solo paso del historial.
     moverJugador: (jugadorId, x, y, zonaId) => {
       const presente = get().historial.presente;
-      const sinZona = !presente.titulares.find((t) => t.jugadorId === jugadorId)?.zonaOrigenId;
-      const zona = sinZona ? zonaLibre(presente, zonaId) : undefined;
-      mutar((doc) => {
-        const titular = doc.titulares.find((t) => t.jugadorId === jugadorId);
-        if (titular) {
-          titular.x = x;
-          titular.y = y;
-          if (zona) {
-            titular.zonaOrigenId = zona.id;
-            delete titular.fueraDeEsquema;
-            delete titular.zonaPerdida;
+      const zona = zonaQueOcupa(presente, jugadorId, zonaId);
+      const teniaZona = Boolean(presente.titulares.find((t) => t.jugadorId === jugadorId)?.zonaOrigenId);
+      mutar(
+        (doc) => {
+          const titular = doc.titulares.find((t) => t.jugadorId === jugadorId);
+          if (titular) {
+            titular.x = x;
+            titular.y = y;
+            if (zona) {
+              titular.zonaOrigenId = zona.id;
+              delete titular.fueraDeEsquema;
+              delete titular.zonaPerdida;
+            }
           }
-        }
-      }, zona ? `${etiquetaJugador(jugadorId)} asignado (${zona.posicion})` : `${etiquetaJugador(jugadorId)} movido`);
+        },
+        !zona
+          ? `${etiquetaJugador(jugadorId)} movido`
+          : `${etiquetaJugador(jugadorId)} ${teniaZona ? 'cambia a' : 'asignado a'} ${zona.posicion}`,
+      );
     },
 
     intercambiarPosiciones: (idA, idB) => {
@@ -699,7 +712,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     moverDesdeBanquilloACampo: (jugadorId, x, y, zonaId) => {
-      const zona = zonaLibre(get().historial.presente, zonaId);
+      const zona = zonaQueOcupa(get().historial.presente, jugadorId, zonaId);
       mutar((doc) => {
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorId);
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorId);

@@ -706,7 +706,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
       }
       const puntoFinalPx = { x: basePx.x + evento.delta.x, y: basePx.y + evento.delta.y };
       const punto = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
-      // Soltado sobre una zona fantasma libre: la ocupa si no tenía zona (lo decide el store).
+      // Soltado sobre una zona fantasma libre: la ocupa si es de su posición (lo decide el store).
       const zonaSoltada = zonaBajoPunto(zonasVacias, puntoFinalPx, escala.aPixeles, RADIO_ZONA_PX)?.id;
       if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y, zonaSoltada);
       else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y, zonaSoltada);

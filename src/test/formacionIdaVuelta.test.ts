@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PLANTILLA_PRUEBA, sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
+import { usePlantillaStore } from '../store/plantillaStore';
 import { obtenerFormacion } from '../data/formaciones';
 import { generarId } from '../utils/id';
 import { canchaVacia, cuadriculaVacia, zonaBajoPunto, zonasSinJugador } from '../utils/anexoA';
-import type { JugadorEnCampo } from '../types';
+import type { JugadorEnCampo, Posicion } from '../types';
 
 /**
  * Cambios de formación de ida y vuelta (fallo encontrado en Brave tras el paso 6).
@@ -193,13 +194,18 @@ describe('cambio de formación de ida y vuelta', () => {
 });
 
 /**
- * Soltar a un jugador sin zona (entró desde el panel o está fuera del esquema)
- * sobre una zona fantasma libre: la ocupa, de cualquier posición, y se queda
- * exactamente donde se soltó. Quien ya tiene zona no cambia de zona.
+ * Soltar a un jugador sobre una zona fantasma libre: solo la toma si es de SU
+ * posición (la natural o cualquier secundaria), y se queda exactamente donde se
+ * soltó. Si ya tenía zona, se cambia a esta y la suya vuelve a ser fantasma.
+ * De otra posición, nadie cambia de zona. Todo se deshace en un solo paso.
  */
 describe('soltar sobre una zona fantasma', () => {
   const titularDe = (id: string) => estado().titulares.find((t) => t.jugadorId === id);
   const fantasmas = () => zonasSinJugador(obtenerFormacion(estado().formacionId)!.zonas, estado().titulares).map((z) => z.id);
+  const darSecundarias = (jugadorId: string, posicionesSecundarias: Posicion[]) =>
+    usePlantillaStore.setState((s) => ({
+      jugadores: s.jugadores.map((j) => (j.id === jugadorId ? { ...j, posicionesSecundarias } : j)),
+    }));
 
   beforeEach(() => {
     sembrarPlantilla();
@@ -208,7 +214,7 @@ describe('soltar sobre una zona fantasma', () => {
     comprobarReglas();
   });
 
-  it('desde el panel: ocupa la zona, se queda donde se soltó y la zona deja de ser fantasma', () => {
+  it('sin zona, desde el panel, sobre una zona de su posición: la ocupa donde se soltó; un Deshacer lo revierte', () => {
     store().moverDesdeBanquilloACampo('test-12', 81.3, 77.9, 'ED-10');
     comprobarReglas();
     expect(titularDe('test-12')).toMatchObject({ zonaOrigenId: 'ED-10', x: 81.3, y: 77.9 });
@@ -221,8 +227,27 @@ describe('soltar sobre una zona fantasma', () => {
     expect(fantasmas()).toContain('ED-10');
   });
 
-  it('fuera del esquema: ocupa una zona de otra posición y deja de estar fuera; deshacer lo devuelve', () => {
+  it('sin zona, desde el panel, sobre una zona de otra posición: no la ocupa y la zona sigue visible', () => {
+    cambiar('4-4-2'); // libres: MI-5, MD-8 y DC-10
+    store().moverDesdeBanquilloACampo('test-12', 86, 48, 'MD-8'); // es ED, no MD
+    comprobarReglas();
+    expect(titularDe('test-12')).toMatchObject({ x: 86, y: 48 });
+    expect(titularDe('test-12')!.zonaOrigenId).toBeUndefined();
+    expect(fantasmas()).toContain('MD-8');
+  });
+
+  it('fuera del esquema sobre una zona de otra posición (MCD sobre MI): no la ocupa y sigue fuera', () => {
     cambiar('4-4-2'); // el MCD (test-06) queda fuera
+    store().moverJugador('test-06', 15.2, 46.7, 'MI-5');
+    comprobarReglas();
+    expect(titularDe('test-06')).toMatchObject({ x: 15.2, y: 46.7, fueraDeEsquema: true, zonaPerdida: { posicion: 'MCD' } });
+    expect(titularDe('test-06')!.zonaOrigenId).toBeUndefined();
+    expect(fantasmas()).toContain('MI-5');
+  });
+
+  it('fuera del esquema con esa posición como secundaria: ocupa la zona y deja de estar fuera; un Deshacer lo revierte', () => {
+    darSecundarias('test-06', ['MI']); // MCD · MI
+    cambiar('4-4-2');
     store().moverJugador('test-06', 15.2, 46.7, 'MI-5');
     comprobarReglas();
     expect(titularDe('test-06')).toMatchObject({ zonaOrigenId: 'MI-5', x: 15.2, y: 46.7 });
@@ -231,21 +256,45 @@ describe('soltar sobre una zona fantasma', () => {
 
     store().deshacer();
     comprobarReglas();
-    expect(titularDe('test-06')).toMatchObject({ fueraDeEsquema: true, zonaPerdida: { posicion: 'MCD' } });
+    expect(titularDe('test-06')).toMatchObject({ x: 50, y: 42, fueraDeEsquema: true, zonaPerdida: { posicion: 'MCD' } });
     expect(fantasmas()).toContain('MI-5');
   });
 
-  it('un jugador que ya tiene zona no cambia de zona al soltarlo sobre otra libre', () => {
+  it('con zona sobre otra libre de su posición (DC-9 sobre DC-10): se cambia y DC-9 vuelve a ser fantasma; un Deshacer lo revierte', () => {
     cambiar('4-4-2'); // el DC (test-09) queda en DC-9 y DC-10 libre
     store().moverJugador('test-09', 62, 80, 'DC-10');
     comprobarReglas();
-    expect(titularDe('test-09')).toMatchObject({ zonaOrigenId: 'DC-9', x: 62, y: 80 });
+    expect(titularDe('test-09')).toMatchObject({ zonaOrigenId: 'DC-10', x: 62, y: 80 });
+    expect(fantasmas()).toContain('DC-9');
+    expect(fantasmas()).not.toContain('DC-10');
+
+    store().deshacer();
+    comprobarReglas();
+    expect(titularDe('test-09')).toMatchObject({ zonaOrigenId: 'DC-9', x: 50, y: 84 });
     expect(fantasmas()).toContain('DC-10');
   });
 
+  it('con zona y una posición secundaria (MC · MCD): se cambia a la zona libre de la secundaria', () => {
+    darSecundarias('test-07', ['MCD']);
+    store().quitarDelCampo('test-06'); // MCD-5 queda libre
+    store().moverJugador('test-07', 49, 43, 'MCD-5'); // test-07 estaba en MC-6
+    comprobarReglas();
+    expect(titularDe('test-07')).toMatchObject({ zonaOrigenId: 'MCD-5', x: 49, y: 43 });
+    expect(fantasmas()).toContain('MC-6');
+  });
+
+  it('con zona sobre una libre de otra posición: conserva la suya', () => {
+    cambiar('4-4-2');
+    store().moverJugador('test-09', 86, 48, 'MD-8'); // DC sobre MD
+    comprobarReglas();
+    expect(titularDe('test-09')).toMatchObject({ zonaOrigenId: 'DC-9', x: 86, y: 48 });
+    expect(fantasmas()).toContain('MD-8');
+  });
+
   it('no ocupa una zona que ya tiene jugador ni una que no es de la formación actual', () => {
-    store().moverDesdeBanquilloACampo('test-12', 50, 6, 'POR-0');
-    expect(titularDe('test-12')!.zonaOrigenId).toBeUndefined();
+    store().moverDesdeBanquilloACampo('test-14', 38, 20, 'DFC-2'); // DFC, pero DFC-2 ya es de test-04
+    expect(titularDe('test-14')!.zonaOrigenId).toBeUndefined();
+    expect(titularDe('test-04')!.zonaOrigenId).toBe('DFC-2');
     cambiar('4-4-2'); // el MCD queda fuera; MCD-5 no existe en 4-4-2
     store().moverJugador('test-06', 50, 42, 'MCD-5');
     comprobarReglas();

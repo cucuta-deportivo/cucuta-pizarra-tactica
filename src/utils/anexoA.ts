@@ -42,6 +42,11 @@ export function seVeSoloNuestroEquipo(rival: EquipoRival | null): boolean {
   return !seVenAmbosEquipos(rival) && rival?.modoVista !== 'solo_rival';
 }
 
+/** Zonas de la formación que ningún titular ocupa: son las que el campo dibuja como zonas fantasma. */
+export function zonasSinJugador(zonas: ZonaFormacion[], titulares: JugadorEnCampo[]): ZonaFormacion[] {
+  return zonas.filter((z) => !titulares.some((t) => t.zonaOrigenId === z.id));
+}
+
 /** Nuestra mitad va de nuestra portería (y=0) al mediocampo (y=50). */
 export function hayJugadoresEnCampoRival(titulares: JugadorEnCampo[]): boolean {
   return titulares.some((t) => t.y > 50);

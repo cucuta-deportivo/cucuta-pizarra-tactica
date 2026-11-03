@@ -73,6 +73,13 @@ export interface JugadorEnCampo {
    * no está "fuera del esquema". Se pierde al asignarle una zona fantasma.
    */
   fueraDeEsquema?: boolean;
+  /**
+   * La zona que perdió al quedarse fuera (posición y coordenadas de su
+   * formación), para que en un cambio posterior vuelva a la de su misma
+   * posición si queda libre. Sin ella, ir y volver entre formaciones lo dejaba
+   * fuera para siempre y su zona reaparecía como fantasma bajo él.
+   */
+  zonaPerdida?: { posicion: Posicion; x: number; y: number };
   esCapitan: boolean;
   nota?: string;
   /** Hacia dónde mira, en grados. Opcional: sin ella no se dibuja indicador. */

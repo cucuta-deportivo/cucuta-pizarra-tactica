@@ -550,30 +550,46 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // Cambiar de formación no mueve a nadie (CLAUDE.md): solo cambian las zonas
     // fantasma. Cada titular se une, sin moverse, a la zona libre de su misma
     // posición más cercana a la que tenía; quien no encuentra ninguna queda
-    // "fuera del esquema" y su hueco se ve como zona fantasma.
+    // "fuera del esquema", recordando la zona que perdió, y su hueco se ve como
+    // zona fantasma. En un cambio posterior vuelve si hay sitio de su posición.
     seleccionarFormacion: (formacionId) => {
       const formacion = obtenerFormacion(formacionId);
       if (!formacion) return;
       mutar((doc) => {
         const formacionAnterior = obtenerFormacion(doc.formacionId);
         const zonasLibres = [...formacion.zonas];
-        for (const titular of doc.titulares) {
-          const zonaAnterior = formacionAnterior?.zonas.find((z) => z.id === titular.zonaOrigenId);
-          if (!zonaAnterior) {
-            // Ya no tenía zona (entró desde el panel o quedó fuera antes): sigue igual.
-            delete titular.zonaOrigenId;
-            continue;
-          }
-          const distancia = (z: { x: number; y: number }) => Math.hypot(z.x - zonaAnterior.x, z.y - zonaAnterior.y);
+        const tomarZona = (referencia: { posicion: Posicion; x: number; y: number }) => {
+          const distancia = (z: { x: number; y: number }) => Math.hypot(z.x - referencia.x, z.y - referencia.y);
           const destino = zonasLibres
-            .filter((z) => z.posicion === zonaAnterior.posicion)
+            .filter((z) => z.posicion === referencia.posicion)
             .sort((a, b) => distancia(a) - distancia(b))[0];
+          if (destino) zonasLibres.splice(zonasLibres.indexOf(destino), 1);
+          return destino;
+        };
+        const dentro = doc.titulares.filter((t) => formacionAnterior?.zonas.some((z) => z.id === t.zonaOrigenId));
+        const fuera = doc.titulares.filter((t) => !dentro.includes(t));
+
+        // Primero los que siguen en el esquema, para que conserven su sitio.
+        for (const titular of dentro) {
+          const zonaAnterior = formacionAnterior!.zonas.find((z) => z.id === titular.zonaOrigenId)!;
+          const destino = tomarZona(zonaAnterior);
           if (destino) {
-            zonasLibres.splice(zonasLibres.indexOf(destino), 1);
             titular.zonaOrigenId = destino.id;
           } else {
             delete titular.zonaOrigenId;
             titular.fueraDeEsquema = true;
+            titular.zonaPerdida = { posicion: zonaAnterior.posicion, x: zonaAnterior.x, y: zonaAnterior.y };
+          }
+        }
+        // Después, quienes quedaron fuera en un cambio anterior. Quien entró
+        // desde el panel nunca tuvo zona y sigue igual.
+        for (const titular of fuera) {
+          delete titular.zonaOrigenId;
+          const destino = titular.zonaPerdida ? tomarZona(titular.zonaPerdida) : undefined;
+          if (destino) {
+            titular.zonaOrigenId = destino.id;
+            delete titular.fueraDeEsquema;
+            delete titular.zonaPerdida;
           }
         }
         doc.formacionId = formacionId;
@@ -675,11 +691,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         const titular = doc.titulares.find((t) => t.jugadorId === jugadorEnCampoId);
         if (!titular) return;
-        const { x, y, zonaOrigenId, fueraDeEsquema } = titular;
+        const { x, y, zonaOrigenId, fueraDeEsquema, zonaPerdida } = titular;
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorEnCampoId);
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorDesdeBanquilloId);
         if (doc.banquillo.length < CAPACIDAD_BANQUILLO) doc.banquillo.push(jugadorEnCampoId);
-        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, fueraDeEsquema, esCapitan: false });
+        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, fueraDeEsquema, zonaPerdida, esCapitan: false });
       }, etiqueta);
     },
 

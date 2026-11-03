@@ -40,7 +40,7 @@ import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS } from
 import { posicionEfectivaBalon } from '../../utils/balon';
 import { muestrearRuta, puntosDeControl, segmentoEnPunto, trayectoriaDe } from '../../utils/trayectorias';
 import { pixelesAPorcentaje, VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
-import { generarPuntosFila, generarPuntosRejilla, generarPuntosSlalom, ubicarZonaEnLado } from '../../utils/anexoA';
+import { generarPuntosFila, generarPuntosRejilla, generarPuntosSlalom, ubicarZonaEnLado, zonasSinJugador } from '../../utils/anexoA';
 import { LineasCampo } from './LineasCampo';
 import { Zona } from './Zona';
 import { ZonaRival } from './ZonaRival';
@@ -400,9 +400,9 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
 
   const zonasVacias = useMemo(
     () =>
-      formacion?.zonas
-        .filter((z) => !documento.titulares.some((t) => t.zonaOrigenId === z.id))
-        .map((z) => ubicarZonaEnLado(z, { espejo: false, mediaCancha: enModoAmbos })) ?? [],
+      zonasSinJugador(formacion?.zonas ?? [], documento.titulares).map((z) =>
+        ubicarZonaEnLado(z, { espejo: false, mediaCancha: enModoAmbos }),
+      ),
     [formacion, documento.titulares, enModoAmbos],
   );
 

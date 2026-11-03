@@ -12,6 +12,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 7 | Activar el rival sin mover a nuestros jugadores | Hecho |
 | 7b | Al activar el rival, acción "Acomodar mi equipo en mi mitad" (y/2) y, al quitarlo, "Extender mi equipo por todo el campo" (y×2): un toque, nadie se mueve solo, se puede deshacer | Hecho |
 | 8 | La exportación PNG/PDF incluye objetos, jugadores rivales y balón | Hecho |
+| 8b | En la ventana de exportar, casillas para elegir qué sale en PNG/PDF: rival, balón, objetos y dibujos (solo las de lo que hay en el campo, todas marcadas por defecto, 44 px; el JSON siempre lleva todo) | Hecho |
 | 9 | Zonas táctiles de al menos 44 px: panel de objetos, panel de plantilla, balón, los controles de las pantallas de acceso y registro, "Vista" del rival y "Orientación del campo" (solo CSS) | Hecho |
 | 10 | Tipografía condensada (Barlow Condensed) en la exportación, en lugar de Arial | Hecho |
 | 11 | ESLint como dependencia de desarrollo y script `npm run lint` | Pendiente |

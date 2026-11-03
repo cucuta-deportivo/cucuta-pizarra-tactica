@@ -38,6 +38,45 @@ export interface DatosExportacion {
   nombreClub?: string;
   /** Dibujar la foto de cada jugador en su ficha. Por defecto, no. */
   incluirFotos?: boolean;
+  /** Capas que el entrenador desmarcó en la ventana de exportar. Sin indicar, salen todas. */
+  incluir?: Partial<Record<CapaOpcional, boolean>>;
+}
+
+/** Lo que el entrenador puede quitar de la imagen. Solo afecta a PNG y PDF: el JSON lleva todo. */
+export type CapaOpcional = 'rival' | 'balon' | 'objetos' | 'dibujos';
+
+type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares'>;
+
+/** Misma visibilidad que en pantalla (Campo.tsx): qué equipos se ven según el modo del rival. */
+function equiposVisibles(rival: Alineacion['rival']): { rival: boolean; propio: boolean } {
+  return {
+    rival: Boolean(rival?.visible) && rival?.modoVista !== 'solo_nosotros',
+    propio: rival?.modoVista !== 'solo_rival',
+  };
+}
+
+/** Las capas que saldrían en la imagen: la ventana de exportar solo ofrece casilla para estas. */
+export function capasEnCampo(contenido: ContenidoCampo): Record<CapaOpcional, boolean> {
+  return {
+    rival: equiposVisibles(contenido.rival).rival && (contenido.rival?.jugadores.length ?? 0) > 0,
+    balon: contenido.balones.length > 0,
+    objetos: contenido.objetos.length > 0,
+    dibujos: contenido.trazos.length > 0,
+  };
+}
+
+/** Qué se dibuja en la imagen: lo visible en pantalla menos las capas desmarcadas. */
+export function elementosAExportar(contenido: ContenidoCampo, incluir: Partial<Record<CapaOpcional, boolean>> = {}) {
+  const con = (capa: CapaOpcional) => incluir[capa] !== false;
+  const visibles = equiposVisibles(contenido.rival);
+  return {
+    objetos: con('objetos') ? contenido.objetos : [],
+    balonesSueltos: con('balon') ? contenido.balones.filter((b) => !b.jugadorPoseedorId) : [],
+    rivales: con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [],
+    titulares: visibles.propio ? contenido.titulares : [],
+    balonesEnPosesion: con('balon') ? contenido.balones.filter((b) => b.jugadorPoseedorId) : [],
+    dibujos: con('dibujos'),
+  };
 }
 
 /**
@@ -329,7 +368,9 @@ function dibujarBalonEnLienzo(ctx: CanvasRenderingContext2D, cx: number, cy: num
 }
 
 export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
-  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos } = datos;
+  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos, incluir } =
+    datos;
+  const elementos = elementosAExportar(alineacion, incluir);
 
   // Las fotos se cargan TODAS antes de empezar a dibujar: el lienzo es síncrono
   // y no se puede esperar a una imagen en mitad del trazado.
@@ -375,49 +416,42 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   const imagenCampo = await svgAImagen(svgCampo);
   ctx.drawImage(imagenCampo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
 
-  if (canvasDibujo) {
+  if (canvasDibujo && elementos.dibujos) {
     ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
   }
 
-  // Mismo orden de capas y misma visibilidad que en pantalla (Campo.tsx):
-  // objetos, balón suelto, rivales, nuestros y, encima, el balón en posesión.
+  // Mismo orden de capas que en pantalla (Campo.tsx): objetos, balón suelto,
+  // rivales, nuestros y, encima, el balón en posesión.
   const aLienzo = (x: number, y: number) => {
     const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
     return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
   };
-  const rival = alineacion.rival;
-  const rivalVisible = Boolean(rival?.visible) && rival?.modoVista !== 'solo_nosotros';
-  const propioVisible = rival?.modoVista !== 'solo_rival';
   const dibujarBalon = (balon: Balon) => {
     const { x, y } = posicionEfectivaBalon(balon, alineacion.titulares);
     const { cx, cy } = aLienzo(x, y);
     dibujarBalonEnLienzo(ctx, cx, cy);
   };
 
-  for (const objeto of alineacion.objetos) {
+  for (const objeto of elementos.objetos) {
     const { cx, cy } = aLienzo(objeto.x, objeto.y);
     dibujarObjetoEnLienzo(ctx, objeto, cx, cy);
   }
-  alineacion.balones.filter((b) => !b.jugadorPoseedorId).forEach(dibujarBalon);
+  elementos.balonesSueltos.forEach(dibujarBalon);
 
-  if (rival && rivalVisible) {
-    for (const jugadorRival of rival.jugadores) {
-      const { cx, cy } = aLienzo(jugadorRival.x, jugadorRival.y);
-      const atenuado = alineacion.titulares.some((t) => Math.abs(t.x - jugadorRival.x) < 3 && Math.abs(t.y - jugadorRival.y) < 3);
-      dibujarRivalEnLienzo(ctx, jugadorRival, rival.paleta, cx, cy, atenuado);
-    }
+  for (const jugadorRival of elementos.rivales) {
+    const { cx, cy } = aLienzo(jugadorRival.x, jugadorRival.y);
+    const atenuado = alineacion.titulares.some((t) => Math.abs(t.x - jugadorRival.x) < 3 && Math.abs(t.y - jugadorRival.y) < 3);
+    dibujarRivalEnLienzo(ctx, jugadorRival, alineacion.rival!.paleta, cx, cy, atenuado);
   }
 
-  if (propioVisible) {
-    for (const titular of alineacion.titulares) {
-      const jugador = obtenerJugador(titular.jugadorId);
-      if (!jugador) continue;
-      dibujarJugadorEnLienzo(
-        ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion, fotos.get(titular.jugadorId),
-      );
-    }
+  for (const titular of elementos.titulares) {
+    const jugador = obtenerJugador(titular.jugadorId);
+    if (!jugador) continue;
+    dibujarJugadorEnLienzo(
+      ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion, fotos.get(titular.jugadorId),
+    );
   }
-  alineacion.balones.filter((b) => b.jugadorPoseedorId).forEach(dibujarBalon);
+  elementos.balonesEnPosesion.forEach(dibujarBalon);
 
   return new Promise<Blob>((resolve, reject) => {
     lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');

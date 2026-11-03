@@ -71,14 +71,20 @@ body {
   background-color: transparent;
 }
 
+/*
+  `scale` y no `transform`: las zonas fantasma y los objetos que se desvanecen
+  se centran en su punto con translate(-50%,-50%), y una animación que toque
+  `transform` lo pisa (con `both`, para siempre) y los deja desplazados medio
+  tamaño respecto a donde cae el jugador.
+*/
 @keyframes entrada-zona {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    scale: 0.6;
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    scale: 1;
   }
 }
 
@@ -93,8 +99,10 @@ body {
   }
 }
 
+/* Origen en la esquina: tras el translate(-50%,-50%) esa esquina es el punto del objeto, así que escala sin desplazarse. */
 .animar-entrada-zona {
   animation: entrada-zona 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: 0 0;
 }
 
 .animar-entrada-tarjeta {
@@ -104,16 +112,17 @@ body {
 @keyframes salida-objeto {
   from {
     opacity: 1;
-    transform: scale(1);
+    scale: 1;
   }
   to {
     opacity: 0;
-    transform: scale(0.5);
+    scale: 0.5;
   }
 }
 
 .animar-salida-objeto {
   animation: salida-objeto 300ms cubic-bezier(0.4, 0, 1, 1) both;
+  transform-origin: 0 0;
 }
 
 /*

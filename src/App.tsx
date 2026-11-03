@@ -6,6 +6,7 @@ import { FlyoutObjetos } from './components/pizarra/FlyoutObjetos';
 import { TimelineTactica } from './components/pizarra/TimelineTactica';
 import { Boton } from './components/ui/Boton';
 import { Dropdown } from './components/ui/Dropdown';
+import { Modal } from './components/ui/Modal';
 import { IndicadorAutoguardado } from './components/ui/IndicadorAutoguardado';
 import { ModalAlineaciones } from './components/ui/ModalAlineaciones';
 import { ModalExportar } from './components/ui/ModalExportar';
@@ -279,6 +280,7 @@ function MenuOpciones({
   onAbrirExportar,
   onCrearJugada,
   onGrabarJugada,
+  onVaciarCampo,
   hayJugada,
 }: {
   onAbrirAlineaciones: () => void;
@@ -289,6 +291,7 @@ function MenuOpciones({
   onAbrirExportar: () => void;
   onCrearJugada: () => void;
   onGrabarJugada: () => void;
+  onVaciarCampo: () => void;
   hayJugada: boolean;
 }) {
   const pantallaCompleta = useUiStore((s) => s.pantallaCompleta);
@@ -296,6 +299,7 @@ function MenuOpciones({
   const orientacionForzada = useUiStore((s) => s.orientacionForzada);
   const setOrientacionForzada = useUiStore((s) => s.setOrientacionForzada);
   const nuevaAlineacion = useAlineacionStore((s) => s.nuevaAlineacion);
+  const titularesEnCampo = useAlineacionStore((s) => s.historial.presente.titulares.length);
 
   return (
     <Dropdown
@@ -372,6 +376,16 @@ function MenuOpciones({
               </ItemMenu>
             </>
           )}
+          {titularesEnCampo > 0 && (
+            <ItemMenu
+              onClick={() => {
+                onVaciarCampo();
+                cerrar();
+              }}
+            >
+              🧹 Vaciar campo
+            </ItemMenu>
+          )}
           <ItemMenu
             onClick={() => {
               nuevaAlineacion();
@@ -397,7 +411,7 @@ function MenuOpciones({
                   type="button"
                   onClick={() => setOrientacionForzada(valor)}
                   aria-pressed={orientacionForzada === valor}
-                  className={`min-h-[36px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
+                  className={`min-h-[44px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
                     orientacionForzada === valor ? 'bg-club-rojo text-white' : 'bg-white/5 text-club-plata hover:bg-white/10'
                   }`}
                 >
@@ -468,6 +482,8 @@ export default function App() {
   const [modalRivalAbierto, setModalRivalAbierto] = useState(false);
   const [modalCanchaAbierto, setModalCanchaAbierto] = useState(false);
   const [panelActividadAbierto, setPanelActividadAbierto] = useState(false);
+  const [confirmandoVaciar, setConfirmandoVaciar] = useState(false);
+  const vaciarCampo = useAlineacionStore((s) => s.vaciarCampo);
 
   function alternarObjetos(): void {
     if (modoObjetoActivo) desactivarModoObjeto();
@@ -550,6 +566,7 @@ export default function App() {
                 iniciarSecuencia();
                 iniciarGrabacion();
               }}
+              onVaciarCampo={() => setConfirmandoVaciar(true)}
               hayJugada={hayJugada}
             />
           </div>
@@ -634,6 +651,25 @@ export default function App() {
         obtenerElementos={() => campoRef.current?.obtenerElementosExportacion() ?? null}
       />
       {panelActividadAbierto && <PanelActividad onCerrar={() => setPanelActividadAbierto(false)} />}
+      <Modal abierto={confirmandoVaciar} onCerrar={() => setConfirmandoVaciar(false)} titulo="Vaciar campo" ancho="sm">
+        <p className="text-sm text-club-plata">
+          Se quitarán del campo todos los jugadores. La formación, los dibujos y los objetos se mantienen. Puedes deshacerlo.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Boton variante="fantasma" onClick={() => setConfirmandoVaciar(false)}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="peligro"
+            onClick={() => {
+              vaciarCampo();
+              setConfirmandoVaciar(false);
+            }}
+          >
+            Vaciar
+          </Boton>
+        </div>
+      </Modal>
       <ToastContainer />
     </div>
   );

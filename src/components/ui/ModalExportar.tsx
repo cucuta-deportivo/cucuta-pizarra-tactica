@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Modal } from './Modal';
 import { Boton } from './Boton';
 import { alineacionDesdeDocumento, useAlineacionStore } from '../../store/alineacionStore';
@@ -9,11 +9,22 @@ import { generarId } from '../../utils/id';
 import type { ElementosExportacion } from '../campo/Campo';
 import {
   analizarAlineacionDesdeJson,
+  capasEnCampo,
   descargarBlob,
   exportarAlineacionAJson,
   exportarCampoAPdf,
   exportarCampoAPng,
+  type CapaOpcional,
 } from '../../utils/exportar';
+
+const TODAS_LAS_CAPAS: Record<CapaOpcional, boolean> = { rival: true, balon: true, objetos: true, dibujos: true };
+
+const CASILLAS_CAPAS: { capa: CapaOpcional; etiqueta: string }[] = [
+  { capa: 'rival', etiqueta: 'Incluir rival' },
+  { capa: 'balon', etiqueta: 'Incluir balón' },
+  { capa: 'objetos', etiqueta: 'Incluir objetos' },
+  { capa: 'dibujos', etiqueta: 'Incluir dibujos (flechas, líneas, zonas)' },
+];
 
 interface ModalExportarProps {
   abierto: boolean;
@@ -43,6 +54,14 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   // Solo tiene sentido ofrecerlo si alguno de los que están en el campo tiene foto.
   const hayFotos = documento.titulares.some((t) => obtenerJugador(t.jugadorId)?.fotoUrl);
 
+  // Rival, balón, objetos y dibujos: casilla solo para lo que hay en el campo, y
+  // todas marcadas cada vez que se abre, para que la imagen sea igual a la pantalla.
+  const enCampo = capasEnCampo(documento);
+  const [incluirCapas, setIncluirCapas] = useState(TODAS_LAS_CAPAS);
+  useEffect(() => {
+    if (abierto) setIncluirCapas(TODAS_LAS_CAPAS);
+  }, [abierto]);
+
   function construirAlineacion() {
     return alineacionDesdeDocumento({ id, nombre, creadaEn }, documento, modificadaEn);
   }
@@ -66,6 +85,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
         altoContenedor: elementos.alto,
         orientacion: elementos.orientacion,
         incluirFotos: incluirFotos && hayFotos,
+        incluir: incluirCapas,
       };
       if (tipo === 'png') {
         const blob = await exportarCampoAPng(datos);
@@ -131,6 +151,18 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
             {!hayFotos && <span className="text-club-plata"> · ninguno tiene foto</span>}
           </span>
         </label>
+
+        {CASILLAS_CAPAS.filter(({ capa }) => enCampo[capa]).map(({ capa, etiqueta }) => (
+          <label key={capa} className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3">
+            <input
+              type="checkbox"
+              checked={incluirCapas[capa]}
+              onChange={(e) => setIncluirCapas((previas) => ({ ...previas, [capa]: e.target.checked }))}
+              className="h-4 w-4 accent-club-naranja"
+            />
+            <span className="text-xs text-white">{etiqueta}</span>
+          </label>
+        ))}
 
         <Boton variante="primario" onClick={() => void exportarImagen('png')} disabled={trabajo !== null}>
           {trabajo === 'png' ? 'Generando PNG…' : '⬇ Exportar a PNG (2×)'}

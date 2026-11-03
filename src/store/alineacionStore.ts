@@ -4,7 +4,6 @@ import type {
   Balon,
   ColorObjeto,
   EstadoGuardado,
-  EstrategiaCambioFormacion,
   Jugador,
   JugadorEnCampo,
   JugadorRival,
@@ -27,7 +26,18 @@ import {
 } from './historial';
 import { generarId } from '../utils/id';
 import { CAPACIDAD_BANQUILLO, DEBOUNCE_AUTOGUARDADO_MS, ETIQUETAS_OBJETO, LIMITE_BALONES, LIMITE_OBJETOS } from '../utils/constantes';
-import { canchaVacia, claveCelda, cuadriculaVacia, recortarAMitad, siguienteColorCelda, ubicarZonaEnLado } from '../utils/anexoA';
+import {
+  canchaVacia,
+  claveCelda,
+  cuadriculaVacia,
+  equipoEnSuMitad,
+  hayJugadoresEnCampoRival,
+  recortarAMitad,
+  seVeSoloNuestroEquipo,
+  seVenAmbosEquipos,
+  siguienteColorCelda,
+  ubicarZonaEnLado,
+} from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
@@ -45,6 +55,7 @@ import type {
   TipoDestinoRuta,
   TipoEasing,
   TipoInterpolacionRuta,
+  ZonaFormacion,
 } from '../types';
 
 export interface DocumentoTactico {
@@ -184,27 +195,30 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
 }
 
 /**
- * Reacomoda a los jugadores ya colocados según el modo de vista (FA4): con los
- * dos equipos en pantalla cada uno se recoge en su mitad, y con uno solo vuelve
- * a desplegarse por todo el campo. Se parte de la zona de origen de cada jugador
- * (no de su posición actual) para que alternar de modo sea siempre reversible y
- * no vaya arrastrando errores; quien entró desde el banquillo y no tiene zona
- * solo se recorta a su mitad.
+ * Reacomoda a los jugadores RIVALES según el modo de vista (FA4): con los dos
+ * equipos en pantalla se recogen en su mitad, y solos vuelven a desplegarse por
+ * todo el campo. Se parte de la zona de origen de cada uno (no de su posición
+ * actual) para que alternar de modo sea siempre reversible; quien no tiene zona
+ * solo se recorta a su mitad. Los nuestros NO se tocan: activar, ocultar o
+ * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
+ * nuestras zonas fantasma, en Campo).
  */
+/**
+ * La zona fantasma sobre la que se soltó a un jugador, si puede ocuparla: es
+ * de la formación actual, nadie la ocupa y es de SU posición (la natural o
+ * cualquiera de las secundarias).
+ */
+function zonaQueOcupa(doc: DocumentoTactico, jugadorId: string, zonaId: string | undefined): ZonaFormacion | undefined {
+  if (!zonaId) return undefined;
+  const zona = obtenerFormacion(doc.formacionId)?.zonas.find((z) => z.id === zonaId);
+  if (!zona || doc.titulares.some((t) => t.zonaOrigenId === zonaId)) return undefined;
+  const jugador = usePlantillaStore.getState().obtenerPorId(jugadorId);
+  const esSuPosicion = jugador?.posicionNatural === zona.posicion || Boolean(jugador?.posicionesSecundarias.includes(zona.posicion));
+  return esSuPosicion ? zona : undefined;
+}
+
 function recolocarPorModo(doc: DocumentoTactico): void {
   const enAmbos = Boolean(doc.rival?.visible) && doc.rival?.modoVista === 'ambos';
-
-  const formacionPropia = obtenerFormacion(doc.formacionId);
-  for (const titular of doc.titulares) {
-    const zona = formacionPropia?.zonas.find((z) => z.id === titular.zonaOrigenId);
-    if (zona) {
-      const destino = ubicarZonaEnLado(zona, { espejo: false, mediaCancha: enAmbos });
-      titular.x = destino.x;
-      titular.y = destino.y;
-    } else if (enAmbos) {
-      titular.y = recortarAMitad(titular.y, false);
-    }
-  }
 
   if (!doc.rival) return;
   const formacionRival = obtenerFormacion(doc.rival.formacionId);
@@ -284,16 +298,18 @@ interface AlineacionState {
   eliminarAlineacion: (id: string) => Promise<void>;
   reemplazarDocumentoCompleto: (alineacion: Alineacion) => void;
 
-  seleccionarFormacion: (formacionId: string, estrategia: EstrategiaCambioFormacion) => void;
+  seleccionarFormacion: (formacionId: string) => void;
+  vaciarCampo: () => void;
   agregarJugadorPersonalizado: (jugador: Jugador) => void;
   actualizarJugadorPersonalizado: (jugadorId: string, datos: Partial<Jugador>) => void;
   asignarJugador: (zonaId: string, x: number, y: number, jugadorId: string) => void;
-  moverJugador: (jugadorId: string, x: number, y: number) => void;
+  /** `zonaId`: zona fantasma sobre la que se soltó; solo la ocupa un jugador de esa posición. */
+  moverJugador: (jugadorId: string, x: number, y: number, zonaId?: string) => void;
   intercambiarPosiciones: (jugadorIdA: string, jugadorIdB: string) => void;
   quitarDelCampo: (jugadorId: string) => void;
   enviarABanquillo: (jugadorId: string) => void;
   quitarDeBanquillo: (jugadorId: string) => void;
-  moverDesdeBanquilloACampo: (jugadorId: string, x: number, y: number) => void;
+  moverDesdeBanquilloACampo: (jugadorId: string, x: number, y: number, zonaId?: string) => void;
   sustituirEnCampo: (jugadorEnCampoId: string, jugadorDesdeBanquilloId: string) => void;
   toggleCapitan: (jugadorId: string) => void;
   actualizarNotaJugador: (jugadorId: string, nota: string) => void;
@@ -330,6 +346,8 @@ interface AlineacionState {
   desactivarRival: () => void;
   actualizarRival: (cambios: Partial<Omit<EquipoRival, 'jugadores'>>) => void;
   seleccionarFormacionRival: (formacionId: string) => void;
+  acomodarEnMiMitad: () => void;
+  extenderPorTodoElCampo: () => void;
   asignarJugadorRivalAZona: (zonaId: string, x: number, y: number, posicion: Posicion, dorsal: number, apellido?: string) => void;
   moverJugadorRival: (id: string, x: number, y: number) => void;
   eliminarJugadorRival: (id: string) => void;
@@ -400,6 +418,31 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string): void {
     set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
     marcarPendiente();
+  }
+
+  // Paso 7b: cambiar qué equipos se ven nunca mueve a los nuestros; si hace
+  // falta, se OFRECE recolocarlos con un toque. Solo lo llaman las acciones del
+  // rival, así que deshacer o cargar otra alineación no lo dispara.
+  function ofrecerRecolocar(antes: DocumentoTactico): void {
+    const ahora = get().historial.presente;
+    const { mostrarToast } = useUiStore.getState();
+    if (!seVenAmbosEquipos(antes.rival) && seVenAmbosEquipos(ahora.rival) && hayJugadoresEnCampoRival(ahora.titulares)) {
+      mostrarToast({
+        tipo: 'info',
+        mensaje: 'Hay jugadores tuyos en campo rival.',
+        accion: { etiqueta: 'Acomodar mi equipo en mi mitad', ejecutar: () => get().acomodarEnMiMitad() },
+      });
+    } else if (seVenAmbosEquipos(antes.rival) && seVeSoloNuestroEquipo(ahora.rival) && equipoEnSuMitad(ahora.titulares)) {
+      mostrarToast({
+        tipo: 'info',
+        mensaje: 'Tu equipo está recogido en tu mitad.',
+        accion: { etiqueta: 'Extender mi equipo por todo el campo', ejecutar: () => get().extenderPorTodoElCampo() },
+      });
+    }
+  }
+
+  function avisarConDeshacer(mensaje: string): void {
+    useUiStore.getState().mostrarToast({ tipo: 'info', mensaje, accion: { etiqueta: 'Deshacer', ejecutar: () => get().deshacer() } });
   }
 
   const ahoraInicial = new Date().toISOString();
@@ -520,36 +563,59 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       marcarPendiente();
     },
 
-    seleccionarFormacion: (formacionId, estrategia) => {
+    // Cambiar de formación no mueve a nadie (CLAUDE.md): solo cambian las zonas
+    // fantasma. Cada titular se une, sin moverse, a la zona libre de su misma
+    // posición más cercana a la que tenía; quien no encuentra ninguna queda
+    // "fuera del esquema", recordando la zona que perdió, y su hueco se ve como
+    // zona fantasma. En un cambio posterior vuelve si hay sitio de su posición.
+    seleccionarFormacion: (formacionId) => {
       const formacion = obtenerFormacion(formacionId);
-      if (!formacion || estrategia === 'cancelar') return;
-      const etiqueta =
-        estrategia === 'vaciar' ? `Formación cambiada a ${formacion.nombre} (campo vaciado)` : `Formación cambiada a ${formacion.nombre}`;
+      if (!formacion) return;
       mutar((doc) => {
-        if (estrategia === 'vaciar') {
-          doc.formacionId = formacionId;
-          doc.titulares = [];
-          return;
-        }
         const formacionAnterior = obtenerFormacion(doc.formacionId);
-        const zonasDisponibles = [...formacion.zonas];
-        const nuevosTitulares: JugadorEnCampo[] = [];
-        for (const titular of doc.titulares) {
-          const zonaOrigen = formacionAnterior?.zonas.find((z) => z.id === titular.zonaOrigenId);
-          const indice = zonasDisponibles.findIndex((z) => z.posicion === zonaOrigen?.posicion);
-          if (indice >= 0) {
-            const zonaDestino = zonasDisponibles.splice(indice, 1)[0]!;
-            nuevosTitulares.push({ ...titular, x: zonaDestino.x, y: zonaDestino.y, zonaOrigenId: zonaDestino.id });
-          } else if (doc.banquillo.length < CAPACIDAD_BANQUILLO) {
-            doc.banquillo.push(titular.jugadorId);
+        const zonasLibres = [...formacion.zonas];
+        const tomarZona = (referencia: { posicion: Posicion; x: number; y: number }) => {
+          const distancia = (z: { x: number; y: number }) => Math.hypot(z.x - referencia.x, z.y - referencia.y);
+          const destino = zonasLibres
+            .filter((z) => z.posicion === referencia.posicion)
+            .sort((a, b) => distancia(a) - distancia(b))[0];
+          if (destino) zonasLibres.splice(zonasLibres.indexOf(destino), 1);
+          return destino;
+        };
+        const dentro = doc.titulares.filter((t) => formacionAnterior?.zonas.some((z) => z.id === t.zonaOrigenId));
+        const fuera = doc.titulares.filter((t) => !dentro.includes(t));
+
+        // Primero los que siguen en el esquema, para que conserven su sitio.
+        for (const titular of dentro) {
+          const zonaAnterior = formacionAnterior!.zonas.find((z) => z.id === titular.zonaOrigenId)!;
+          const destino = tomarZona(zonaAnterior);
+          if (destino) {
+            titular.zonaOrigenId = destino.id;
+          } else {
+            delete titular.zonaOrigenId;
+            titular.fueraDeEsquema = true;
+            titular.zonaPerdida = { posicion: zonaAnterior.posicion, x: zonaAnterior.x, y: zonaAnterior.y };
+          }
+        }
+        // Después, quienes quedaron fuera en un cambio anterior. Quien entró
+        // desde el panel nunca tuvo zona y sigue igual.
+        for (const titular of fuera) {
+          delete titular.zonaOrigenId;
+          const destino = titular.zonaPerdida ? tomarZona(titular.zonaPerdida) : undefined;
+          if (destino) {
+            titular.zonaOrigenId = destino.id;
+            delete titular.fueraDeEsquema;
+            delete titular.zonaPerdida;
           }
         }
         doc.formacionId = formacionId;
-        doc.titulares = nuevosTitulares;
-        // Las zonas de la formación vienen a campo completo: recolocar deja a
-        // cada uno en la mitad que le toca según el modo de vista activo (FA4).
-        recolocarPorModo(doc);
-      }, etiqueta);
+      }, `Formación cambiada a ${formacion.nombre}`);
+    },
+
+    vaciarCampo: () => {
+      mutar((doc) => {
+        if (doc.titulares.length > 0) doc.titulares = [];
+      }, 'Campo vaciado');
     },
 
     // Se registra en el documento antes de asignarlo a una zona o al banquillo, para
@@ -583,14 +649,31 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} asignado${zona ? ` (${zona.posicion})` : ''}`);
     },
 
-    moverJugador: (jugadorId, x, y) => {
-      mutar((doc) => {
-        const titular = doc.titulares.find((t) => t.jugadorId === jugadorId);
-        if (titular) {
-          titular.x = x;
-          titular.y = y;
-        }
-      }, `${etiquetaJugador(jugadorId)} movido`);
+    // Soltar sobre una zona fantasma libre de su posición la ocupa sin mover al
+    // jugador del punto donde se soltó (no hay imantación). Si ya tenía zona,
+    // se cambia a esta y la suya vuelve a verse como fantasma. Sobre una zona
+    // de otra posición nadie cambia de zona. Todo en un solo paso del historial.
+    moverJugador: (jugadorId, x, y, zonaId) => {
+      const presente = get().historial.presente;
+      const zona = zonaQueOcupa(presente, jugadorId, zonaId);
+      const teniaZona = Boolean(presente.titulares.find((t) => t.jugadorId === jugadorId)?.zonaOrigenId);
+      mutar(
+        (doc) => {
+          const titular = doc.titulares.find((t) => t.jugadorId === jugadorId);
+          if (titular) {
+            titular.x = x;
+            titular.y = y;
+            if (zona) {
+              titular.zonaOrigenId = zona.id;
+              delete titular.fueraDeEsquema;
+              delete titular.zonaPerdida;
+            }
+          }
+        },
+        !zona
+          ? `${etiquetaJugador(jugadorId)} movido`
+          : `${etiquetaJugador(jugadorId)} ${teniaZona ? 'cambia a' : 'asignado a'} ${zona.posicion}`,
+      );
     },
 
     intercambiarPosiciones: (idA, idB) => {
@@ -628,12 +711,13 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} quitado del banquillo`);
     },
 
-    moverDesdeBanquilloACampo: (jugadorId, x, y) => {
+    moverDesdeBanquilloACampo: (jugadorId, x, y, zonaId) => {
+      const zona = zonaQueOcupa(get().historial.presente, jugadorId, zonaId);
       mutar((doc) => {
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorId);
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorId);
-        doc.titulares.push({ jugadorId, x, y, esCapitan: false });
-      }, `${etiquetaJugador(jugadorId)} entra desde el banquillo`);
+        doc.titulares.push({ jugadorId, x, y, ...(zona ? { zonaOrigenId: zona.id } : {}), esCapitan: false });
+      }, `${etiquetaJugador(jugadorId)} entra desde el banquillo${zona ? ` (${zona.posicion})` : ''}`);
     },
 
     sustituirEnCampo: (jugadorEnCampoId, jugadorDesdeBanquilloId) => {
@@ -641,11 +725,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         const titular = doc.titulares.find((t) => t.jugadorId === jugadorEnCampoId);
         if (!titular) return;
-        const { x, y, zonaOrigenId } = titular;
+        const { x, y, zonaOrigenId, fueraDeEsquema, zonaPerdida } = titular;
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorEnCampoId);
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorDesdeBanquilloId);
         if (doc.banquillo.length < CAPACIDAD_BANQUILLO) doc.banquillo.push(jugadorEnCampoId);
-        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, esCapitan: false });
+        doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, fueraDeEsquema, zonaPerdida, esCapitan: false });
       }, etiqueta);
     },
 
@@ -829,20 +913,26 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     // --- Anexo A — FA4 rival ---
-    activarRival: (formacionId) =>
+    activarRival: (formacionId) => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' };
         recolocarPorModo(doc);
-      }, 'Equipo rival activado'),
+      }, 'Equipo rival activado');
+      ofrecerRecolocar(antes);
+    },
 
-    desactivarRival: () =>
+    desactivarRival: () => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         doc.rival = null;
         doc.marcajes = [];
-        recolocarPorModo(doc);
-      }, 'Equipo rival desactivado'),
+      }, 'Equipo rival desactivado');
+      ofrecerRecolocar(antes);
+    },
 
-    actualizarRival: (cambios) =>
+    actualizarRival: (cambios) => {
+      const antes = get().historial.presente;
       mutar((doc) => {
         if (!doc.rival) return;
         const cambiaReparto = cambios.modoVista !== undefined || cambios.visible !== undefined;
@@ -850,7 +940,28 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // Solo se reacomoda si cambió qué equipos se ven: renombrar o cambiar la
         // paleta no debe mover a nadie del campo.
         if (cambiaReparto) recolocarPorModo(doc);
-      }, 'Rival actualizado'),
+      }, 'Rival actualizado');
+      ofrecerRecolocar(antes);
+    },
+
+    // Misma regla que las zonas fantasma en "Ambos" (y/2, ancho intacto): quien
+    // está sobre su zona cae justo en su zona fantasma comprimida, y se conserva
+    // la forma que el entrenador ajustó a mano. Extender (y×2) la deshace exacta.
+    acomodarEnMiMitad: () => {
+      if (!hayJugadoresEnCampoRival(get().historial.presente.titulares)) return;
+      mutar((doc) => {
+        for (const titular of doc.titulares) titular.y = titular.y / 2;
+      }, 'Equipo acomodado en su mitad');
+      avisarConDeshacer('Equipo acomodado en tu mitad.');
+    },
+
+    extenderPorTodoElCampo: () => {
+      if (!equipoEnSuMitad(get().historial.presente.titulares)) return;
+      mutar((doc) => {
+        for (const titular of doc.titulares) titular.y = titular.y * 2;
+      }, 'Equipo extendido por todo el campo');
+      avisarConDeshacer('Equipo extendido por todo el campo.');
+    },
 
     seleccionarFormacionRival: (formacionId) => {
       const formacion = obtenerFormacion(formacionId);

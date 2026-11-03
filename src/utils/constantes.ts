@@ -105,6 +105,8 @@ export const ORDEN_COLOR_OBJETO: ColorObjeto[] = ['naranja', 'amarillo', 'blanco
 
 export const LIMITE_BALONES = 5;
 export const DIAMETRO_BALON_PX = 22;
+/** Radio del círculo de una zona fantasma desde `sm` (h-14 = 56 px en Zona.tsx): soltar dentro de él la ocupa. */
+export const RADIO_ZONA_PX = 28;
 /** Desplazamiento visual (en % del campo) del balón anclado respecto al jugador que lo posee — "en su pie derecho". */
 export const OFFSET_BALON_ANCLADO = { x: 2.5, y: 2.2 };
 

@@ -13,6 +13,8 @@ interface TarjetaJugadorProps {
   arrastrando?: boolean;
   atenuado?: boolean;
   nota?: string;
+  /** Sin zona tras cambiar de formación: aro discontinuo ámbar, solo en pantalla (no se exporta). */
+  fueraDeEsquema?: boolean;
   /**
    * Hacia dónde mira, en grados de pantalla (0 = a la derecha). Se dibuja como
    * una marca en el borde y NO girando la tarjeta: rotarla pondría el dorsal y
@@ -35,6 +37,7 @@ export const TarjetaJugador = memo(function TarjetaJugador({
   arrastrando = false,
   atenuado = false,
   nota,
+  fueraDeEsquema = false,
   rotacion,
 }: TarjetaJugadorProps) {
   const diametro = DIAMETRO[tamano];
@@ -134,6 +137,12 @@ export const TarjetaJugador = memo(function TarjetaJugador({
           </span>
         )}
         </div>
+        {fueraDeEsquema && (
+          <>
+            <span aria-hidden="true" className="pointer-events-none absolute -inset-[5px] rounded-full border-2 border-dashed border-amber-400" />
+            <span className="sr-only">Fuera del esquema</span>
+          </>
+        )}
       </div>
 
       {/*

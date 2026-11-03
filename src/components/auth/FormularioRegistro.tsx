@@ -179,12 +179,12 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
               <span className="text-[11px] text-club-plata/50">Sin código válido, un entrenador deberá aprobar tu cuenta.</span>
             </label>
 
-            <label className="flex items-start gap-2 text-xs text-club-plata">
+            <label className="flex min-h-[44px] items-center gap-2 text-xs text-club-plata">
               <input
                 type="checkbox"
                 checked={aceptaCondiciones}
                 onChange={(e) => setAceptaCondiciones(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-club-rojo"
+                className="h-4 w-4 shrink-0 accent-club-rojo"
               />
               Acepto las condiciones de uso de la pizarra táctica del club.
             </label>
@@ -195,7 +195,7 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
               {enviando ? 'Creando cuenta…' : 'Crear cuenta'}
             </Boton>
 
-            <button type="button" onClick={onVolver} className="text-center text-xs text-club-plata/70 hover:text-white">
+            <button type="button" onClick={onVolver} className="min-h-[44px] text-center text-xs text-club-plata/70 hover:text-white">
               ← Ya tengo cuenta
             </button>
           </form>

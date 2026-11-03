@@ -55,7 +55,7 @@ describe('flujo: formación → asignación → arrastre → guardado → recarg
     const jugador = usePlantillaStore.getState().jugadores.find((j) => j.posicionNatural === 'DC')!;
 
     // 1. Elegir formación: no debe autocolocar jugadores.
-    useAlineacionStore.getState().seleccionarFormacion('4-3-3', 'vaciar');
+    useAlineacionStore.getState().seleccionarFormacion('4-3-3');
     expect(useAlineacionStore.getState().historial.presente.titulares).toHaveLength(0);
 
     // 2. Asignar jugador desde una zona.

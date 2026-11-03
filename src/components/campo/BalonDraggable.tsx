@@ -78,11 +78,14 @@ export function BalonDraggable({ balon, xPct, yPct, deshabilitado, deltaExterno,
     temporizadorRef.current = setTimeout(() => onMenuContextual(clientX, clientY), UMBRAL_PULSACION_LARGA_MS);
   }
 
+  // Suelto, el relleno lleva la zona táctil a 44 px sin cambiar el dibujo. En
+  // posesión no: taparía el centro de la ficha de su jugador y le quitaría los
+  // toques; se suelta con doble toque o desde su menú.
   return (
     <div
       ref={setNodeRef}
       style={estilo}
-      className="touch-none"
+      className={`touch-none ${balon.jugadorPoseedorId ? '' : 'p-[11px]'}`}
       {...attributes}
       {...listeners}
       onPointerDown={manejarPointerDown}

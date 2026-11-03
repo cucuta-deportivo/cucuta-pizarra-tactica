@@ -67,6 +67,19 @@ export interface JugadorEnCampo {
   x: number;
   y: number;
   zonaOrigenId?: string;
+  /**
+   * Se quedó sin zona al cambiar de formación (no había otra de su posición).
+   * Solo se marca a esos: quien entra desde el panel tampoco tiene zona, pero
+   * no está "fuera del esquema". Se pierde al asignarle una zona fantasma.
+   */
+  fueraDeEsquema?: boolean;
+  /**
+   * La zona que perdió al quedarse fuera (posición y coordenadas de su
+   * formación), para que en un cambio posterior vuelva a la de su misma
+   * posición si queda libre. Sin ella, ir y volver entre formaciones lo dejaba
+   * fuera para siempre y su zona reaparecía como fantasma bajo él.
+   */
+  zonaPerdida?: { posicion: Posicion; x: number; y: number };
   esCapitan: boolean;
   nota?: string;
   /** Hacia dónde mira, en grados. Opcional: sin ella no se dibuja indicador. */
@@ -134,7 +147,6 @@ export interface CuadriculaCampo {
   opacidad: number;
   estiloLinea: EstiloLineaCuadricula;
   mostrarEtiquetas: boolean;
-  imantar: boolean;
   celdasPintadas: Record<string, ColorCelda>;
 }
 
@@ -303,5 +315,3 @@ export type Orientacion = 'vertical' | 'horizontal';
 export type EstadoGuardado = 'guardado' | 'guardando' | 'pendiente' | 'error';
 
 export type Herramienta = 'seleccion' | 'libre' | 'flecha' | 'discontinua' | 'zona' | 'texto' | 'borrador';
-
-export type EstrategiaCambioFormacion = 'reubicar' | 'vaciar' | 'cancelar';

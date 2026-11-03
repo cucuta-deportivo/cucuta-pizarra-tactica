@@ -81,19 +81,19 @@ export function PantallaAcceso({ onIrARegistro }: PantallaAccesoProps) {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 pr-16 text-sm text-white outline-none focus:border-club-rojo"
+                  className="h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 pr-20 text-sm text-white outline-none focus:border-club-rojo"
                 />
                 <button
                   type="button"
                   onClick={() => setMostrarPassword((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-[11px] font-semibold uppercase text-club-plata/70 hover:text-white"
+                  className="absolute right-0 top-1/2 flex h-11 min-w-[44px] -translate-y-1/2 items-center justify-center rounded-lg px-3 text-[11px] font-semibold uppercase text-club-plata/70 hover:text-white"
                 >
                   {mostrarPassword ? 'Ocultar' : 'Mostrar'}
                 </button>
               </div>
             </label>
 
-            <label className="flex items-center gap-2 text-xs text-club-plata">
+            <label className="flex min-h-[44px] items-center gap-2 text-xs text-club-plata">
               <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} className="h-4 w-4 accent-club-rojo" />
               Recordar este dispositivo
             </label>
@@ -105,10 +105,10 @@ export function PantallaAcceso({ onIrARegistro }: PantallaAccesoProps) {
             </Boton>
 
             <div className="mt-1 flex items-center justify-between text-xs">
-              <button type="button" onClick={() => setModo('recuperar')} className="text-club-plata/70 hover:text-white">
+              <button type="button" onClick={() => setModo('recuperar')} className="-ml-2 inline-flex min-h-[44px] items-center px-2 text-club-plata/70 hover:text-white">
                 He olvidado mi contraseña
               </button>
-              <button type="button" onClick={onIrARegistro} className="font-semibold text-club-rojo hover:text-white">
+              <button type="button" onClick={onIrARegistro} className="-mr-2 inline-flex min-h-[44px] items-center px-2 font-semibold text-club-rojo hover:text-white">
                 Crear cuenta
               </button>
             </div>
@@ -143,7 +143,7 @@ export function PantallaAcceso({ onIrARegistro }: PantallaAccesoProps) {
                 setModo('login');
                 setEnlaceEnviado(false);
               }}
-              className="text-xs text-club-plata/70 hover:text-white"
+              className="min-h-[44px] text-xs text-club-plata/70 hover:text-white"
             >
               ← Volver a iniciar sesión
             </button>

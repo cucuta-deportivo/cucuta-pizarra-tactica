@@ -137,19 +137,6 @@ export function ModalZonas({ abierto, onCerrar }: ModalZonasProps) {
           />
         </label>
 
-        <label className="flex items-center justify-between text-sm text-club-plata">
-          Imantar jugadores a la cuadrícula
-          <input
-            type="checkbox"
-            checked={cuadricula.imantar}
-            onChange={(e) => actualizarCuadricula({ imantar: e.target.checked })}
-            className="h-4 w-4 accent-club-rojo"
-          />
-        </label>
-        <p className="-mt-2 text-[11px] text-club-plata/50">
-          Desactivada por defecto: el arrastre libre (F4) es la regla; actívala solo si quieres ayuda visual puntual.
-        </p>
-
         <Boton
           variante="secundario"
           onClick={() => {

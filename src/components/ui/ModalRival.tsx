@@ -3,6 +3,7 @@ import { Boton } from './Boton';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { FORMACIONES } from '../../data/formaciones';
 import { ETIQUETAS_PALETA_RIVAL, PALETA_RIVAL } from '../../utils/constantes';
+import { hayJugadoresEnCampoRival, seVenAmbosEquipos } from '../../utils/anexoA';
 import type { ModoVistaEquipos, PaletaRival } from '../../types';
 
 interface ModalRivalProps {
@@ -22,6 +23,8 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
   const desactivarRival = useAlineacionStore((s) => s.desactivarRival);
   const actualizarRival = useAlineacionStore((s) => s.actualizarRival);
   const seleccionarFormacionRival = useAlineacionStore((s) => s.seleccionarFormacionRival);
+  const titulares = useAlineacionStore((s) => s.historial.presente.titulares);
+  const acomodarEnMiMitad = useAlineacionStore((s) => s.acomodarEnMiMitad);
 
   if (!rival) {
     return (
@@ -111,7 +114,7 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
                 type="button"
                 onClick={() => actualizarRival({ modoVista: m.valor })}
                 aria-pressed={rival.modoVista === m.valor}
-                className={`min-h-[36px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
+                className={`min-h-[44px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
                   rival.modoVista === m.valor ? 'bg-club-rojo text-white' : 'bg-white/5 text-club-plata hover:bg-white/10'
                 }`}
               >
@@ -120,6 +123,19 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
             ))}
           </div>
         </div>
+
+        {/* Recolocar a los nuestros nunca es automático (paso 7b): se ofrece aquí mientras haga falta. */}
+        {seVenAmbosEquipos(rival) && hayJugadoresEnCampoRival(titulares) && (
+          <Boton
+            variante="secundario"
+            onClick={() => {
+              acomodarEnMiMitad();
+              onCerrar();
+            }}
+          >
+            Acomodar mi equipo en mi mitad
+          </Boton>
+        )}
 
         <Boton
           variante="peligro"

@@ -1,9 +1,30 @@
 import { COLOR, GROSOR, OPACIDAD, SOMBRA_FICHA_OFFSET_PX } from '../tokens';
-import type { Alineacion, Formacion, Jugador, JugadorEnCampo, Orientacion } from '../types';
+import type { Alineacion, Balon, Formacion, Jugador, JugadorEnCampo, JugadorRival, ObjetoCampo, Orientacion, PaletaRival } from '../types';
+import { posicionEfectivaBalon } from './balon';
+import { COLORES_OBJETO, DIAMETRO_BALON_PX, PALETA_RIVAL } from './constantes';
 import { porcentajeAPixeles } from './coordenadas';
 
 const ESCALA_EXPORTACION = 2;
 const ALTO_ENCABEZADO = 56;
+/**
+ * La ficha propia sale con radio 20 en el PNG y mide 32 en pantalla ('md').
+ * Objetos, rivales y balón se reducen en la misma proporción para que
+ * conserven el tamaño relativo que tienen en pantalla.
+ */
+const ESCALA_FICHAS = 20 / 32;
+/** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
+const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
+const PESOS_FUENTE = ['500', '600', '700', '800'];
+
+/**
+ * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
+ * pantalla, el texto saldría en la fuente de respaldo. Se piden todos antes de
+ * dibujar; si no hay red, la exportación sigue con el respaldo.
+ */
+async function cargarFuentes(): Promise<void> {
+  if (!document.fonts) return;
+  await Promise.all(PESOS_FUENTE.map((peso) => document.fonts.load(`${peso} 16px "Barlow Condensed"`))).catch(() => undefined);
+}
 
 export interface DatosExportacion {
   alineacion: Alineacion;
@@ -17,6 +38,45 @@ export interface DatosExportacion {
   nombreClub?: string;
   /** Dibujar la foto de cada jugador en su ficha. Por defecto, no. */
   incluirFotos?: boolean;
+  /** Capas que el entrenador desmarcó en la ventana de exportar. Sin indicar, salen todas. */
+  incluir?: Partial<Record<CapaOpcional, boolean>>;
+}
+
+/** Lo que el entrenador puede quitar de la imagen. Solo afecta a PNG y PDF: el JSON lleva todo. */
+export type CapaOpcional = 'rival' | 'balon' | 'objetos' | 'dibujos';
+
+type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares'>;
+
+/** Misma visibilidad que en pantalla (Campo.tsx): qué equipos se ven según el modo del rival. */
+function equiposVisibles(rival: Alineacion['rival']): { rival: boolean; propio: boolean } {
+  return {
+    rival: Boolean(rival?.visible) && rival?.modoVista !== 'solo_nosotros',
+    propio: rival?.modoVista !== 'solo_rival',
+  };
+}
+
+/** Las capas que saldrían en la imagen: la ventana de exportar solo ofrece casilla para estas. */
+export function capasEnCampo(contenido: ContenidoCampo): Record<CapaOpcional, boolean> {
+  return {
+    rival: equiposVisibles(contenido.rival).rival && (contenido.rival?.jugadores.length ?? 0) > 0,
+    balon: contenido.balones.length > 0,
+    objetos: contenido.objetos.length > 0,
+    dibujos: contenido.trazos.length > 0,
+  };
+}
+
+/** Qué se dibuja en la imagen: lo visible en pantalla menos las capas desmarcadas. */
+export function elementosAExportar(contenido: ContenidoCampo, incluir: Partial<Record<CapaOpcional, boolean>> = {}) {
+  const con = (capa: CapaOpcional) => incluir[capa] !== false;
+  const visibles = equiposVisibles(contenido.rival);
+  return {
+    objetos: con('objetos') ? contenido.objetos : [],
+    balonesSueltos: con('balon') ? contenido.balones.filter((b) => !b.jugadorPoseedorId) : [],
+    rivales: con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [],
+    titulares: visibles.propio ? contenido.titulares : [],
+    balonesEnPosesion: con('balon') ? contenido.balones.filter((b) => b.jugadorPoseedorId) : [],
+    dibujos: con('dibujos'),
+  };
 }
 
 /**
@@ -121,31 +181,196 @@ function dibujarJugadorEnLienzo(
       ctx.strokeStyle = COLOR.campo.linea;
       ctx.stroke();
       ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = '700 11px Arial';
+      ctx.font = `700 11px ${FUENTE}`;
       ctx.fillText(String(jugador.dorsal), bx, by);
     } else {
       ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = '700 15px Arial';
+      ctx.font = `700 15px ${FUENTE}`;
       ctx.fillText(String(jugador.dorsal), cx, cy);
     }
   }
   ctx.fillStyle = COLOR.campo.linea;
 
   // Apellido sobre el césped, sin recuadro.
-  ctx.font = '600 11px Arial';
+  ctx.font = `600 11px ${FUENTE}`;
   ctx.fillText(jugador.apellido.toUpperCase(), cx, cy + radio + 10);
 
   // Y debajo, las posiciones en el color de etiqueta secundaria.
   const posiciones = [jugador.posicionNatural, jugador.posicionesSecundarias[0]].filter(Boolean).join(' · ');
   if (posiciones) {
     ctx.fillStyle = COLOR.campo.etiquetaSecundaria;
-    ctx.font = '600 9px Arial';
+    ctx.font = `600 9px ${FUENTE}`;
     ctx.fillText(posiciones, cx, cy + radio + 21);
   }
 }
 
+/** Equivale al `drop-shadow` de los SVG en pantalla. Las sombras del lienzo no siguen su escala, por eso se multiplican. */
+function conSombra(ctx: CanvasRenderingContext2D, desplazamiento: number, desenfoque: number, opacidad: number, dibujar: () => void): void {
+  ctx.save();
+  ctx.shadowColor = `rgba(0,0,0,${opacidad})`;
+  ctx.shadowOffsetY = desplazamiento * ESCALA_EXPORTACION;
+  ctx.shadowBlur = desenfoque * ESCALA_EXPORTACION;
+  dibujar();
+  ctx.restore();
+}
+
+/**
+ * Espejo en canvas de `IconoObjeto`: mismas figuras en su caja de 32×32,
+ * centradas en el punto del objeto y giradas como en pantalla.
+ */
+function dibujarObjetoEnLienzo(ctx: CanvasRenderingContext2D, objeto: ObjetoCampo, cx: number, cy: number): void {
+  const color = COLORES_OBJETO[objeto.color];
+  const trazo = '#00000066';
+  const lado = 28 * ESCALA_FICHAS;
+  const rellenar = (figura: Path2D) => {
+    ctx.fillStyle = color;
+    ctx.fill(figura);
+    ctx.strokeStyle = trazo;
+    ctx.lineWidth = 1;
+    ctx.stroke(figura);
+  };
+  const trazar = (figura: Path2D, grosor: number) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = grosor;
+    ctx.stroke(figura);
+  };
+  const elipse = (x: number, y: number, rx: number, ry: number) => {
+    const figura = new Path2D();
+    figura.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    return figura;
+  };
+
+  conSombra(ctx, 2, 3, 0.5, () => {
+    ctx.translate(cx, cy);
+    ctx.rotate((objeto.rotacion * Math.PI) / 180);
+    ctx.scale(lado / 32, lado / 32);
+    ctx.translate(-16, -16);
+    switch (objeto.tipo) {
+      case 'cono':
+        rellenar(new Path2D('M16 4 L26 28 L6 28 Z'));
+        break;
+      case 'cono_plano':
+        rellenar(elipse(16, 18, 12, 6));
+        break;
+      case 'pica':
+        rellenar(elipse(16, 28, 7, 2.5));
+        rellenar(new Path2D('M14.5 3 H17.5 V28 H14.5 Z'));
+        break;
+      case 'escalera':
+        trazar(new Path2D('M4 6 H28 V26 H4 Z M4 12 H28 M4 18 H28 M4 24 H28'), 2.5);
+        break;
+      case 'mini_porteria':
+        trazar(new Path2D('M4 28 V6 H28 V28'), 2.5);
+        ctx.globalAlpha = 0.6;
+        trazar(new Path2D('M6 8 L11 12 M12 8 L17 12 M18 8 L23 12 M24 8 L26 10'), 1);
+        break;
+      case 'aro':
+        trazar(elipse(16, 16, 12, 12), 4);
+        break;
+      case 'maniqui':
+        rellenar(elipse(16, 7, 5, 5));
+        rellenar(new Path2D('M8 30 L10 14 Q16 10 22 14 L24 30 Z'));
+        break;
+    }
+  });
+}
+
+/** Rectángulo de esquinas redondas por completo, con arcos: `roundRect` no existe en Safari antiguo. */
+function trazarPastilla(ctx: CanvasRenderingContext2D, cx: number, cy: number, ancho: number, alto: number): void {
+  const r = alto / 2;
+  ctx.beginPath();
+  ctx.arc(cx - ancho / 2 + r, cy, r, Math.PI / 2, (Math.PI * 3) / 2);
+  ctx.arc(cx + ancho / 2 - r, cy, r, (Math.PI * 3) / 2, Math.PI / 2);
+  ctx.closePath();
+}
+
+/** Espejo en canvas de `TarjetaRivalDraggable`: dorsal en la ficha, posición en una pastilla y apellido debajo. */
+function dibujarRivalEnLienzo(
+  ctx: CanvasRenderingContext2D,
+  jugador: JugadorRival,
+  paleta: PaletaRival,
+  cx: number,
+  cy: number,
+  atenuado: boolean,
+): void {
+  const colores = PALETA_RIVAL[paleta];
+  const radio = 27 * ESCALA_FICHAS;
+
+  ctx.save();
+  ctx.globalAlpha = atenuado ? 0.7 : 1;
+
+  ctx.beginPath();
+  ctx.arc(cx + SOMBRA_FICHA_OFFSET_PX, cy + SOMBRA_FICHA_OFFSET_PX, radio, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR.sombra;
+  ctx.globalAlpha *= OPACIDAD.sombraFicha;
+  ctx.fill();
+  ctx.globalAlpha = atenuado ? 0.7 : 1;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+  ctx.fillStyle = colores.principal;
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = colores.texto;
+  ctx.font = `800 12px ${FUENTE}`;
+  ctx.fillText(String(jugador.dorsal), cx, cy);
+
+  ctx.font = `600 7px ${FUENTE}`;
+  const anchoPastilla = ctx.measureText(jugador.posicion).width + 8;
+  trazarPastilla(ctx, cx, cy + radio, anchoPastilla, 10);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(jugador.posicion, cx, cy + radio + 0.5);
+
+  if (jugador.apellido) {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = `600 9px ${FUENTE}`;
+    ctx.fillText(jugador.apellido.toUpperCase(), cx, cy + radio + 13);
+  }
+  ctx.restore();
+}
+
+/**
+ * Espejo en canvas de `BalonDraggable`. Su caja de 24×32 se centra en el punto
+ * del balón, así que la esfera (centro en 12,12) queda un poco por encima.
+ */
+function dibujarBalonEnLienzo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const escala = (DIAMETRO_BALON_PX * ESCALA_FICHAS) / 24;
+  conSombra(ctx, 2, 2, 0.45, () => {
+    ctx.translate(cx, cy);
+    ctx.scale(escala, escala);
+    ctx.translate(-12, -16);
+
+    ctx.beginPath();
+    ctx.ellipse(12, 27, 7, 2.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(12, 12, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#F5F5F5';
+    ctx.fill();
+    ctx.lineWidth = 0.75;
+    ctx.strokeStyle = '#111111';
+    ctx.stroke();
+
+    ctx.fillStyle = '#111111';
+    ctx.fill(new Path2D('M12 6 L15 8.3 L14 11.8 L10 11.8 L9 8.3 Z'));
+    ctx.lineWidth = 0.6;
+    ctx.stroke(new Path2D('M12 6 L9.5 4 M12 6 L14.5 4 M10 11.8 L7 13 M14 11.8 L17 13 M9 8.3 L5.5 8'));
+  });
+}
+
 export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
-  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos } = datos;
+  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos, incluir } =
+    datos;
+  const elementos = elementosAExportar(alineacion, incluir);
 
   // Las fotos se cargan TODAS antes de empezar a dibujar: el lienzo es síncrono
   // y no se puede esperar a una imagen en mitad del trazado.
@@ -161,6 +386,7 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
     );
     for (const par of cargadas) if (par) fotos.set(par[0], par[1]);
   }
+  await cargarFuentes();
 
   const lienzo = document.createElement('canvas');
   lienzo.width = Math.round(anchoContenedor * ESCALA_EXPORTACION);
@@ -177,9 +403,9 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   ctx.fillStyle = COLOR.texto.principal;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = '700 20px Arial';
+  ctx.font = `700 20px ${FUENTE}`;
   ctx.fillText(alineacion.nombre || 'Alineación sin nombre', 16, ALTO_ENCABEZADO / 2 - 4);
-  ctx.font = '400 12px Arial';
+  ctx.font = `500 12px ${FUENTE}`;
   const fecha = new Date(alineacion.modificadaEn).toLocaleDateString('es-CO');
   ctx.fillText(
     `${nombreClub ?? 'Cúcuta Deportivo'} · ${formacion?.nombre ?? '—'}${formacion?.variante ? ' ' + formacion.variante : ''} · ${fecha}`,
@@ -190,17 +416,42 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   const imagenCampo = await svgAImagen(svgCampo);
   ctx.drawImage(imagenCampo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
 
-  if (canvasDibujo) {
+  if (canvasDibujo && elementos.dibujos) {
     ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
   }
 
-  for (const titular of alineacion.titulares) {
+  // Mismo orden de capas que en pantalla (Campo.tsx): objetos, balón suelto,
+  // rivales, nuestros y, encima, el balón en posesión.
+  const aLienzo = (x: number, y: number) => {
+    const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
+    return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
+  };
+  const dibujarBalon = (balon: Balon) => {
+    const { x, y } = posicionEfectivaBalon(balon, alineacion.titulares);
+    const { cx, cy } = aLienzo(x, y);
+    dibujarBalonEnLienzo(ctx, cx, cy);
+  };
+
+  for (const objeto of elementos.objetos) {
+    const { cx, cy } = aLienzo(objeto.x, objeto.y);
+    dibujarObjetoEnLienzo(ctx, objeto, cx, cy);
+  }
+  elementos.balonesSueltos.forEach(dibujarBalon);
+
+  for (const jugadorRival of elementos.rivales) {
+    const { cx, cy } = aLienzo(jugadorRival.x, jugadorRival.y);
+    const atenuado = alineacion.titulares.some((t) => Math.abs(t.x - jugadorRival.x) < 3 && Math.abs(t.y - jugadorRival.y) < 3);
+    dibujarRivalEnLienzo(ctx, jugadorRival, alineacion.rival!.paleta, cx, cy, atenuado);
+  }
+
+  for (const titular of elementos.titulares) {
     const jugador = obtenerJugador(titular.jugadorId);
     if (!jugador) continue;
     dibujarJugadorEnLienzo(
       ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion, fotos.get(titular.jugadorId),
     );
   }
+  elementos.balonesEnPosesion.forEach(dibujarBalon);
 
   return new Promise<Blob>((resolve, reject) => {
     lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');

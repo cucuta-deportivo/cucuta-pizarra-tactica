@@ -64,7 +64,7 @@ export function DrawerPlantilla() {
           <button
             onClick={cerrar}
             aria-label="Cerrar panel"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-club-plata hover:bg-white/10"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-club-plata hover:bg-white/10"
           >
             ✕
           </button>
@@ -80,7 +80,7 @@ export function DrawerPlantilla() {
             <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-club-plata">
               Banquillo · {banquillo.length}/{CAPACIDAD_BANQUILLO}
             </h3>
-            <Boton tamano="sm" variante="secundario" onClick={() => setSelectorAbierto(true)} disabled={banquillo.length >= CAPACIDAD_BANQUILLO}>
+            <Boton tamano="md" variante="secundario" onClick={() => setSelectorAbierto(true)} disabled={banquillo.length >= CAPACIDAD_BANQUILLO}>
               + Añadir
             </Boton>
           </div>
@@ -100,7 +100,7 @@ export function DrawerPlantilla() {
                     <button
                       onClick={() => quitarDeBanquillo(id)}
                       aria-label={`Quitar a ${jugador.apellido} del banquillo`}
-                      className="mt-1 text-[10px] font-medium text-club-plata/60 hover:text-club-rojo"
+                      className="mt-8 min-h-[44px] min-w-[44px] px-2 text-[10px] font-medium text-club-plata/60 hover:text-club-rojo"
                     >
                       Quitar
                     </button>

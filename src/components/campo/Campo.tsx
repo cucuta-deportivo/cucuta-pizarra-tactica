@@ -36,11 +36,18 @@ import { useReproduccionStore } from '../../store/reproduccionStore';
 import { useUiStore } from '../../store/uiStore';
 import { obtenerFormacion } from '../../data/formaciones';
 import type { ColorObjeto, Orientacion, Posicion, PuntoNormalizado, TipoObjeto, ZonaFormacion } from '../../types';
-import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS } from '../../utils/constantes';
+import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS, RADIO_ZONA_PX } from '../../utils/constantes';
 import { posicionEfectivaBalon } from '../../utils/balon';
 import { muestrearRuta, puntosDeControl, segmentoEnPunto, trayectoriaDe } from '../../utils/trayectorias';
 import { pixelesAPorcentaje, VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
-import { generarPuntosFila, generarPuntosRejilla, generarPuntosSlalom, ubicarZonaEnLado } from '../../utils/anexoA';
+import {
+  generarPuntosFila,
+  generarPuntosRejilla,
+  generarPuntosSlalom,
+  ubicarZonaEnLado,
+  zonaBajoPunto,
+  zonasSinJugador,
+} from '../../utils/anexoA';
 import { LineasCampo } from './LineasCampo';
 import { Zona } from './Zona';
 import { ZonaRival } from './ZonaRival';
@@ -400,9 +407,9 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
 
   const zonasVacias = useMemo(
     () =>
-      formacion?.zonas
-        .filter((z) => !documento.titulares.some((t) => t.zonaOrigenId === z.id))
-        .map((z) => ubicarZonaEnLado(z, { espejo: false, mediaCancha: enModoAmbos })) ?? [],
+      zonasSinJugador(formacion?.zonas ?? [], documento.titulares).map((z) =>
+        ubicarZonaEnLado(z, { espejo: false, mediaCancha: enModoAmbos }),
+      ),
     [formacion, documento.titulares, enModoAmbos],
   );
 
@@ -600,17 +607,6 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
       return pixelesAPorcentaje(finalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
     }
 
-    // "imantar" (FA3): con la cuadrícula activa y el imán encendido, el jugador
-    // queda en el centro de la celda más cercana; con el imán apagado (o sin
-    // cuadrícula) manda el arrastre libre, sin tocar el punto.
-    function snapACeldaSiCorresponde(punto: PuntoNormalizado): PuntoNormalizado {
-      const { preset, columnas, filas, imantar } = documento.cuadricula;
-      if (!imantar || preset === 'off' || columnas === 0 || filas === 0) return punto;
-      const col = Math.min(columnas - 1, Math.max(0, Math.floor((punto.x / 100) * columnas)));
-      const fila = Math.min(filas - 1, Math.max(0, Math.floor((punto.y / 100) * filas)));
-      return { x: ((col + 0.5) / columnas) * 100, y: ((fila + 0.5) / filas) * 100 };
-    }
-
     if (datos.tipoArrastre === 'objeto') {
       if (!dentroDelCampo) {
         const objetoEliminado = documento.objetos.find((o) => o.id === datos.objetoId);
@@ -709,10 +705,11 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
         };
       }
       const puntoFinalPx = { x: basePx.x + evento.delta.x, y: basePx.y + evento.delta.y };
-      const puntoCrudo = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
-      const punto = snapACeldaSiCorresponde(puntoCrudo);
-      if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y);
-      else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y);
+      const punto = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
+      // Soltado sobre una zona fantasma libre: la ocupa si es de su posición (lo decide el store).
+      const zonaSoltada = zonaBajoPunto(zonasVacias, puntoFinalPx, escala.aPixeles, RADIO_ZONA_PX)?.id;
+      if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y, zonaSoltada);
+      else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y, zonaSoltada);
     }
     // soltado fuera del campo: no-op, la tarjeta regresa por transición CSS
   }
@@ -877,6 +874,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
                     yPct={titular.y}
                     esCapitan={titular.esCapitan}
                     nota={titular.nota}
+                    fueraDeEsquema={titular.fueraDeEsquema}
                     tamano={enModoAmbos ? 'compacto' : 'md'}
                     esSlotDestino
                     deshabilitado={interaccionBloqueada}

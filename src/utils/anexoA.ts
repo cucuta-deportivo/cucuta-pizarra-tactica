@@ -1,4 +1,4 @@
-import type { ColorCelda, CuadriculaCampo, IdentidadCancha, PuntoNormalizado, ZonaFormacion } from '../types';
+import type { ColorCelda, CuadriculaCampo, EquipoRival, IdentidadCancha, JugadorEnCampo, PuntoNormalizado, ZonaFormacion } from '../types';
 import { OPACIDAD_CUADRICULA_DEFECTO } from './constantes';
 
 interface OpcionesLadoZona {
@@ -32,6 +32,49 @@ export function recortarAMitad(y: number, espejo: boolean): number {
   return espejo ? Math.max(y, 100 - LIMITE_MITAD) : Math.min(y, LIMITE_MITAD);
 }
 
+/** Con los dos equipos en pantalla a la vez, cada uno juega en su mitad (FA4). */
+export function seVenAmbosEquipos(rival: EquipoRival | null): boolean {
+  return Boolean(rival?.visible) && rival?.modoVista === 'ambos';
+}
+
+/** Solo se ve nuestro equipo: sin rival, rival oculto o modo "Solo nosotros". */
+export function seVeSoloNuestroEquipo(rival: EquipoRival | null): boolean {
+  return !seVenAmbosEquipos(rival) && rival?.modoVista !== 'solo_rival';
+}
+
+/** Zonas de la formación que ningún titular ocupa: son las que el campo dibuja como zonas fantasma. */
+export function zonasSinJugador(zonas: ZonaFormacion[], titulares: JugadorEnCampo[]): ZonaFormacion[] {
+  return zonas.filter((z) => !titulares.some((t) => t.zonaOrigenId === z.id));
+}
+
+/**
+ * La zona fantasma sobre la que se suelta algo: aquella cuyo círculo en
+ * pantalla contiene el punto (la más cercana si hay varias), o ninguna.
+ */
+export function zonaBajoPunto<Z extends ZonaFormacion>(
+  zonas: Z[],
+  puntoPx: { x: number; y: number },
+  aPixeles: (punto: PuntoNormalizado) => { x: number; y: number },
+  radioPx: number,
+): Z | undefined {
+  let mejor: { zona: Z; distancia: number } | undefined;
+  for (const zona of zonas) {
+    const centro = aPixeles({ x: zona.x, y: zona.y });
+    const distancia = Math.hypot(centro.x - puntoPx.x, centro.y - puntoPx.y);
+    if (distancia <= radioPx && (!mejor || distancia < mejor.distancia)) mejor = { zona, distancia };
+  }
+  return mejor?.zona;
+}
+
+/** Nuestra mitad va de nuestra portería (y=0) al mediocampo (y=50). */
+export function hayJugadoresEnCampoRival(titulares: JugadorEnCampo[]): boolean {
+  return titulares.some((t) => t.y > 50);
+}
+
+export function equipoEnSuMitad(titulares: JugadorEnCampo[]): boolean {
+  return titulares.length > 0 && !hayJugadoresEnCampoRival(titulares);
+}
+
 export function cuadriculaVacia(): CuadriculaCampo {
   return {
     preset: 'off',
@@ -40,7 +83,6 @@ export function cuadriculaVacia(): CuadriculaCampo {
     opacidad: OPACIDAD_CUADRICULA_DEFECTO,
     estiloLinea: 'solida',
     mostrarEtiquetas: false,
-    imantar: false,
     celdasPintadas: {},
   };
 }

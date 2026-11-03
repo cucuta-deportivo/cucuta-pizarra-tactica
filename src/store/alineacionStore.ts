@@ -55,6 +55,7 @@ import type {
   TipoDestinoRuta,
   TipoEasing,
   TipoInterpolacionRuta,
+  ZonaFormacion,
 } from '../types';
 
 export interface DocumentoTactico {
@@ -202,6 +203,13 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
  * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
  * nuestras zonas fantasma, en Campo).
  */
+/** La zona de la formación actual con ese id, si ningún titular la ocupa. */
+function zonaLibre(doc: DocumentoTactico, zonaId: string | undefined): ZonaFormacion | undefined {
+  if (!zonaId) return undefined;
+  const zona = obtenerFormacion(doc.formacionId)?.zonas.find((z) => z.id === zonaId);
+  return zona && !doc.titulares.some((t) => t.zonaOrigenId === zonaId) ? zona : undefined;
+}
+
 function recolocarPorModo(doc: DocumentoTactico): void {
   const enAmbos = Boolean(doc.rival?.visible) && doc.rival?.modoVista === 'ambos';
 
@@ -288,12 +296,13 @@ interface AlineacionState {
   agregarJugadorPersonalizado: (jugador: Jugador) => void;
   actualizarJugadorPersonalizado: (jugadorId: string, datos: Partial<Jugador>) => void;
   asignarJugador: (zonaId: string, x: number, y: number, jugadorId: string) => void;
-  moverJugador: (jugadorId: string, x: number, y: number) => void;
+  /** `zonaId`: zona fantasma sobre la que se soltó; solo la ocupa quien no tenía zona. */
+  moverJugador: (jugadorId: string, x: number, y: number, zonaId?: string) => void;
   intercambiarPosiciones: (jugadorIdA: string, jugadorIdB: string) => void;
   quitarDelCampo: (jugadorId: string) => void;
   enviarABanquillo: (jugadorId: string) => void;
   quitarDeBanquillo: (jugadorId: string) => void;
-  moverDesdeBanquilloACampo: (jugadorId: string, x: number, y: number) => void;
+  moverDesdeBanquilloACampo: (jugadorId: string, x: number, y: number, zonaId?: string) => void;
   sustituirEnCampo: (jugadorEnCampoId: string, jugadorDesdeBanquilloId: string) => void;
   toggleCapitan: (jugadorId: string) => void;
   actualizarNotaJugador: (jugadorId: string, nota: string) => void;
@@ -633,14 +642,25 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} asignado${zona ? ` (${zona.posicion})` : ''}`);
     },
 
-    moverJugador: (jugadorId, x, y) => {
+    // Soltar sobre una zona fantasma libre la ocupa sin mover al jugador del
+    // punto donde se soltó (no hay imantación). Solo para quien no tenía zona:
+    // uno que ya la tiene no cambia de zona por pasar por encima de otra.
+    moverJugador: (jugadorId, x, y, zonaId) => {
+      const presente = get().historial.presente;
+      const sinZona = !presente.titulares.find((t) => t.jugadorId === jugadorId)?.zonaOrigenId;
+      const zona = sinZona ? zonaLibre(presente, zonaId) : undefined;
       mutar((doc) => {
         const titular = doc.titulares.find((t) => t.jugadorId === jugadorId);
         if (titular) {
           titular.x = x;
           titular.y = y;
+          if (zona) {
+            titular.zonaOrigenId = zona.id;
+            delete titular.fueraDeEsquema;
+            delete titular.zonaPerdida;
+          }
         }
-      }, `${etiquetaJugador(jugadorId)} movido`);
+      }, zona ? `${etiquetaJugador(jugadorId)} asignado (${zona.posicion})` : `${etiquetaJugador(jugadorId)} movido`);
     },
 
     intercambiarPosiciones: (idA, idB) => {
@@ -678,12 +698,13 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} quitado del banquillo`);
     },
 
-    moverDesdeBanquilloACampo: (jugadorId, x, y) => {
+    moverDesdeBanquilloACampo: (jugadorId, x, y, zonaId) => {
+      const zona = zonaLibre(get().historial.presente, zonaId);
       mutar((doc) => {
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorId);
         doc.titulares = doc.titulares.filter((t) => t.jugadorId !== jugadorId);
-        doc.titulares.push({ jugadorId, x, y, esCapitan: false });
-      }, `${etiquetaJugador(jugadorId)} entra desde el banquillo`);
+        doc.titulares.push({ jugadorId, x, y, ...(zona ? { zonaOrigenId: zona.id } : {}), esCapitan: false });
+      }, `${etiquetaJugador(jugadorId)} entra desde el banquillo${zona ? ` (${zona.posicion})` : ''}`);
     },
 
     sustituirEnCampo: (jugadorEnCampoId, jugadorDesdeBanquilloId) => {

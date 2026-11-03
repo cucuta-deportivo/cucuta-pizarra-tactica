@@ -3,7 +3,7 @@ import { PLANTILLA_PRUEBA, sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { obtenerFormacion } from '../data/formaciones';
 import { generarId } from '../utils/id';
-import { canchaVacia, cuadriculaVacia, zonasSinJugador } from '../utils/anexoA';
+import { canchaVacia, cuadriculaVacia, zonaBajoPunto, zonasSinJugador } from '../utils/anexoA';
 import type { JugadorEnCampo } from '../types';
 
 /**
@@ -189,5 +189,75 @@ describe('cambio de formación de ida y vuelta', () => {
     expect(estado().titulares.find((t) => t.jugadorId === segundoMcd)!.fueraDeEsquema).toBe(true);
     cambiar('4-2-3-1'); // de vuelta, cada MCD recupera la suya
     expect(zonaDeCada()).toEqual(zonas);
+  });
+});
+
+/**
+ * Soltar a un jugador sin zona (entró desde el panel o está fuera del esquema)
+ * sobre una zona fantasma libre: la ocupa, de cualquier posición, y se queda
+ * exactamente donde se soltó. Quien ya tiene zona no cambia de zona.
+ */
+describe('soltar sobre una zona fantasma', () => {
+  const titularDe = (id: string) => estado().titulares.find((t) => t.jugadorId === id);
+  const fantasmas = () => zonasSinJugador(obtenerFormacion(estado().formacionId)!.zonas, estado().titulares).map((z) => z.id);
+
+  beforeEach(() => {
+    sembrarPlantilla();
+    // El ED (test-12) espera en el banquillo; su zona ED-10 está libre.
+    prepararDocumento('4-3-3', onceEn('4-3-3').filter((t) => t.jugadorId !== 'test-12'), ['test-12']);
+    comprobarReglas();
+  });
+
+  it('desde el panel: ocupa la zona, se queda donde se soltó y la zona deja de ser fantasma', () => {
+    store().moverDesdeBanquilloACampo('test-12', 81.3, 77.9, 'ED-10');
+    comprobarReglas();
+    expect(titularDe('test-12')).toMatchObject({ zonaOrigenId: 'ED-10', x: 81.3, y: 77.9 });
+    expect(fantasmas()).not.toContain('ED-10');
+
+    store().deshacer();
+    comprobarReglas();
+    expect(titularDe('test-12')).toBeUndefined();
+    expect(estado().banquillo).toContain('test-12');
+    expect(fantasmas()).toContain('ED-10');
+  });
+
+  it('fuera del esquema: ocupa una zona de otra posición y deja de estar fuera; deshacer lo devuelve', () => {
+    cambiar('4-4-2'); // el MCD (test-06) queda fuera
+    store().moverJugador('test-06', 15.2, 46.7, 'MI-5');
+    comprobarReglas();
+    expect(titularDe('test-06')).toMatchObject({ zonaOrigenId: 'MI-5', x: 15.2, y: 46.7 });
+    expect(titularDe('test-06')!.fueraDeEsquema).toBeUndefined();
+    expect(titularDe('test-06')!.zonaPerdida).toBeUndefined();
+
+    store().deshacer();
+    comprobarReglas();
+    expect(titularDe('test-06')).toMatchObject({ fueraDeEsquema: true, zonaPerdida: { posicion: 'MCD' } });
+    expect(fantasmas()).toContain('MI-5');
+  });
+
+  it('un jugador que ya tiene zona no cambia de zona al soltarlo sobre otra libre', () => {
+    cambiar('4-4-2'); // el DC (test-09) queda en DC-9 y DC-10 libre
+    store().moverJugador('test-09', 62, 80, 'DC-10');
+    comprobarReglas();
+    expect(titularDe('test-09')).toMatchObject({ zonaOrigenId: 'DC-9', x: 62, y: 80 });
+    expect(fantasmas()).toContain('DC-10');
+  });
+
+  it('no ocupa una zona que ya tiene jugador ni una que no es de la formación actual', () => {
+    store().moverDesdeBanquilloACampo('test-12', 50, 6, 'POR-0');
+    expect(titularDe('test-12')!.zonaOrigenId).toBeUndefined();
+    cambiar('4-4-2'); // el MCD queda fuera; MCD-5 no existe en 4-4-2
+    store().moverJugador('test-06', 50, 42, 'MCD-5');
+    comprobarReglas();
+    expect(titularDe('test-06')).toMatchObject({ fueraDeEsquema: true });
+    expect(titularDe('test-06')!.zonaOrigenId).toBeUndefined();
+  });
+
+  it('zonaBajoPunto: elige la zona cuyo círculo contiene el punto, la más cercana si hay varias', () => {
+    const zonas = obtenerFormacion('4-3-3')!.zonas; // MC-6 (30,52) y MC-7 (70,52)
+    const aPixeles = (p: { x: number; y: number }) => ({ x: p.x * 10, y: p.y * 10 });
+    expect(zonaBajoPunto(zonas, { x: 310, y: 530 }, aPixeles, 28)?.id).toBe('MC-6');
+    expect(zonaBajoPunto(zonas, { x: 330, y: 520 }, aPixeles, 28)?.id).toBe(undefined); // a 30 px: fuera del círculo
+    expect(zonaBajoPunto(zonas, { x: 500, y: 425 }, aPixeles, 28)?.id).toBe('MCD-5');
   });
 });

@@ -36,11 +36,18 @@ import { useReproduccionStore } from '../../store/reproduccionStore';
 import { useUiStore } from '../../store/uiStore';
 import { obtenerFormacion } from '../../data/formaciones';
 import type { ColorObjeto, Orientacion, Posicion, PuntoNormalizado, TipoObjeto, ZonaFormacion } from '../../types';
-import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS } from '../../utils/constantes';
+import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS, RADIO_ZONA_PX } from '../../utils/constantes';
 import { posicionEfectivaBalon } from '../../utils/balon';
 import { muestrearRuta, puntosDeControl, segmentoEnPunto, trayectoriaDe } from '../../utils/trayectorias';
 import { pixelesAPorcentaje, VENTANA_CAMPO_COMPLETO, type VentanaRecorte } from '../../utils/coordenadas';
-import { generarPuntosFila, generarPuntosRejilla, generarPuntosSlalom, ubicarZonaEnLado, zonasSinJugador } from '../../utils/anexoA';
+import {
+  generarPuntosFila,
+  generarPuntosRejilla,
+  generarPuntosSlalom,
+  ubicarZonaEnLado,
+  zonaBajoPunto,
+  zonasSinJugador,
+} from '../../utils/anexoA';
 import { LineasCampo } from './LineasCampo';
 import { Zona } from './Zona';
 import { ZonaRival } from './ZonaRival';
@@ -699,8 +706,10 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
       }
       const puntoFinalPx = { x: basePx.x + evento.delta.x, y: basePx.y + evento.delta.y };
       const punto = pixelesAPorcentaje(puntoFinalPx, { ancho: escala.ancho, alto: escala.alto }, orientacion, ventana);
-      if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y);
-      else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y);
+      // Soltado sobre una zona fantasma libre: la ocupa si no tenía zona (lo decide el store).
+      const zonaSoltada = zonaBajoPunto(zonasVacias, puntoFinalPx, escala.aPixeles, RADIO_ZONA_PX)?.id;
+      if (origen === 'campo') moverJugador(jugadorId, punto.x, punto.y, zonaSoltada);
+      else moverDesdeBanquilloACampo(jugadorId, punto.x, punto.y, zonaSoltada);
     }
     // soltado fuera del campo: no-op, la tarjeta regresa por transición CSS
   }

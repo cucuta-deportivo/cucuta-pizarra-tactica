@@ -3,7 +3,7 @@
 Lo que queda por hacer, en orden. Estados: **Pendiente**, **En curso**, **Hecho**.
 Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación de fotos, RLS solo para entrenadores activos, acceso con usuario sin exponer correos).
 
-## Fase 1 · Mejoras de la pizarra (rama `mejoras-pizarra`, un commit por paso, un solo PR)
+## Fase 1 · Mejoras de la pizarra (un commit por paso; pasos 5–10 en `mejoras-pizarra`, PR #3; pasos 11–15 en `calidad-pizarra`, un solo PR)
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 8b | En la ventana de exportar, casillas para elegir qué sale en PNG/PDF: rival, balón, objetos y dibujos (solo las de lo que hay en el campo, todas marcadas por defecto, 44 px; el JSON siempre lleva todo) | Hecho |
 | 9 | Zonas táctiles de al menos 44 px: panel de objetos, panel de plantilla, balón, los controles de las pantallas de acceso y registro, "Vista" del rival y "Orientación del campo" (solo CSS) | Hecho |
 | 10 | Tipografía condensada (Barlow Condensed) en la exportación, en lugar de Arial | Hecho |
-| 11 | ESLint como dependencia de desarrollo y script `npm run lint` | Pendiente |
+| 11 | ESLint como dependencia de desarrollo y script `npm run lint` (0 errores; quedan 7 advertencias por revisar) | Hecho |
 | 12 | Bundle: reducir la carga inicial (hoy 215 KB gzip, límite 250 KB) y corregir la cifra del README | Pendiente |
 | 13 | Comprimir el PDF exportado para que pese poco (pensado para WhatsApp) | Pendiente |
 | 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje | Pendiente |

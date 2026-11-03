@@ -84,9 +84,7 @@ describe('pila de deshacer/rehacer', () => {
   });
 
   it('reiniciarHistorial reemplaza el presente sin dejar rastro para deshacer', () => {
-    let historial = crearHistorial<Documento>({ contador: 0 }, 'Inicio');
-    historial = actualizarHistorial(historial, (d) => void (d.contador = 1), 'Paso 1');
-    historial = reiniciarHistorial<Documento>({ contador: 42 }, 'Cargada');
+    const historial = reiniciarHistorial<Documento>({ contador: 42 }, 'Cargada');
     expect(historial).toEqual({ pasado: [], presente: { contador: 42 }, etiquetaPresente: 'Cargada', futuro: [] });
   });
 

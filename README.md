@@ -32,6 +32,7 @@ Abre la URL que imprime Vite (por defecto `http://localhost:5173`). Prueba espec
 
 ```bash
 npm run typecheck   # cero errores de TypeScript, obligatorio
+npm run lint        # ESLint: cero errores; las advertencias se revisan aparte
 npm run test        # Vitest: conversiones de coordenadas, pila de deshacer/rehacer,
                      # y el flujo completo formación → asignación → arrastre → guardado → recarga
 ```

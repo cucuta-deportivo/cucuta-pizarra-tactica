@@ -7,6 +7,12 @@ import { porcentajeAPixeles } from './coordenadas';
 const ESCALA_EXPORTACION = 2;
 const ALTO_ENCABEZADO = 56;
 /**
+ * El PDF lleva la imagen en JPEG: un PNG lo guarda jsPDF descomprimido (unos
+ * 11 MB por página) y el JPEG va tal cual (unos 150 KB, para WhatsApp). A esta
+ * calidad no se distingue del PNG ni en los textos ni en las líneas.
+ */
+const CALIDAD_JPEG_PDF = 0.92;
+/**
  * La ficha propia sale con radio 20 en el PNG y mide 32 en pantalla ('md').
  * Objetos, rivales y balón se reducen en la misma proporción para que
  * conserven el tamaño relativo que tienen en pantalla.
@@ -367,7 +373,7 @@ function dibujarBalonEnLienzo(ctx: CanvasRenderingContext2D, cx: number, cy: num
   });
 }
 
-export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
+async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement> {
   const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos, incluir } =
     datos;
   const elementos = elementosAExportar(alineacion, incluir);
@@ -453,17 +459,13 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   }
   elementos.balonesEnPosesion.forEach(dibujarBalon);
 
-  return new Promise<Blob>((resolve, reject) => {
-    lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');
-  });
+  return lienzo;
 }
 
-function blobADataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const lector = new FileReader();
-    lector.onload = () => resolve(lector.result as string);
-    lector.onerror = () => reject(new Error('No se pudo leer la imagen generada.'));
-    lector.readAsDataURL(blob);
+export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
+  const lienzo = await dibujarCampo(datos);
+  return new Promise<Blob>((resolve, reject) => {
+    lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');
   });
 }
 
@@ -479,8 +481,8 @@ export function descargarBlob(blob: Blob, nombreArchivo: string): void {
 }
 
 export async function exportarCampoAPdf(datos: DatosExportacion): Promise<void> {
-  const [{ default: jsPDF }, blobPng] = await Promise.all([import('jspdf'), exportarCampoAPng(datos)]);
-  const urlDatos = await blobADataUrl(blobPng);
+  const [{ default: jsPDF }, lienzo] = await Promise.all([import('jspdf'), dibujarCampo(datos)]);
+  const urlDatos = lienzo.toDataURL('image/jpeg', CALIDAD_JPEG_PDF);
   const anchoTotal = datos.anchoContenedor;
   const altoTotal = datos.altoContenedor + ALTO_ENCABEZADO;
   const documento = new jsPDF({
@@ -499,7 +501,7 @@ export async function exportarCampoAPdf(datos: DatosExportacion): Promise<void> 
     altoImagen = altoDisponible;
     anchoImagen = altoImagen / relacion;
   }
-  documento.addImage(urlDatos, 'PNG', margen, margen, anchoImagen, altoImagen);
+  documento.addImage(urlDatos, 'JPEG', margen, margen, anchoImagen, altoImagen);
   documento.save(`${datos.alineacion.nombre || 'alineacion'}.pdf`);
 }
 

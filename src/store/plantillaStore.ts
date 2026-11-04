@@ -211,9 +211,9 @@ function mensajeDe(fallo: unknown): string {
 }
 
 /**
- * Renueva los enlaces firmados que estén a punto de caducar. Lo llaman la
- * renovación automática de abajo y la pantalla de plantilla; así una sesión
- * larga no acaba mostrando fotos rotas.
+ * Renueva los enlaces firmados que estén a punto de caducar. Lo llama la
+ * renovación automática de abajo; así una sesión larga no acaba mostrando
+ * fotos rotas.
  */
 export async function renovarEnlacesCaducados(): Promise<void> {
   const { jugadores, enlaces } = usePlantillaStore.getState();

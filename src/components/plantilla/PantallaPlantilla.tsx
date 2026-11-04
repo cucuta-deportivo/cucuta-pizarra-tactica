@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Boton } from '../ui/Boton';
 import { FormularioJugador } from './FormularioJugador';
-import { renovarEnlacesCaducados, usePlantillaStore } from '../../store/plantillaStore';
+import { usePlantillaStore } from '../../store/plantillaStore';
 import type { Jugador } from '../../types';
 import { COLOR } from '../../tokens';
-
-/** Cada cuánto se comprueba si algún enlace firmado está a punto de caducar. */
-const INTERVALO_RENOVACION_MS = 5 * 60 * 1000;
 
 function TarjetaJugadorPlantilla({
   jugador,
@@ -112,14 +109,6 @@ export function PantallaPlantilla({ abierto, onCerrar }: PantallaPlantillaProps)
   useEffect(() => {
     if (abierto && categorias.length === 0) void inicializar();
   }, [abierto, categorias.length, inicializar]);
-
-  // Los enlaces del bucket caducan; en una sesión larga hay que renovarlos o
-  // las fotos empezarían a fallar sin motivo aparente.
-  useEffect(() => {
-    if (!abierto) return;
-    const id = window.setInterval(() => void renovarEnlacesCaducados(), INTERVALO_RENOVACION_MS);
-    return () => window.clearInterval(id);
-  }, [abierto]);
 
   return (
     <>

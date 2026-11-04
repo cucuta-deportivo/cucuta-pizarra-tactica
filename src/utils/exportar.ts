@@ -22,6 +22,8 @@ const ESCALA_FICHAS = 20 / 32;
 /** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
 const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const PESOS_FUENTE = ['500', '600', '700', '800'];
+/** El `bg-amber-400` de la insignia de capitán en `TarjetaJugador`. */
+const AMBAR_CAPITAN = '#FBBF24';
 
 /**
  * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
@@ -202,6 +204,21 @@ function dibujarJugadorEnLienzo(
     ctx.fillStyle = COLOR.campo.linea;
     ctx.font = `700 11px ${FUENTE}`;
     ctx.fillText(String(jugador.dorsal), bx, by);
+  }
+  // La insignia de capitán, en su chapa arriba a la derecha, como en pantalla.
+  if (titular.esCapitan) {
+    const bx = cx + radio * 0.78;
+    const by = cy - radio * 0.78;
+    ctx.beginPath();
+    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.fillStyle = AMBAR_CAPITAN;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.stroke();
+    ctx.fillStyle = COLOR.superficie.fondo;
+    ctx.font = `800 10px ${FUENTE}`;
+    ctx.fillText('C', bx, by);
   }
   ctx.fillStyle = COLOR.campo.linea;
 

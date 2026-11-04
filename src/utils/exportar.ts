@@ -461,12 +461,9 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
   const imagenCampo = await svgAImagen(svgCampo);
   ctx.drawImage(imagenCampo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
 
-  if (canvasDibujo && elementos.dibujos) {
-    ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
-  }
-
-  // Mismo orden de capas que en pantalla (Campo.tsx): objetos, balón suelto,
-  // marcajes, rivales, nuestros y, encima, el balón en posesión.
+  // Mismo orden de capas que en pantalla, que lo marca el z-index de Campo.tsx:
+  // marcajes y dibujos (sin z-index, los dibujos después), objetos (5), balón
+  // suelto (6), rivales (8), nuestros (10) y el balón en posesión (11).
   const aLienzo = (x: number, y: number) => {
     const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
     return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
@@ -477,15 +474,19 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
     dibujarBalonEnLienzo(ctx, cx, cy);
   };
 
+  for (const { propio, rival } of elementos.marcajes) {
+    dibujarMarcajeEnLienzo(ctx, aLienzo(propio.x, propio.y), aLienzo(rival.x, rival.y));
+  }
+
+  if (canvasDibujo && elementos.dibujos) {
+    ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
+  }
+
   for (const objeto of elementos.objetos) {
     const { cx, cy } = aLienzo(objeto.x, objeto.y);
     dibujarObjetoEnLienzo(ctx, objeto, cx, cy);
   }
   elementos.balonesSueltos.forEach(dibujarBalon);
-
-  for (const { propio, rival } of elementos.marcajes) {
-    dibujarMarcajeEnLienzo(ctx, aLienzo(propio.x, propio.y), aLienzo(rival.x, rival.y));
-  }
 
   for (const jugadorRival of elementos.rivales) {
     const { cx, cy } = aLienzo(jugadorRival.x, jugadorRival.y);

@@ -49,7 +49,6 @@ export function SelectorJugador({
       setBusqueda('');
       setVerTodos(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, posicionSugerida]);
 
   const visibles = useMemo(() => {

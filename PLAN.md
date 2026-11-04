@@ -18,7 +18,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 11 | ESLint como dependencia de desarrollo y script `npm run lint` (0 errores; quedan 7 advertencias por revisar) | Hecho |
 | 12 | Bundle: reducir la carga inicial (218 → 204 KB gzip, límite 250 KB: las ventanas secundarias van en trozos aparte) y corregir la cifra del README | Hecho |
 | 13 | Comprimir el PDF exportado para que pese poco (pensado para WhatsApp): de 11,3 MB a unos 150 KB, la imagen va en JPEG | Hecho |
-| 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje | Pendiente |
+| 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje (solo las que tienen sus dos jugadores en la imagen) | Hecho |
 | 15 | Menor: quitar el temporizador sobrante de `PantallaPlantilla.tsx` (la renovación de enlaces ya la hace `plantillaStore` cada 30 s) | Pendiente |
 
 ## Fase 2 · Sincronización con Supabase

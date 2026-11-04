@@ -3,6 +3,7 @@ import type { Alineacion, Balon, Formacion, Jugador, JugadorEnCampo, JugadorRiva
 import { posicionEfectivaBalon } from './balon';
 import { COLORES_OBJETO, DIAMETRO_BALON_PX, PALETA_RIVAL } from './constantes';
 import { porcentajeAPixeles } from './coordenadas';
+import { obtenerIniciales } from './jugador';
 
 const ESCALA_EXPORTACION = 2;
 const ALTO_ENCABEZADO = 56;
@@ -51,7 +52,7 @@ export interface DatosExportacion {
 /** Lo que el entrenador puede quitar de la imagen. Solo afecta a PNG y PDF: el JSON lleva todo. */
 export type CapaOpcional = 'rival' | 'balon' | 'objetos' | 'dibujos';
 
-type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares'>;
+type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares' | 'marcajes'>;
 
 /** Misma visibilidad que en pantalla (Campo.tsx): qué equipos se ven según el modo del rival. */
 function equiposVisibles(rival: Alineacion['rival']): { rival: boolean; propio: boolean } {
@@ -75,13 +76,21 @@ export function capasEnCampo(contenido: ContenidoCampo): Record<CapaOpcional, bo
 export function elementosAExportar(contenido: ContenidoCampo, incluir: Partial<Record<CapaOpcional, boolean>> = {}) {
   const con = (capa: CapaOpcional) => incluir[capa] !== false;
   const visibles = equiposVisibles(contenido.rival);
+  const rivales = con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [];
+  const titulares = visibles.propio ? contenido.titulares : [];
   return {
     objetos: con('objetos') ? contenido.objetos : [],
     balonesSueltos: con('balon') ? contenido.balones.filter((b) => !b.jugadorPoseedorId) : [],
-    rivales: con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [],
-    titulares: visibles.propio ? contenido.titulares : [],
+    rivales,
+    titulares,
     balonesEnPosesion: con('balon') ? contenido.balones.filter((b) => b.jugadorPoseedorId) : [],
     dibujos: con('dibujos'),
+    // Las líneas de CapaMarcajes, pero solo las que tienen sus dos jugadores en la imagen.
+    marcajes: contenido.marcajes.flatMap((marcaje) => {
+      const propio = titulares.find((t) => t.jugadorId === marcaje.jugadorPropioId);
+      const rival = rivales.find((r) => r.id === marcaje.jugadorRivalId);
+      return propio && rival ? [{ propio, rival }] : [];
+    }),
   };
 }
 
@@ -173,27 +182,26 @@ function dibujarJugadorEnLienzo(
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Sin foto, las iniciales en el centro, con la misma proporción que en pantalla.
+  if (!foto) {
+    ctx.fillStyle = COLOR.campo.linea;
+    ctx.font = `800 ${radio * 2 * 0.32}px ${FUENTE}`;
+    ctx.fillText(obtenerIniciales(jugador), cx, cy);
+  }
+  // El dorsal, con o sin foto, en su chapa arriba a la izquierda, como en pantalla.
   if (jugador.dorsal != null) {
-    if (foto) {
-      // Con foto, el dorsal va en una chapa arriba a la izquierda, como en
-      // pantalla: encima de la cara no se leería.
-      const bx = cx - radio * 0.78;
-      const by = cy - radio * 0.78;
-      ctx.beginPath();
-      ctx.arc(bx, by, 9, 0, Math.PI * 2);
-      ctx.fillStyle = COLOR.superficie.fondo;
-      ctx.fill();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = COLOR.campo.linea;
-      ctx.stroke();
-      ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = `700 11px ${FUENTE}`;
-      ctx.fillText(String(jugador.dorsal), bx, by);
-    } else {
-      ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = `700 15px ${FUENTE}`;
-      ctx.fillText(String(jugador.dorsal), cx, cy);
-    }
+    const bx = cx - radio * 0.78;
+    const by = cy - radio * 0.78;
+    ctx.beginPath();
+    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.fillStyle = COLOR.superficie.fondo;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = COLOR.campo.linea;
+    ctx.stroke();
+    ctx.fillStyle = COLOR.campo.linea;
+    ctx.font = `700 11px ${FUENTE}`;
+    ctx.fillText(String(jugador.dorsal), bx, by);
   }
   ctx.fillStyle = COLOR.campo.linea;
 
@@ -208,6 +216,20 @@ function dibujarJugadorEnLienzo(
     ctx.font = `600 9px ${FUENTE}`;
     ctx.fillText(posiciones, cx, cy + radio + 21);
   }
+}
+
+/** La línea de `CapaMarcajes`: de centro a centro, roja y discontinua. */
+function dibujarMarcajeEnLienzo(ctx: CanvasRenderingContext2D, desde: { cx: number; cy: number }, hasta: { cx: number; cy: number }): void {
+  ctx.save();
+  ctx.strokeStyle = COLOR.marca.rojo;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.moveTo(desde.cx, desde.cy);
+  ctx.lineTo(hasta.cx, hasta.cy);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** Equivale al `drop-shadow` de los SVG en pantalla. Las sombras del lienzo no siguen su escala, por eso se multiplican. */
@@ -427,7 +449,7 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
   }
 
   // Mismo orden de capas que en pantalla (Campo.tsx): objetos, balón suelto,
-  // rivales, nuestros y, encima, el balón en posesión.
+  // marcajes, rivales, nuestros y, encima, el balón en posesión.
   const aLienzo = (x: number, y: number) => {
     const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
     return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
@@ -443,6 +465,10 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
     dibujarObjetoEnLienzo(ctx, objeto, cx, cy);
   }
   elementos.balonesSueltos.forEach(dibujarBalon);
+
+  for (const { propio, rival } of elementos.marcajes) {
+    dibujarMarcajeEnLienzo(ctx, aLienzo(propio.x, propio.y), aLienzo(rival.x, rival.y));
+  }
 
   for (const jugadorRival of elementos.rivales) {
     const { cx, cy } = aLienzo(jugadorRival.x, jugadorRival.y);

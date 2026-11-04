@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { capasEnCampo, elementosAExportar } from './exportar';
-import type { Balon, EquipoRival, JugadorEnCampo, ObjetoCampo, Trazo } from '../types';
+import type { Balon, EquipoRival, JugadorEnCampo, Marcaje, ObjetoCampo, Trazo } from '../types';
 
 /**
  * Qué sale en la imagen exportada (PNG y PDF): lo mismo que en pantalla, menos
@@ -20,12 +20,14 @@ const rival = (cambios: Partial<EquipoRival> = {}): EquipoRival => ({
   modoVista: 'ambos',
   ...cambios,
 });
+const marcaje: Marcaje = { id: 'm1', jugadorPropioId: 'test-09', jugadorRivalId: 'r1' };
 const campo = (cambios = {}) => ({
   titulares: [titular],
   balones: [balonSuelto, balonEnPosesion],
   objetos: [objeto],
   trazos: [trazo],
   rival: rival(),
+  marcajes: [marcaje],
   ...cambios,
 });
 
@@ -60,6 +62,7 @@ describe('elementosAExportar: qué se dibuja', () => {
       titulares: [titular],
       balonesEnPosesion: [balonEnPosesion],
       dibujos: true,
+      marcajes: [{ propio: titular, rival: rival().jugadores[0] }],
     });
   });
 
@@ -80,5 +83,14 @@ describe('elementosAExportar: qué se dibuja', () => {
   it('sigue la visibilidad de la pantalla: en "Solo rival" no salen los nuestros, en "Solo nosotros" no sale el rival', () => {
     expect(elementosAExportar(campo({ rival: rival({ modoVista: 'solo_rival' }) })).titulares).toEqual([]);
     expect(elementosAExportar(campo({ rival: rival({ modoVista: 'solo_nosotros' }) })).rivales).toEqual([]);
+  });
+
+  it('una línea de marcaje sale solo si salen sus dos jugadores', () => {
+    expect(elementosAExportar(campo(), { rival: false }).marcajes).toEqual([]);
+    expect(elementosAExportar(campo({ rival: rival({ visible: false }) })).marcajes).toEqual([]);
+    expect(elementosAExportar(campo({ rival: rival({ modoVista: 'solo_nosotros' }) })).marcajes).toEqual([]);
+    expect(elementosAExportar(campo({ rival: rival({ modoVista: 'solo_rival' }) })).marcajes).toEqual([]);
+    const sinSuRival = { ...marcaje, jugadorRivalId: 'r-que-ya-no-esta' };
+    expect(elementosAExportar(campo({ marcajes: [sinSuRival] })).marcajes).toEqual([]);
   });
 });

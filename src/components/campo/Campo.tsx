@@ -840,11 +840,12 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
               );
             })}
 
-            {documento.rival && !enAnimacion && (
+            {/* Una línea de marcaje solo tiene sentido si se ven sus dos jugadores (igual que en la exportación). */}
+            {rivalVisible && propioVisible && (
               <CapaMarcajes
                 marcajes={documento.marcajes}
                 titulares={documento.titulares}
-                jugadoresRival={documento.rival.jugadores}
+                jugadoresRival={documento.rival!.jugadores}
                 onEliminar={eliminarMarcaje}
               />
             )}

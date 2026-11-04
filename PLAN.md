@@ -21,6 +21,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje (solo las que tienen sus dos jugadores en la imagen); también la insignia de capitán y el mismo orden de capas que en pantalla. En pantalla, los marcajes ya no se ven si su rival o su jugador están ocultos | Hecho |
 | 15 | Menor: quitar el temporizador sobrante de `PantallaPlantilla.tsx` (la renovación de enlaces ya la hace `plantillaStore` cada 30 s) | Hecho |
 | 16 | Actualizar jspdf (va en producción) para resolver sus avisos críticos de `npm audit`: de 2.5.2 a 4.2.1, también resuelve los de DOMPurify; PNG y PDF comprobados | Hecho |
+| 16b | Herramientas de desarrollo por sus avisos de `npm audit`: vite 5 → 7.3.7, vitest 2 → 4.1.12, `@vitejs/plugin-react` 4.7.0 y `npm audit fix` (source-map-js, postcss-selector-parser). Quedan 11 avisos moderados de la cadena de ESLint (minimatch), solo de desarrollo y sin arreglo compatible | Hecho |
 
 ## Fase 2 · Sincronización con Supabase
 

@@ -25,7 +25,7 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
-| S1 | Planificar y llevar las alineaciones de IndexedDB a Supabase, para usarlas en computador y tablet | Pendiente |
+| S1 | Planificar y llevar las alineaciones de IndexedDB a Supabase, para usarlas en computador y tablet. Decidir aquí si se quita realtime del cliente de Supabase (hoy sin uso, ~17 KB gzip de la carga inicial) o si la sincronización lo aprovecha | Pendiente |
 
 ## Fase 3 · Seguridad
 

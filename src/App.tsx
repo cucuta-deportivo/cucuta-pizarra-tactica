@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Campo, type CampoHandle } from './components/campo/Campo';
 import { SelectorFormacion } from './components/campo/SelectorFormacion';
 import { BarraHerramientas } from './components/pizarra/BarraHerramientas';
@@ -8,16 +8,7 @@ import { Boton } from './components/ui/Boton';
 import { Dropdown } from './components/ui/Dropdown';
 import { Modal } from './components/ui/Modal';
 import { IndicadorAutoguardado } from './components/ui/IndicadorAutoguardado';
-import { ModalAlineaciones } from './components/ui/ModalAlineaciones';
-import { ModalExportar } from './components/ui/ModalExportar';
-import { ModalHistorial } from './components/ui/ModalHistorial';
-import { ModalZonas } from './components/ui/ModalZonas';
-import { ModalRival } from './components/ui/ModalRival';
-import { ModalCancha } from './components/ui/ModalCancha';
 import { ToastContainer } from './components/ui/ToastContainer';
-import { PantallaPlantilla } from './components/plantilla/PantallaPlantilla';
-import { ModalComparacion } from './components/ui/ModalComparacion';
-import { PanelActividad } from './components/auth/PanelActividad';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
 import { useAlineacionStore } from './store/alineacionStore';
 import { useAuthStore } from './store/authStore';
@@ -28,6 +19,20 @@ import { usePizarraCampoStore } from './store/pizarraCampoStore';
 import { usePlantillaStore } from './store/plantillaStore';
 import { useUiStore, type OrientacionForzada } from './store/uiStore';
 import { DEFINICION_PRESETS_CUADRICULA } from './utils/constantes';
+import { diferido } from './utils/cargaDiferida';
+
+// Ventanas que no hacen falta para pintar la pizarra: van en trozos aparte, fuera
+// de la carga inicial, y se descargan justo después del primer render.
+const ModalAlineaciones = diferido(() => import('./components/ui/ModalAlineaciones').then((m) => m.ModalAlineaciones));
+const ModalExportar = diferido(() => import('./components/ui/ModalExportar').then((m) => m.ModalExportar));
+const ModalHistorial = diferido(() => import('./components/ui/ModalHistorial').then((m) => m.ModalHistorial));
+const ModalZonas = diferido(() => import('./components/ui/ModalZonas').then((m) => m.ModalZonas));
+const ModalRival = diferido(() => import('./components/ui/ModalRival').then((m) => m.ModalRival));
+const ModalCancha = diferido(() => import('./components/ui/ModalCancha').then((m) => m.ModalCancha));
+const PantallaPlantilla = diferido(() => import('./components/plantilla/PantallaPlantilla').then((m) => m.PantallaPlantilla));
+const ModalComparacion = diferido(() => import('./components/ui/ModalComparacion').then((m) => m.ModalComparacion));
+// Este no está siempre montado: su trozo se pide la primera vez que se abre.
+const PanelActividad = diferido(() => import('./components/auth/PanelActividad').then((m) => m.PanelActividad));
 
 function EscudoClub() {
   return (
@@ -638,19 +643,25 @@ export default function App() {
         </button>
       )}
 
-      <ModalAlineaciones abierto={modalAlineacionesAbierto} onCerrar={() => setModalAlineacionesAbierto(false)} />
-      <ModalHistorial abierto={modalHistorialAbierto} onCerrar={() => setModalHistorialAbierto(false)} />
-      <PantallaPlantilla abierto={modalGestionPlantillaAbierto} onCerrar={() => setModalGestionPlantillaAbierto(false)} />
-      <ModalComparacion abierto={modalComparacionAbierto} onCerrar={() => setModalComparacionAbierto(false)} />
-      <ModalZonas abierto={modalZonasAbierto} onCerrar={() => setModalZonasAbierto(false)} />
-      <ModalRival abierto={modalRivalAbierto} onCerrar={() => setModalRivalAbierto(false)} />
-      <ModalCancha abierto={modalCanchaAbierto} onCerrar={() => setModalCanchaAbierto(false)} />
-      <ModalExportar
-        abierto={modalExportarAbierto}
-        onCerrar={() => setModalExportarAbierto(false)}
-        obtenerElementos={() => campoRef.current?.obtenerElementosExportacion() ?? null}
-      />
-      {panelActividadAbierto && <PanelActividad onCerrar={() => setPanelActividadAbierto(false)} />}
+      <Suspense fallback={null}>
+        <ModalAlineaciones abierto={modalAlineacionesAbierto} onCerrar={() => setModalAlineacionesAbierto(false)} />
+        <ModalHistorial abierto={modalHistorialAbierto} onCerrar={() => setModalHistorialAbierto(false)} />
+        <PantallaPlantilla abierto={modalGestionPlantillaAbierto} onCerrar={() => setModalGestionPlantillaAbierto(false)} />
+        <ModalComparacion abierto={modalComparacionAbierto} onCerrar={() => setModalComparacionAbierto(false)} />
+        <ModalZonas abierto={modalZonasAbierto} onCerrar={() => setModalZonasAbierto(false)} />
+        <ModalRival abierto={modalRivalAbierto} onCerrar={() => setModalRivalAbierto(false)} />
+        <ModalCancha abierto={modalCanchaAbierto} onCerrar={() => setModalCanchaAbierto(false)} />
+        <ModalExportar
+          abierto={modalExportarAbierto}
+          onCerrar={() => setModalExportarAbierto(false)}
+          obtenerElementos={() => campoRef.current?.obtenerElementosExportacion() ?? null}
+        />
+      </Suspense>
+      {panelActividadAbierto && (
+        <Suspense fallback={null}>
+          <PanelActividad onCerrar={() => setPanelActividadAbierto(false)} />
+        </Suspense>
+      )}
       <Modal abierto={confirmandoVaciar} onCerrar={() => setConfirmandoVaciar(false)} titulo="Vaciar campo" ancho="sm">
         <p className="text-sm text-club-plata">
           Se quitarán del campo todos los jugadores. La formación, los dibujos y los objetos se mantienen. Puedes deshacerlo.

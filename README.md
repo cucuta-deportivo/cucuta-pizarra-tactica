@@ -32,6 +32,7 @@ Abre la URL que imprime Vite (por defecto `http://localhost:5173`). Prueba espec
 
 ```bash
 npm run typecheck   # cero errores de TypeScript, obligatorio
+npm run lint        # ESLint: cero errores; las advertencias se revisan aparte
 npm run test        # Vitest: conversiones de coordenadas, pila de deshacer/rehacer,
                      # y el flujo completo formación → asignación → arrastre → guardado → recarga
 ```
@@ -45,7 +46,7 @@ npm run build      # tsc -b && vite build → genera dist/
 npm run preview     # sirve dist/ localmente para verificarlo
 ```
 
-El paquete inicial (sin contar los chunks de exportación a PDF, que se cargan de forma perezosa solo cuando el usuario exporta) pesa ~131 KB gzip, por debajo del presupuesto de 250 KB.
+La carga inicial (el chunk de entrada) pesa ~205 KB gzip, por debajo del presupuesto de 250 KB; lo más pesado es el cliente de Supabase (~59 KB), React (~46 KB) y Dexie (~33 KB). Las ventanas secundarias (alineaciones, historial, plantilla, comparar, zonas, rival, cancha, exportar y actividad de la cuenta) van en trozos aparte, ~20 KB gzip en total, que se descargan justo después de pintar la pizarra (el de actividad, al abrirla). jsPDF (~127 KB gzip) solo se descarga al exportar a PDF.
 
 ## Despliegue
 

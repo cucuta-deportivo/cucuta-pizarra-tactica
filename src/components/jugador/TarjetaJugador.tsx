@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { Jugador } from '../../types';
 import { COLOR, GROSOR, OPACIDAD, SOMBRA_FICHA_OFFSET_PX } from '../../tokens';
+import { obtenerIniciales } from '../../utils/jugador';
 
 /** `compacto` se usa solo con los dos equipos en pantalla (FA4 "Ambos"), donde 22 tarjetas a 64px saturan el campo. */
 export type TamanoTarjeta = 'sm' | 'compacto' | 'md' | 'lg';
@@ -24,10 +25,6 @@ interface TarjetaJugadorProps {
 }
 
 const DIAMETRO: Record<TamanoTarjeta, number> = { sm: 48, compacto: 56, md: 64, lg: 80 };
-
-function obtenerIniciales(jugador: Jugador): string {
-  return `${jugador.nombre.charAt(0)}${jugador.apellido.charAt(0)}`.toUpperCase();
-}
 
 export const TarjetaJugador = memo(function TarjetaJugador({
   jugador,

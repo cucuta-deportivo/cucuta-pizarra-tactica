@@ -3,9 +3,16 @@ import type { Alineacion, Balon, Formacion, Jugador, JugadorEnCampo, JugadorRiva
 import { posicionEfectivaBalon } from './balon';
 import { COLORES_OBJETO, DIAMETRO_BALON_PX, PALETA_RIVAL } from './constantes';
 import { porcentajeAPixeles } from './coordenadas';
+import { obtenerIniciales } from './jugador';
 
 const ESCALA_EXPORTACION = 2;
 const ALTO_ENCABEZADO = 56;
+/**
+ * El PDF lleva la imagen en JPEG: un PNG lo guarda jsPDF descomprimido (unos
+ * 11 MB por página) y el JPEG va tal cual (unos 150 KB, para WhatsApp). A esta
+ * calidad no se distingue del PNG ni en los textos ni en las líneas.
+ */
+const CALIDAD_JPEG_PDF = 0.92;
 /**
  * La ficha propia sale con radio 20 en el PNG y mide 32 en pantalla ('md').
  * Objetos, rivales y balón se reducen en la misma proporción para que
@@ -15,6 +22,8 @@ const ESCALA_FICHAS = 20 / 32;
 /** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
 const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const PESOS_FUENTE = ['500', '600', '700', '800'];
+/** El `bg-amber-400` de la insignia de capitán en `TarjetaJugador`. */
+const AMBAR_CAPITAN = '#FBBF24';
 
 /**
  * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
@@ -45,7 +54,7 @@ export interface DatosExportacion {
 /** Lo que el entrenador puede quitar de la imagen. Solo afecta a PNG y PDF: el JSON lleva todo. */
 export type CapaOpcional = 'rival' | 'balon' | 'objetos' | 'dibujos';
 
-type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares'>;
+type ContenidoCampo = Pick<Alineacion, 'rival' | 'balones' | 'objetos' | 'trazos' | 'titulares' | 'marcajes'>;
 
 /** Misma visibilidad que en pantalla (Campo.tsx): qué equipos se ven según el modo del rival. */
 function equiposVisibles(rival: Alineacion['rival']): { rival: boolean; propio: boolean } {
@@ -69,13 +78,21 @@ export function capasEnCampo(contenido: ContenidoCampo): Record<CapaOpcional, bo
 export function elementosAExportar(contenido: ContenidoCampo, incluir: Partial<Record<CapaOpcional, boolean>> = {}) {
   const con = (capa: CapaOpcional) => incluir[capa] !== false;
   const visibles = equiposVisibles(contenido.rival);
+  const rivales = con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [];
+  const titulares = visibles.propio ? contenido.titulares : [];
   return {
     objetos: con('objetos') ? contenido.objetos : [],
     balonesSueltos: con('balon') ? contenido.balones.filter((b) => !b.jugadorPoseedorId) : [],
-    rivales: con('rival') && visibles.rival ? (contenido.rival?.jugadores ?? []) : [],
-    titulares: visibles.propio ? contenido.titulares : [],
+    rivales,
+    titulares,
     balonesEnPosesion: con('balon') ? contenido.balones.filter((b) => b.jugadorPoseedorId) : [],
     dibujos: con('dibujos'),
+    // Las líneas de CapaMarcajes, pero solo las que tienen sus dos jugadores en la imagen.
+    marcajes: contenido.marcajes.flatMap((marcaje) => {
+      const propio = titulares.find((t) => t.jugadorId === marcaje.jugadorPropioId);
+      const rival = rivales.find((r) => r.id === marcaje.jugadorRivalId);
+      return propio && rival ? [{ propio, rival }] : [];
+    }),
   };
 }
 
@@ -167,27 +184,41 @@ function dibujarJugadorEnLienzo(
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Sin foto, las iniciales en el centro, con la misma proporción que en pantalla.
+  if (!foto) {
+    ctx.fillStyle = COLOR.campo.linea;
+    ctx.font = `800 ${radio * 2 * 0.32}px ${FUENTE}`;
+    ctx.fillText(obtenerIniciales(jugador), cx, cy);
+  }
+  // El dorsal, con o sin foto, en su chapa arriba a la izquierda, como en pantalla.
   if (jugador.dorsal != null) {
-    if (foto) {
-      // Con foto, el dorsal va en una chapa arriba a la izquierda, como en
-      // pantalla: encima de la cara no se leería.
-      const bx = cx - radio * 0.78;
-      const by = cy - radio * 0.78;
-      ctx.beginPath();
-      ctx.arc(bx, by, 9, 0, Math.PI * 2);
-      ctx.fillStyle = COLOR.superficie.fondo;
-      ctx.fill();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = COLOR.campo.linea;
-      ctx.stroke();
-      ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = `700 11px ${FUENTE}`;
-      ctx.fillText(String(jugador.dorsal), bx, by);
-    } else {
-      ctx.fillStyle = COLOR.campo.linea;
-      ctx.font = `700 15px ${FUENTE}`;
-      ctx.fillText(String(jugador.dorsal), cx, cy);
-    }
+    const bx = cx - radio * 0.78;
+    const by = cy - radio * 0.78;
+    ctx.beginPath();
+    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.fillStyle = COLOR.superficie.fondo;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = COLOR.campo.linea;
+    ctx.stroke();
+    ctx.fillStyle = COLOR.campo.linea;
+    ctx.font = `700 11px ${FUENTE}`;
+    ctx.fillText(String(jugador.dorsal), bx, by);
+  }
+  // La insignia de capitán, en su chapa arriba a la derecha, como en pantalla.
+  if (titular.esCapitan) {
+    const bx = cx + radio * 0.78;
+    const by = cy - radio * 0.78;
+    ctx.beginPath();
+    ctx.arc(bx, by, 9, 0, Math.PI * 2);
+    ctx.fillStyle = AMBAR_CAPITAN;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.stroke();
+    ctx.fillStyle = COLOR.superficie.fondo;
+    ctx.font = `800 10px ${FUENTE}`;
+    ctx.fillText('C', bx, by);
   }
   ctx.fillStyle = COLOR.campo.linea;
 
@@ -202,6 +233,20 @@ function dibujarJugadorEnLienzo(
     ctx.font = `600 9px ${FUENTE}`;
     ctx.fillText(posiciones, cx, cy + radio + 21);
   }
+}
+
+/** La línea de `CapaMarcajes`: de centro a centro, roja y discontinua. */
+function dibujarMarcajeEnLienzo(ctx: CanvasRenderingContext2D, desde: { cx: number; cy: number }, hasta: { cx: number; cy: number }): void {
+  ctx.save();
+  ctx.strokeStyle = COLOR.marca.rojo;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.moveTo(desde.cx, desde.cy);
+  ctx.lineTo(hasta.cx, hasta.cy);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** Equivale al `drop-shadow` de los SVG en pantalla. Las sombras del lienzo no siguen su escala, por eso se multiplican. */
@@ -367,7 +412,7 @@ function dibujarBalonEnLienzo(ctx: CanvasRenderingContext2D, cx: number, cy: num
   });
 }
 
-export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
+async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement> {
   const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos, incluir } =
     datos;
   const elementos = elementosAExportar(alineacion, incluir);
@@ -416,12 +461,9 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   const imagenCampo = await svgAImagen(svgCampo);
   ctx.drawImage(imagenCampo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
 
-  if (canvasDibujo && elementos.dibujos) {
-    ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
-  }
-
-  // Mismo orden de capas que en pantalla (Campo.tsx): objetos, balón suelto,
-  // rivales, nuestros y, encima, el balón en posesión.
+  // Mismo orden de capas que en pantalla, que lo marca el z-index de Campo.tsx:
+  // marcajes y dibujos (sin z-index, los dibujos después), objetos (5), balón
+  // suelto (6), rivales (8), nuestros (10) y el balón en posesión (11).
   const aLienzo = (x: number, y: number) => {
     const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
     return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
@@ -431,6 +473,14 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
     const { cx, cy } = aLienzo(x, y);
     dibujarBalonEnLienzo(ctx, cx, cy);
   };
+
+  for (const { propio, rival } of elementos.marcajes) {
+    dibujarMarcajeEnLienzo(ctx, aLienzo(propio.x, propio.y), aLienzo(rival.x, rival.y));
+  }
+
+  if (canvasDibujo && elementos.dibujos) {
+    ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
+  }
 
   for (const objeto of elementos.objetos) {
     const { cx, cy } = aLienzo(objeto.x, objeto.y);
@@ -453,17 +503,13 @@ export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> 
   }
   elementos.balonesEnPosesion.forEach(dibujarBalon);
 
-  return new Promise<Blob>((resolve, reject) => {
-    lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');
-  });
+  return lienzo;
 }
 
-function blobADataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const lector = new FileReader();
-    lector.onload = () => resolve(lector.result as string);
-    lector.onerror = () => reject(new Error('No se pudo leer la imagen generada.'));
-    lector.readAsDataURL(blob);
+export async function exportarCampoAPng(datos: DatosExportacion): Promise<Blob> {
+  const lienzo = await dibujarCampo(datos);
+  return new Promise<Blob>((resolve, reject) => {
+    lienzo.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('La exportación a PNG falló.'))), 'image/png');
   });
 }
 
@@ -479,8 +525,8 @@ export function descargarBlob(blob: Blob, nombreArchivo: string): void {
 }
 
 export async function exportarCampoAPdf(datos: DatosExportacion): Promise<void> {
-  const [{ default: jsPDF }, blobPng] = await Promise.all([import('jspdf'), exportarCampoAPng(datos)]);
-  const urlDatos = await blobADataUrl(blobPng);
+  const [{ default: jsPDF }, lienzo] = await Promise.all([import('jspdf'), dibujarCampo(datos)]);
+  const urlDatos = lienzo.toDataURL('image/jpeg', CALIDAD_JPEG_PDF);
   const anchoTotal = datos.anchoContenedor;
   const altoTotal = datos.altoContenedor + ALTO_ENCABEZADO;
   const documento = new jsPDF({
@@ -499,7 +545,7 @@ export async function exportarCampoAPdf(datos: DatosExportacion): Promise<void> 
     altoImagen = altoDisponible;
     anchoImagen = altoImagen / relacion;
   }
-  documento.addImage(urlDatos, 'PNG', margen, margen, anchoImagen, altoImagen);
+  documento.addImage(urlDatos, 'JPEG', margen, margen, anchoImagen, altoImagen);
   documento.save(`${datos.alineacion.nombre || 'alineacion'}.pdf`);
 }
 

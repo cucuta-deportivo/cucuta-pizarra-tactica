@@ -60,11 +60,13 @@ const ETIQUETA_RESULTADO: Record<IntentoLogin['resultado'], { texto: string; cla
   bloqueado: { texto: 'Bloqueado', clase: 'bg-amber-500/15 text-amber-400' },
 };
 
-function aplicarFiltros<T extends { gte: Function; lte: Function; in: Function; eq: Function }>(
-  consulta: T,
-  filtros: Filtros,
-  dispositivoActual: string,
-): T {
+/**
+ * El tipo de `supabase.from(…).select(…)`, sacado del propio cliente: cada
+ * filtro se comprueba con su firma real y devuelve la misma consulta.
+ */
+type ConsultaSupabase = ReturnType<ReturnType<typeof supabase.from>['select']>;
+
+function aplicarFiltros(consulta: ConsultaSupabase, filtros: Filtros, dispositivoActual: string): ConsultaSupabase {
   let resultado = consulta;
   if (filtros.desde) resultado = resultado.gte('ocurrido_en', new Date(filtros.desde).toISOString());
   if (filtros.hasta) {

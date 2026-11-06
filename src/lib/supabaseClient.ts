@@ -10,7 +10,6 @@ const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) |
 export const supabaseConfigurado = Boolean(url && anonKey);
 
 if (!supabaseConfigurado) {
-  // eslint-disable-next-line no-console
   console.warn(
     'Faltan VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY: el acceso con cuenta (FA6–FA8) queda deshabilitado hasta configurarlas en .env.local.',
   );

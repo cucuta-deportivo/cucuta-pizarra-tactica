@@ -3,7 +3,7 @@
 Lo que queda por hacer, en orden. Estados: **Pendiente**, **En curso**, **Hecho**.
 Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación de fotos, RLS solo para entrenadores activos, acceso con usuario sin exponer correos).
 
-## Fase 1 · Mejoras de la pizarra (rama `mejoras-pizarra`, un commit por paso, un solo PR)
+## Fase 1 · Mejoras de la pizarra (un commit por paso; pasos 5–10 en `mejoras-pizarra`, PR #3; pasos 11–15 en `calidad-pizarra`, un solo PR)
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
@@ -15,17 +15,19 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 8b | En la ventana de exportar, casillas para elegir qué sale en PNG/PDF: rival, balón, objetos y dibujos (solo las de lo que hay en el campo, todas marcadas por defecto, 44 px; el JSON siempre lleva todo) | Hecho |
 | 9 | Zonas táctiles de al menos 44 px: panel de objetos, panel de plantilla, balón, los controles de las pantallas de acceso y registro, "Vista" del rival y "Orientación del campo" (solo CSS) | Hecho |
 | 10 | Tipografía condensada (Barlow Condensed) en la exportación, en lugar de Arial | Hecho |
-| 11 | ESLint como dependencia de desarrollo y script `npm run lint` | Pendiente |
-| 12 | Bundle: reducir la carga inicial (hoy 215 KB gzip, límite 250 KB) y corregir la cifra del README | Pendiente |
-| 13 | Comprimir el PDF exportado para que pese poco (pensado para WhatsApp) | Pendiente |
-| 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje | Pendiente |
-| 15 | Menor: quitar el temporizador sobrante de `PantallaPlantilla.tsx` (la renovación de enlaces ya la hace `plantillaStore` cada 30 s) | Pendiente |
+| 11 | ESLint como dependencia de desarrollo y script `npm run lint` (0 errores; queda 1 advertencia a propósito: el `any` de Google Picker en `selectorDrive.ts`) | Hecho |
+| 12 | Bundle: reducir la carga inicial (218 → 204 KB gzip, límite 250 KB: las ventanas secundarias van en trozos aparte) y corregir la cifra del README | Hecho |
+| 13 | Comprimir el PDF exportado para que pese poco (pensado para WhatsApp): de 11,3 MB a unos 150 KB, la imagen va en JPEG | Hecho |
+| 14 | Exportación igual que la pantalla: iniciales o dorsal en la ficha según lo que se ve, y las líneas de marcaje (solo las que tienen sus dos jugadores en la imagen); también la insignia de capitán y el mismo orden de capas que en pantalla. En pantalla, los marcajes ya no se ven si su rival o su jugador están ocultos | Hecho |
+| 15 | Menor: quitar el temporizador sobrante de `PantallaPlantilla.tsx` (la renovación de enlaces ya la hace `plantillaStore` cada 30 s) | Hecho |
+| 16 | Actualizar jspdf (va en producción) para resolver sus avisos críticos de `npm audit`: de 2.5.2 a 4.2.1, también resuelve los de DOMPurify; PNG y PDF comprobados | Hecho |
+| 16b | Herramientas de desarrollo por sus avisos de `npm audit`: vite 5 → 7.3.7, vitest 2 → 4.1.12, `@vitejs/plugin-react` 4.7.0 y `npm audit fix` (source-map-js, postcss-selector-parser). Quedan 11 avisos moderados de la cadena de ESLint (minimatch), solo de desarrollo y sin arreglo compatible | Hecho |
 
 ## Fase 2 · Sincronización con Supabase
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
-| S1 | Planificar y llevar las alineaciones de IndexedDB a Supabase, para usarlas en computador y tablet | Pendiente |
+| S1 | Planificar y llevar las alineaciones de IndexedDB a Supabase, para usarlas en computador y tablet. Decidir aquí si se quita realtime del cliente de Supabase (hoy sin uso, ~17 KB gzip de la carga inicial) o si la sincronización lo aprovecha | Pendiente |
 
 ## Fase 3 · Seguridad
 

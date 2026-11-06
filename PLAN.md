@@ -23,11 +23,53 @@ Lo ya terminado está en los PR #1 y #2 (fotos en la exportación, renovación d
 | 16 | Actualizar jspdf (va en producción) para resolver sus avisos críticos de `npm audit`: de 2.5.2 a 4.2.1, también resuelve los de DOMPurify; PNG y PDF comprobados | Hecho |
 | 16b | Herramientas de desarrollo por sus avisos de `npm audit`: vite 5 → 7.3.7, vitest 2 → 4.1.12, `@vitejs/plugin-react` 4.7.0 y `npm audit fix` (source-map-js, postcss-selector-parser). Quedan 11 avisos moderados de la cadena de ESLint (minimatch), solo de desarrollo y sin arreglo compatible | Hecho |
 
-## Fase 2 · Sincronización con Supabase
+## Fase 2 · Sincronización con Supabase (S1, en curso)
 
-| Paso | Qué | Estado |
-| --- | --- | --- |
-| S1 | Planificar y llevar las alineaciones de IndexedDB a Supabase, para usarlas en computador y tablet. Decidir aquí si se quita realtime del cliente de Supabase (hoy sin uso, ~17 KB gzip de la carga inicial) o si la sincronización lo aprovecha | Pendiente |
+Objetivo: que las alineaciones se vean igual en el computador de la oficina y en la tablet del banquillo, compartidas entre todos los entrenadores activos.
+
+Cómo funciona: IndexedDB sigue siendo la copia de trabajo de cada dispositivo y Supabase es el punto de encuentro. Un sincronizador sube y baja en segundo plano. Cada alineación es una fila con todo su documento en `jsonb` y una versión que asigna el servidor; las tablas `alineacion_jugadores` y `alineacion_objetos` dejan de hacer falta.
+
+Decisiones aprobadas el 2026-11-06:
+
+- **Conflictos:** nada se pisa. El primero que sube se queda con la alineación y el otro conserva su trabajo como copia. Si un dispositivo borra y otro edita, gana la edición, que queda como copia.
+- **Realtime:** no se usa en S1 y se queda en el paquete; quitarlo obligaría a reemplazar `createClient`. La app comprueba cambios al abrir, al volver a la pestaña, al volver la señal y cada 60 s mientras se ve.
+- **Autenticación:** permiso para tocar `AuthGate.tsx` y `authStore.ts` solo para entrar sin red con una sesión ya abierta y aplicar la regla de 12 h solo con conexión.
+- **Service worker:** `vite-plugin-pwa` como dependencia de desarrollo. Cuando hay versión nueva pregunta antes de recargar: nunca recarga sola durante un partido. No guarda fotos ni datos de Supabase.
+- **Fotos:** no se guardan en el dispositivo. Sin señal salen iniciales y dorsal, también en lo exportado.
+- **Tablet:** modelo sin confirmar; se asume que puede ser iPad. En iPad hay que instalar la app en la pantalla de inicio para que Safari no borre los datos locales.
+- **Migración:** nada se borra de IndexedDB, se ofrece un respaldo JSON antes de subir y las "Alineación inicial" totalmente vacías no se suben.
+- **Respaldo:** el plan gratuito no incluye backups; respaldo mensual a mano, guardado en un lugar privado del club (ver README).
+
+| Paso | Qué | Prueba principal | Estado |
+| --- | --- | --- | --- |
+| S1.0 | Consultas de solo lectura para conocer las tablas reales (las ejecuta el usuario) | Resultados revisados antes de S1.1 | En curso |
+
+### PR A · Sincronización con señal (rama `sincronizacion`)
+
+| Paso | Qué | Prueba principal | Estado |
+| --- | --- | --- | --- |
+| S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario) | `pg_policies` y columnas | Pendiente |
+| S1.2 | Copia de las fichas y categoría dentro del documento | Abrir una alineación de otra categoría: no falta ninguna ficha | Pendiente |
+| S1.3 | No guardar la alineación vacía inicial | Test | Pendiente |
+| S1.4 | Dexie v4: marca "por subir" | Los datos antiguos siguen intactos | Pendiente |
+| S1.5 | `alineacionesApi.ts`, único archivo que conoce las columnas | Tests | Pendiente |
+| S1.6 | Subir pendientes con control de versión | Respuesta perdida sin copia falsa | Pendiente |
+| S1.7 | Bajar cambios y resolver conflictos | Dos ventanas, misma alineación | Pendiente |
+| S1.8 | Migración con respaldo y resumen | Repetirla no duplica | Pendiente |
+| S1.9 | Indicador de estado | Captura con y sin red | Pendiente |
+| S1.10 | Disparadores: abrir, señal, pestaña y 60 s | La tablet ve el cambio en menos de 1 min | Pendiente |
+| S1.14a | Prueba final con señal en dos dispositivos, borrar las tablas hijas si siguen vacías, README y PLAN.md | Dos dispositivos reales | Pendiente |
+
+### PR B · Sin señal (rama propia desde `main`, cuando se fusione el PR A)
+
+| Paso | Qué | Prueba principal | Estado |
+| --- | --- | --- | --- |
+| S1.11 | Service worker con `vite-plugin-pwa`: archivos de la app y fuentes, actualización que pregunta | Recargar sin red; una versión nueva pregunta y no recarga sola | Pendiente |
+| S1.12 | Plantilla guardada localmente, sin fotos | Cambiar un jugador sin red | Pendiente |
+| S1.13 | Entrar sin red con sesión ya abierta y regla de 12 h solo con conexión (autenticación) | Sesión caducada, 12 h y cuenta bloqueada | Pendiente |
+| S1.14b | Prueba final en la tablet real en modo avión, README y PLAN.md | Tablet real en modo avión | Pendiente |
+
+Fuera de S1: filtro por categoría en la lista, papelera, unir cambios de dos versiones y editar la plantilla sin red.
 
 ## Fase 3 · Seguridad
 

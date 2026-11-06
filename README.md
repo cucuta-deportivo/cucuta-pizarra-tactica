@@ -99,6 +99,17 @@ Si estas variables no están definidas, la app sigue funcionando con normalidad 
 
 **Límite de correos del SMTP por defecto**: mientras no se configure un proveedor SMTP propio, Supabase usa su servicio de correo compartido, limitado a ~2 correos de confirmación por hora por proyecto. Registrar varias cuentas seguidas (por ejemplo, dar de alta a todo el cuerpo técnico el mismo día) agota ese límite y las siguientes altas devuelven `429` en `/auth/v1/signup` hasta que se resetea (más o menos una hora) — no es un error de la app. Antes de un uso real con varias personas, configurar un proveedor SMTP propio (Resend, SendGrid, Postmark…) en **Authentication → Settings → SMTP Settings** del dashboard de Supabase quita ese límite.
 
+### Respaldo mensual de la base de datos
+
+El plan gratuito de Supabase no incluye backups automáticos, así que una vez al mes se hace un respaldo a mano con `supabase db dump`. **Se guarda en un lugar privado del club, nunca en el repositorio**: contiene datos de los entrenadores y de los jugadores.
+
+```bash
+npx supabase db dump --remote -f "<carpeta privada>/esquema.sql"
+npx supabase db dump --remote --data-only --use-copy -f "<carpeta privada>/datos.sql"
+```
+
+Hacen falta los dos: el primero guarda la estructura y el segundo los datos (sin `--data-only` no se guarda ninguna fila). Requiere Docker Desktop y tener el proyecto enlazado con `npx supabase link`. Las fotos del bucket `jugadores` no van en este respaldo.
+
 ## Fuera de alcance
 
 - Estadísticas avanzadas, heatmaps o análisis de datos de partido.

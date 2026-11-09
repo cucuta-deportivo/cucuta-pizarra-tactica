@@ -53,7 +53,7 @@ Decisiones aprobadas el 2026-11-06:
 | S1.2 | Copia de las fichas y categoría dentro del documento. Las fichas no incluyen a los personalizados, que ya viajan enteros, y no se ofrecen en las listas para elegir. La categoría es la activa al crear la alineación; las anteriores quedan sin ella | Abrir una alineación de otra categoría: no falta ninguna ficha (campo, banquillo, comparar y JSON) | Hecho |
 | S1.3 | No guardar la alineación vacía inicial: se guarda con el primer cambio | Test y navegador: al abrir sin alineaciones no se guarda nada; al renombrarla, sí | Hecho |
 | S1.4 | Dexie v4: marca "por subir" en la misma transacción que guarda; borrar deja una marca de borrado. Las alineaciones anteriores quedan sin marca (las sube S1.8) | Los datos antiguos siguen intactos: datos de la app de `main` (v3) abiertos con la v4, idénticos | Hecho |
-| S1.5 | `alineacionesApi.ts`, único archivo que conoce las columnas | Tests | Pendiente |
+| S1.5 | `alineacionesApi.ts`, único archivo que conoce las columnas: alta con el mismo id, cambios y borrado marcado solo desde la versión de la que parten, estado, lista paginada, descarga en tandas y última actualización. Nunca sube enlaces firmados | Tests de cómo se arma y se lee cada fila y de cómo se interpretan las respuestas (sin red); las llamadas reales se prueban contra Supabase en S1.6 | Hecho |
 | S1.6 | Subir pendientes con control de versión | Respuesta perdida sin copia falsa | Pendiente |
 | S1.7 | Bajar cambios y resolver conflictos | Dos ventanas, misma alineación | Pendiente |
 | S1.8 | Migración con respaldo y resumen | Repetirla no duplica | Pendiente |

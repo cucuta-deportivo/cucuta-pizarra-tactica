@@ -354,23 +354,50 @@ create index if not exists jugadores_categoria_idx
   where activo;
 
 -- ------------------------------------------------------------
--- Alineaciones guardadas
+-- Alineaciones guardadas, compartidas entre dispositivos (S1)
+--
+-- Una fila por alineacion con TODO su documento en `documento`,
+-- que es la fuente de verdad; `nombre` y `formacion` se copian
+-- para listar sin descargarlo. La version, la fecha de cambio y
+-- los autores los pone el servidor (triggers de mas abajo): la
+-- app sube desde la version de la que partio y, si ya no es la
+-- del servidor, hay conflicto y su trabajo se guarda como copia.
+-- `ultimo_cambio` lo genera la app en cada subida, para reconocer
+-- su propio cambio si se perdio la respuesta. Borrar es solo
+-- marcar `eliminada_en`: el borrado real, desde el SQL Editor.
 -- ------------------------------------------------------------
 create table if not exists alineaciones (
-  id             uuid primary key default gen_random_uuid(),
-  categoria_id   text not null references categorias (id),
-  nombre         text not null,          -- 'Salida ante presion'
-  formacion      text,                   -- '4-3-3'
-  rival          text,
-  fecha_partido  date,
-  notas          text,
-  creada_por     uuid references auth.users (id) on delete set null,
-  creado_en      timestamptz not null default now(),
-  actualizado_en timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  categoria_id    text references categorias (id),   -- opcional
+  nombre          text not null,          -- 'Salida ante presion'
+  formacion       text,                   -- '4-3-3'
+  rival           text,
+  fecha_partido   date,
+  notas           text,
+  creada_por      uuid references auth.users (id) on delete set null,
+  creado_en       timestamptz not null default now(),
+  actualizado_en  timestamptz not null default now(),
+  documento       jsonb not null,
+  version         integer not null default 1,
+  ultimo_cambio   uuid not null,
+  eliminada_en    timestamptz,
+  actualizada_por uuid references auth.users (id) on delete set null,
+
+  constraint alineaciones_documento_valido
+    check (jsonb_typeof(documento) = 'object' and octet_length(documento::text) <= 1048576)
 );
 
 create index if not exists alineaciones_categoria_idx
   on alineaciones (categoria_id, creado_en desc);
+
+create index if not exists alineaciones_actualizado_idx
+  on alineaciones (actualizado_en desc);
+
+-- ------------------------------------------------------------
+-- alineacion_jugadores y alineacion_objetos: SIN USO desde S1
+-- (la alineacion completa va en alineaciones.documento). Se
+-- borran en S1.14a si siguen vacias.
+-- ------------------------------------------------------------
 
 -- ------------------------------------------------------------
 -- Fichas dentro de una alineacion
@@ -433,10 +460,49 @@ create trigger jugadores_tocar
   before update on jugadores
   for each row execute function tocar_actualizado_en();
 
+-- Alineaciones: la version, la fecha de cambio y los autores los
+-- pone el servidor, nunca la app (S1). Sustituyen al antiguo
+-- alineaciones_tocar; tocar_actualizado_en() sigue para jugadores.
+create or replace function public.alineacion_al_crear()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.version := 1;
+  new.actualizado_en := now();
+  new.creada_por := auth.uid();
+  new.actualizada_por := auth.uid();
+  return new;
+end;
+$$;
+
+create or replace function public.alineacion_nueva_version()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.version := old.version + 1;
+  new.actualizado_en := now();
+  new.actualizada_por := auth.uid();
+  new.creada_por := old.creada_por;
+  new.creado_en := old.creado_en;
+  return new;
+end;
+$$;
+
 drop trigger if exists alineaciones_tocar on alineaciones;
-create trigger alineaciones_tocar
+
+drop trigger if exists alineaciones_alta on alineaciones;
+create trigger alineaciones_alta
+  before insert on alineaciones
+  for each row execute function public.alineacion_al_crear();
+
+drop trigger if exists alineaciones_version on alineaciones;
+create trigger alineaciones_version
   before update on alineaciones
-  for each row execute function tocar_actualizado_en();
+  for each row execute function public.alineacion_nueva_version();
 
 -- ------------------------------------------------------------
 -- Seguridad
@@ -464,11 +530,28 @@ create policy "jugadores acceso"
   using ((select public.es_entrenador_activo()))
   with check ((select public.es_entrenador_activo()));
 
+-- Alineaciones: leer, crear y editar si; borrar no (S1). El borrado
+-- es solo marcar eliminada_en; el real, desde el SQL Editor.
 drop policy if exists "alineaciones acceso" on alineaciones;
-create policy "alineaciones acceso"
-  on alineaciones for all to authenticated
+
+drop policy if exists "alineaciones lectura" on alineaciones;
+create policy "alineaciones lectura"
+  on alineaciones for select to authenticated
+  using ((select public.es_entrenador_activo()));
+
+drop policy if exists "alineaciones alta" on alineaciones;
+create policy "alineaciones alta"
+  on alineaciones for insert to authenticated
+  with check ((select public.es_entrenador_activo()));
+
+drop policy if exists "alineaciones edicion" on alineaciones;
+create policy "alineaciones edicion"
+  on alineaciones for update to authenticated
   using ((select public.es_entrenador_activo()))
   with check ((select public.es_entrenador_activo()));
+
+-- Sin esto, un DELETE desde la app no daria error: solo no borraria nada.
+revoke delete, truncate on alineaciones from anon, authenticated;
 
 drop policy if exists "alineacion jugadores acceso" on alineacion_jugadores;
 create policy "alineacion jugadores acceso"

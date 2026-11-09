@@ -39,16 +39,17 @@ Decisiones aprobadas el 2026-11-06:
 - **Tablet:** modelo sin confirmar; se asume que puede ser iPad. En iPad hay que instalar la app en la pantalla de inicio para que Safari no borre los datos locales.
 - **Migración:** nada se borra de IndexedDB, se ofrece un respaldo JSON antes de subir y las "Alineación inicial" totalmente vacías no se suben.
 - **Respaldo:** el plan gratuito no incluye backups; respaldo mensual a mano, guardado en un lugar privado del club (ver README).
+- **Borrado:** los entrenadores activos pueden leer, crear y editar alineaciones, pero no borrarlas: no hay política DELETE y se retiró ese permiso. Borrar es marcar `eliminada_en`; el borrado real solo desde el SQL Editor. La función `tocar_actualizado_en()` se conserva porque la usa `jugadores`.
 
 | Paso | Qué | Prueba principal | Estado |
 | --- | --- | --- | --- |
-| S1.0 | Consultas de solo lectura para conocer las tablas reales (las ejecuta el usuario) | Resultados revisados antes de S1.1 | En curso |
+| S1.0 | Consultas de solo lectura para conocer las tablas reales (las ejecuta el usuario): las tres tablas estaban vacías y el esquema era igual a `schema.sql` | Resultados revisados antes de S1.1 | Hecho |
 
 ### PR A · Sincronización con señal (rama `sincronizacion`)
 
 | Paso | Qué | Prueba principal | Estado |
 | --- | --- | --- | --- |
-| S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario) | `pg_policies` y columnas | Pendiente |
+| S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario): columnas `documento`, `version`, `ultimo_cambio`, `eliminada_en` y `actualizada_por`; versión, fecha y autores por trigger; leer, crear y editar sí, borrar no. Aplicado el 2026-11-08 | Columnas, políticas, triggers, restricciones y permisos comprobados; faltan las dos pruebas de funcionamiento | En curso |
 | S1.2 | Copia de las fichas y categoría dentro del documento | Abrir una alineación de otra categoría: no falta ninguna ficha | Pendiente |
 | S1.3 | No guardar la alineación vacía inicial | Test | Pendiente |
 | S1.4 | Dexie v4: marca "por subir" | Los datos antiguos siguen intactos | Pendiente |

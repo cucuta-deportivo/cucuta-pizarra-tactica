@@ -10,8 +10,9 @@ import { Modal } from './components/ui/Modal';
 import { IndicadorAutoguardado } from './components/ui/IndicadorAutoguardado';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
-import { alBajarCambios, sincronizarAhora } from './data/sincronizacion';
-import { useAlineacionStore } from './store/alineacionStore';
+import { alBajarCambios, descargarRespaldoAqui, migrarAqui, porMigrarAqui, sincronizarAhora } from './data/sincronizacion';
+import type { PorMigrar } from './data/sincronizacion/migrar';
+import { esAlineacionVaciaSinTocar, useAlineacionStore } from './store/alineacionStore';
 import { useAuthStore } from './store/authStore';
 import { supabaseConfigurado } from './lib/supabaseClient';
 import { usePizarraStore } from './store/pizarraStore';
@@ -27,6 +28,7 @@ import { diferido } from './utils/cargaDiferida';
 const ModalAlineaciones = diferido(() => import('./components/ui/ModalAlineaciones').then((m) => m.ModalAlineaciones));
 const ModalExportar = diferido(() => import('./components/ui/ModalExportar').then((m) => m.ModalExportar));
 const ModalHistorial = diferido(() => import('./components/ui/ModalHistorial').then((m) => m.ModalHistorial));
+const ModalMigracion = diferido(() => import('./components/ui/ModalMigracion').then((m) => m.ModalMigracion));
 const ModalZonas = diferido(() => import('./components/ui/ModalZonas').then((m) => m.ModalZonas));
 const ModalRival = diferido(() => import('./components/ui/ModalRival').then((m) => m.ModalRival));
 const ModalCancha = diferido(() => import('./components/ui/ModalCancha').then((m) => m.ModalCancha));
@@ -491,6 +493,8 @@ export default function App() {
   const [modalCanchaAbierto, setModalCanchaAbierto] = useState(false);
   const [panelActividadAbierto, setPanelActividadAbierto] = useState(false);
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false);
+  // Alineaciones de antes de la sincronización por subir; `null` cuando no hay o se dejó para más tarde.
+  const [porMigrar, setPorMigrar] = useState<PorMigrar | null>(null);
   const vaciarCampo = useAlineacionStore((s) => s.vaciarCampo);
 
   function alternarObjetos(): void {
@@ -524,8 +528,13 @@ export default function App() {
   useEffect(() => {
     if (inicializadoRef.current) return;
     inicializadoRef.current = true;
-    // Al abrir, primero lo de este dispositivo; después se sincroniza con Supabase.
-    void inicializar().then(() => sincronizarAhora());
+    // Al abrir, primero lo de este dispositivo; después se sincroniza con Supabase
+    // y, si hay alineaciones de antes de la sincronización, se ofrece subirlas (S1.8).
+    void inicializar().then(async () => {
+      void sincronizarAhora();
+      const pendientes = await porMigrarAqui(esAlineacionVaciaSinTocar);
+      if (pendientes && pendientes.ids.length > 0) setPorMigrar(pendientes);
+    });
     void inicializarPlantilla();
   }, [inicializar, inicializarPlantilla]);
 
@@ -673,6 +682,17 @@ export default function App() {
       {panelActividadAbierto && (
         <Suspense fallback={null}>
           <PanelActividad onCerrar={() => setPanelActividadAbierto(false)} />
+        </Suspense>
+      )}
+      {porMigrar && (
+        <Suspense fallback={null}>
+          <ModalMigracion
+            abierto
+            porMigrar={porMigrar}
+            migrar={migrarAqui}
+            descargarRespaldo={descargarRespaldoAqui}
+            onCerrar={() => setPorMigrar(null)}
+          />
         </Suspense>
       )}
       <Modal abierto={confirmandoVaciar} onCerrar={() => setConfirmandoVaciar(false)} titulo="Vaciar campo" ancho="sm">

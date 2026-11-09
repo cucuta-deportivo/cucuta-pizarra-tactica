@@ -199,6 +199,27 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
   };
 }
 
+/** Los nombres que pone la app sola: el del arranque y el de "+ Nueva alineación" (con la fecha). */
+const NOMBRE_AUTOMATICO = /^Alineación (inicial|\d{1,2}\/\d{1,2}\/\d{4})$/;
+
+/** JSON con las claves ordenadas: compara contenidos sin depender del orden en que se guardaron. */
+function jsonOrdenado(valor: unknown): string {
+  return JSON.stringify(valor, (_clave, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v,
+  );
+}
+
+/**
+ * Igual que una recién creada y con el nombre que puso la app (S1.8): la
+ * migración no la sube, se queda en el dispositivo. El balón inicial tiene un
+ * id al azar, así que no cuenta.
+ */
+export function esAlineacionVaciaSinTocar(alineacion: Alineacion): boolean {
+  if (!NOMBRE_AUTOMATICO.test(alineacion.nombre.trim())) return false;
+  const comparable = (doc: DocumentoTactico) => jsonOrdenado({ ...doc, balones: doc.balones.map(({ id: _id, ...resto }) => resto) });
+  return comparable(documentoDesdeAlineacion(alineacion)) === comparable(documentoVacio(FORMACIONES[0]!.id));
+}
+
 /**
  * Reacomoda a los jugadores RIVALES según el modo de vista (FA4): con los dos
  * equipos en pantalla se recogen en su mitad, y solos vuelven a desplegarse por
@@ -313,6 +334,8 @@ interface AlineacionState {
   reemplazarDocumentoCompleto: (alineacion: Alineacion) => void;
   /** S1.7: muestra lo que bajó de otros dispositivos sin pisar lo que se está editando. */
   aplicarCambiosDelServidor: (cambios: CambioBajado[]) => Promise<void>;
+  /** S1.8: trae las alineaciones de un respaldo como copias nuevas. Devuelve cuántas. */
+  importarRespaldo: (alineaciones: Alineacion[]) => Promise<number>;
 
   seleccionarFormacion: (formacionId: string) => void;
   vaciarCampo: () => void;
@@ -691,6 +714,17 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         }
       }
       await get().refrescarListado();
+    },
+
+    // Copias con id nuevo, como "Importar JSON": restaurar nunca pisa una que ya exista.
+    importarRespaldo: async (alineaciones) => {
+      const ahora = new Date().toISOString();
+      for (const alineacion of alineaciones) {
+        await alineacionRepository.guardar({ ...alineacion, id: generarId(), creadaEn: ahora });
+      }
+      programarSincronizacion();
+      await get().refrescarListado();
+      return alineaciones.length;
     },
 
     // Cambiar de formación no mueve a nadie (CLAUDE.md): solo cambian las zonas

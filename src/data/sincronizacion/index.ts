@@ -1,4 +1,5 @@
 import { supabaseConfigurado } from '../../lib/supabaseClient';
+import type { Alineacion } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import { copiaPorConflicto } from '../../utils/copias';
 import { generarId } from '../../utils/id';
@@ -12,6 +13,7 @@ import {
   marcarEliminadaEnServidor,
 } from '../supabase/alineacionesApi';
 import { crearBajador, type CambioBajado } from './bajarCambios';
+import { buscarPorMigrar, contarSubidas, crearRespaldo, marcarParaSubir, type PorMigrar } from './migrar';
 import { crearSincronizador, type ResumenSincronizacion } from './sincronizar';
 import { crearProgramador, crearSubidor } from './subirPendientes';
 
@@ -44,7 +46,7 @@ const sincronizador = crearSincronizador({
 });
 
 /** Solo sincroniza quien puede escribir en la tabla: un entrenador con la cuenta activa (igual que su RLS). */
-function puedeSincronizar(): boolean {
+export function puedeSincronizar(): boolean {
   const perfil = useAuthStore.getState().perfil;
   return supabaseConfigurado && perfil?.rol === 'entrenador' && perfil.estado === 'activo';
 }
@@ -64,3 +66,28 @@ export function sincronizarAhora(): Promise<ResumenSincronizacion | null> {
 
 /** Pide sincronizar; se hace a los 5 s del último pedido. */
 export const programarSincronizacion = crearProgramador(() => void sincronizarAhora(), ESPERA_SUBIDA_MS);
+
+/** S1.8: lo de este dispositivo que todavía no entró en la sincronización. `null` si esta cuenta no sincroniza. */
+export function porMigrarAqui(esVacia: (alineacion: Alineacion) => boolean): Promise<PorMigrar | null> {
+  return puedeSincronizar() ? buscarPorMigrar(alineacionRepository, esVacia) : Promise.resolve(null);
+}
+
+/** S1.8: marca por subir y sincroniza; `alAvanzar` recibe cuántas van subidas. Lo que no suba se reintenta solo. */
+export async function migrarAqui(ids: string[], alAvanzar: (subidas: number) => void): Promise<{ subidas: number; total: number }> {
+  await marcarParaSubir(alineacionRepository, ids);
+  const sondeo = setInterval(() => void contarSubidas(alineacionRepository, ids).then(alAvanzar), 500);
+  try {
+    await sincronizarAhora();
+  } finally {
+    clearInterval(sondeo);
+  }
+  const subidas = await contarSubidas(alineacionRepository, ids);
+  alAvanzar(subidas);
+  return { subidas, total: ids.length };
+}
+
+/** S1.8: descarga el respaldo de todas las alineaciones de este dispositivo (la exportación se carga aparte). */
+export async function descargarRespaldoAqui(): Promise<void> {
+  const [{ exportarRespaldoAJson }, respaldo] = await Promise.all([import('../../utils/exportar'), crearRespaldo(alineacionRepository)]);
+  exportarRespaldoAJson(respaldo);
+}

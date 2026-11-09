@@ -1,3 +1,4 @@
+import { FORMATO_RESPALDO, type Respaldo } from '../data/sincronizacion/migrar';
 import { COLOR, GROSOR, OPACIDAD, SOMBRA_FICHA_OFFSET_PX } from '../tokens';
 import type { Alineacion, Balon, Formacion, Jugador, JugadorEnCampo, JugadorRival, ObjetoCampo, Orientacion, PaletaRival } from '../types';
 import { posicionEfectivaBalon } from './balon';
@@ -568,15 +569,48 @@ function esAlineacionValida(valor: unknown): valor is Alineacion {
   );
 }
 
-export function analizarAlineacionDesdeJson(texto: string): Alineacion {
-  let valor: unknown;
+function leerJson(texto: string): unknown {
   try {
-    valor = JSON.parse(texto);
+    return JSON.parse(texto);
   } catch {
     throw new Error('El archivo no es un JSON válido.');
   }
+}
+
+export function analizarAlineacionDesdeJson(texto: string): Alineacion {
+  const valor = leerJson(texto);
   if (!esAlineacionValida(valor)) {
     throw new Error('El archivo no tiene el formato esperado de una alineación.');
   }
   return valor;
+}
+
+/** S1.8: `respaldo-alineaciones-AAAA-MM-DD.json`, con la fecha local del día. */
+export function nombreDelRespaldo(fecha: Date): string {
+  const dosCifras = (n: number) => String(n).padStart(2, '0');
+  return `respaldo-alineaciones-${fecha.getFullYear()}-${dosCifras(fecha.getMonth() + 1)}-${dosCifras(fecha.getDate())}.json`;
+}
+
+export function exportarRespaldoAJson(respaldo: Respaldo): void {
+  const blob = new Blob([JSON.stringify(respaldo, null, 2)], { type: 'application/json' });
+  descargarBlob(blob, nombreDelRespaldo(new Date(respaldo.creadoEn)));
+}
+
+/** Lo que trae un archivo de "Importar JSON": una alineación, o un respaldo con varias (S1.8). */
+export type ArchivoDeAlineaciones = { tipo: 'una'; alineacion: Alineacion } | { tipo: 'respaldo'; alineaciones: Alineacion[] };
+
+export function leerArchivoDeAlineaciones(texto: string): ArchivoDeAlineaciones {
+  const valor = leerJson(texto);
+  const registro = valor as Partial<Respaldo> | null;
+  if (registro && typeof registro === 'object' && registro.formato === FORMATO_RESPALDO) {
+    // Todo o nada: un respaldo a medias confundiría más que ayudaría.
+    if (!Array.isArray(registro.alineaciones) || !registro.alineaciones.every(esAlineacionValida)) {
+      throw new Error('El respaldo tiene alineaciones con un formato que no se reconoce.');
+    }
+    return { tipo: 'respaldo', alineaciones: registro.alineaciones };
+  }
+  if (!esAlineacionValida(valor)) {
+    throw new Error('El archivo no tiene el formato esperado de una alineación.');
+  }
+  return { tipo: 'una', alineacion: valor };
 }

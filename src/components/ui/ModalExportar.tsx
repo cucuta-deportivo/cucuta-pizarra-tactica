@@ -40,6 +40,8 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   const nombre = useAlineacionStore((s) => s.nombre);
   const creadaEn = useAlineacionStore((s) => s.creadaEn);
   const modificadaEn = useAlineacionStore((s) => s.modificadaEn);
+  const categoriaId = useAlineacionStore((s) => s.categoriaId);
+  const fichas = useAlineacionStore((s) => s.fichas);
   const documento = useAlineacionStore((s) => s.historial.presente);
   const reemplazarDocumentoCompleto = useAlineacionStore((s) => s.reemplazarDocumentoCompleto);
   const obtenerJugador = usePlantillaStore((s) => s.obtenerPorId);
@@ -63,7 +65,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   }, [abierto]);
 
   function construirAlineacion() {
-    return alineacionDesdeDocumento({ id, nombre, creadaEn }, documento, modificadaEn);
+    return alineacionDesdeDocumento({ id, nombre, creadaEn, categoriaId, fichas }, documento, modificadaEn);
   }
 
   async function exportarImagen(tipo: 'png' | 'pdf'): Promise<void> {

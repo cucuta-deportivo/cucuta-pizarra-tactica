@@ -4,6 +4,7 @@ import type {
   Balon,
   ColorObjeto,
   EstadoGuardado,
+  FichaJugador,
   Jugador,
   JugadorEnCampo,
   JugadorRival,
@@ -39,6 +40,7 @@ import {
   ubicarZonaEnLado,
 } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
+import { fichasActualizadas } from '../utils/fichas';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -235,13 +237,15 @@ function recolocarPorModo(doc: DocumentoTactico): void {
 }
 
 export function alineacionDesdeDocumento(
-  base: { id: string; nombre: string; creadaEn: string },
+  base: { id: string; nombre: string; creadaEn: string; categoriaId?: string | null; fichas?: FichaJugador[] },
   doc: DocumentoTactico,
   modificadaEn: string,
 ): Alineacion {
   return {
     id: base.id,
     nombre: base.nombre,
+    categoriaId: base.categoriaId ?? null,
+    fichas: base.fichas ?? [],
     formacionId: doc.formacionId,
     titulares: doc.titulares,
     banquillo: doc.banquillo,
@@ -283,6 +287,13 @@ interface AlineacionState {
   nombre: string;
   creadaEn: string;
   modificadaEn: string;
+  /** Categoría activa al crear la alineación (`null` si no había ninguna). No cambia después. */
+  categoriaId: string | null;
+  /**
+   * Ficha de cada jugador de la plantilla que aparece en la alineación. Vive fuera
+   * del historial: es una copia de datos para pintar, no algo que se deshace.
+   */
+  fichas: FichaJugador[];
   historial: Historial<DocumentoTactico>;
   listado: ResumenAlineacion[];
   estadoGuardado: EstadoGuardado;
@@ -415,8 +426,21 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     }, DEBOUNCE_AUTOGUARDADO_MS);
   }
 
+  /**
+   * Copia a las fichas los datos vivos de los jugadores de la plantilla que usa
+   * la alineación. Se hace al cambiar el documento, no solo al guardar: si el
+   * entrenador cambia de categoría antes del autoguardado, el jugador que acaba
+   * de poner ya tiene su ficha y no desaparece del campo.
+   */
+  function capturarFichas(): void {
+    const { historial, fichas } = get();
+    const nuevas = fichasActualizadas(historial.presente, fichas, usePlantillaStore.getState().jugadores);
+    if (nuevas !== fichas) set({ fichas: nuevas });
+  }
+
   function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string): void {
     set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
+    capturarFichas();
     marcarPendiente();
   }
 
@@ -452,6 +476,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     nombre: 'Nueva alineación',
     creadaEn: ahoraInicial,
     modificadaEn: ahoraInicial,
+    categoriaId: null,
+    fichas: [],
     historial: crearHistorial(documentoVacio(FORMACIONES[0]!.id), 'Alineación inicial'),
     listado: [],
     estadoGuardado: 'guardado',
@@ -482,6 +508,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         nombre: nombre ?? `Alineación ${new Date().toLocaleDateString('es-CO')}`,
         creadaEn: ahora,
         modificadaEn: ahora,
+        categoriaId: usePlantillaStore.getState().categoriaActiva,
+        fichas: [],
         historial: crearHistorial(documentoVacio(FORMACIONES[0]!.id), 'Alineación inicial'),
         estadoGuardado: 'pendiente',
       });
@@ -497,12 +525,15 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         nombre: alineacion.nombre,
         creadaEn: alineacion.creadaEn,
         modificadaEn: alineacion.modificadaEn,
+        categoriaId: alineacion.categoriaId ?? null,
+        fichas: alineacion.fichas ?? [],
         historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación cargada'),
         estadoGuardado: 'guardado',
       });
     },
 
     guardarAhora: async () => {
+      capturarFichas();
       const estado = get();
       set({ estadoGuardado: 'guardando' });
       const alineacion = alineacionDesdeDocumento(estado, estado.historial.presente, new Date().toISOString());
@@ -529,7 +560,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       const estado = get();
       const ahora = new Date().toISOString();
       const copia = alineacionDesdeDocumento(
-        { id: generarId(), nombre: `${estado.nombre} (copia)`, creadaEn: ahora },
+        { id: generarId(), nombre: `${estado.nombre} (copia)`, creadaEn: ahora, categoriaId: estado.categoriaId, fichas: estado.fichas },
         estado.historial.presente,
         ahora,
       );
@@ -558,6 +589,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         nombre: alineacion.nombre,
         creadaEn: alineacion.creadaEn,
         modificadaEn: alineacion.modificadaEn,
+        categoriaId: alineacion.categoriaId ?? null,
+        fichas: alineacion.fichas ?? [],
         historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación importada'),
       });
       marcarPendiente();

@@ -43,6 +43,17 @@ export interface Jugador {
   activo: boolean;
 }
 
+/**
+ * Copia de lo que se pinta de un jugador de la plantilla, guardada dentro de la
+ * alineación que lo usa: así se ve aunque su categoría no esté cargada, ya no
+ * esté activo o la alineación se abra en otro dispositivo. Lleva la ruta de la
+ * foto en el bucket, nunca el enlace firmado (caduca y no se guarda).
+ */
+export type FichaJugador = Pick<
+  Jugador,
+  'id' | 'categoriaId' | 'nombre' | 'apellido' | 'dorsal' | 'posicionNatural' | 'posicionesSecundarias' | 'fotoPath'
+>;
+
 /** Catálogo cerrado de posiciones que admite el formulario de plantilla. */
 export const POSICIONES_PLANTILLA: Posicion[] = [
   'POR', 'LI', 'DFC', 'LD', 'MCD', 'MC', 'MCO', 'EI', 'ED', 'SD', 'DC',
@@ -306,6 +317,10 @@ export interface Alineacion {
   cancha: IdentidadCancha;
   /** Jugadores creados a mano que no están en la plantilla; viajan con la alineación. */
   jugadoresPersonalizados?: Jugador[];
+  /** Categoría activa al crearla; `null` si no había ninguna cargada. Las guardadas antes no la tienen. */
+  categoriaId?: string | null;
+  /** Ficha de cada jugador de la plantilla que usa (ver `FichaJugador`). Las guardadas antes no la tienen. */
+  fichas?: FichaJugador[];
   /** `null` mientras el tablero sea una pizarra fija: solo existe al crear una jugada. */
   secuencia?: SecuenciaTactica | null;
 }

@@ -458,6 +458,8 @@ export default function App() {
   const inicializarPlantilla = usePlantillaStore((s) => s.inicializar);
   const sincronizarPersonalizados = usePlantillaStore((s) => s.sincronizarPersonalizados);
   const jugadoresPersonalizados = useAlineacionStore((s) => s.historial.presente.jugadoresPersonalizados);
+  const sincronizarFichas = usePlantillaStore((s) => s.sincronizarFichas);
+  const fichas = useAlineacionStore((s) => s.fichas);
   const hayJugada = useAlineacionStore((s) => s.historial.presente.secuencia !== null);
   const iniciarSecuencia = useAlineacionStore((s) => s.iniciarSecuencia);
   const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
@@ -529,6 +531,12 @@ export default function App() {
   useEffect(() => {
     sincronizarPersonalizados(jugadoresPersonalizados);
   }, [jugadoresPersonalizados, sincronizarPersonalizados]);
+
+  // Lo mismo con las fichas guardadas de la alineación abierta: quien no está en la
+  // plantilla cargada (otra categoría, ya inactivo, otro dispositivo) se pinta con ellas.
+  useEffect(() => {
+    sincronizarFichas(fichas);
+  }, [fichas, sincronizarFichas]);
 
   if (cargando) return <PantallaCarga />;
 

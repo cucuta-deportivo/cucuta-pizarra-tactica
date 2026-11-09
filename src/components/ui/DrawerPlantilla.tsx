@@ -3,7 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useUiStore } from '../../store/uiStore';
 import { useAlineacionStore } from '../../store/alineacionStore';
-import { usePlantillaStore } from '../../store/plantillaStore';
+import { useBuscarJugador } from '../../store/plantillaStore';
 import { DraggableJugador } from '../jugador/DraggableJugador';
 import { SelectorJugador } from '../jugador/SelectorJugador';
 import { ModalJugadorPersonalizado } from '../jugador/ModalJugadorPersonalizado';
@@ -20,10 +20,9 @@ export function DrawerPlantilla() {
   const enviarABanquillo = useAlineacionStore((s) => s.enviarABanquillo);
   const quitarDeBanquillo = useAlineacionStore((s) => s.quitarDeBanquillo);
   const agregarJugadorPersonalizado = useAlineacionStore((s) => s.agregarJugadorPersonalizado);
-  // Igual que en Campo: suscribirse a la lista, no a `obtenerPorId` (identidad estable),
+  // Igual que en Campo: suscribirse a las listas, no a `obtenerPorId` (identidad estable),
   // para que un jugador personalizado recién creado aparezca ya en el banquillo.
-  const jugadoresPlantilla = usePlantillaStore((s) => s.jugadores);
-  const obtenerPorId = (id: string) => jugadoresPlantilla.find((j) => j.id === id);
+  const obtenerPorId = useBuscarJugador();
 
   const [selectorAbierto, setSelectorAbierto] = useState(false);
   const [personalizadoAbierto, setPersonalizadoAbierto] = useState(false);

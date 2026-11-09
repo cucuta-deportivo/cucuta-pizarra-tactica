@@ -5,6 +5,7 @@ import { usePlantillaStore } from '../../store/plantillaStore';
 import { alineacionRepository } from '../../data/repositorio';
 import { obtenerFormacion } from '../../data/formaciones';
 import { VistaAlineacionEstatica } from '../campo/VistaAlineacionEstatica';
+import { jugadorDeAlineacion } from '../../utils/fichas';
 import type { Alineacion } from '../../types';
 
 interface ModalComparacionProps {
@@ -73,7 +74,12 @@ function ColumnaComparacion({
         ) : cargando || !alineacion ? (
           <p className="text-center text-sm text-club-plata/50">Cargando…</p>
         ) : (
-          <VistaAlineacionEstatica alineacion={alineacion} obtenerJugador={obtenerPorId} />
+          <VistaAlineacionEstatica
+            alineacion={alineacion}
+            // No es la alineación abierta: sus personalizados y fichas no están en la
+            // plantilla en memoria, así que se buscan también en ella.
+            obtenerJugador={(id) => obtenerPorId(id) ?? jugadorDeAlineacion(alineacion, id)}
+          />
         )}
       </div>
 

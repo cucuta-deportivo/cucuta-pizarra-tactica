@@ -49,7 +49,7 @@ Decisiones aprobadas el 2026-11-06:
 
 | Paso | Qué | Prueba principal | Estado |
 | --- | --- | --- | --- |
-| S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario): columnas `documento`, `version`, `ultimo_cambio`, `eliminada_en` y `actualizada_por`; versión, fecha y autores por trigger; leer, crear y editar sí, borrar no. Aplicado el 2026-11-08 | Columnas, políticas, triggers, restricciones y permisos comprobados; faltan las dos pruebas de funcionamiento | En curso |
+| S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario): columnas `documento`, `version`, `ultimo_cambio`, `eliminada_en` y `actualizada_por`; versión, fecha y autores por trigger; leer, crear y editar sí, borrar no. Aplicado el 2026-11-08 | Columnas, políticas, triggers, restricciones y permisos comprobados; pasaron las dos pruebas de funcionamiento (alta en versión 1, edición a versión 2, conflicto sin cambios, borrado bloqueado y nada guardado sin cuenta activa) | Hecho |
 | S1.2 | Copia de las fichas y categoría dentro del documento | Abrir una alineación de otra categoría: no falta ninguna ficha | Pendiente |
 | S1.3 | No guardar la alineación vacía inicial | Test | Pendiente |
 | S1.4 | Dexie v4: marca "por subir" | Los datos antiguos siguen intactos | Pendiente |

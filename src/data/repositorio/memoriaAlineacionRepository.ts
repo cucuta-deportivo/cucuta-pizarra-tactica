@@ -2,8 +2,12 @@ import type { Alineacion } from '../../types';
 import {
   marcarEliminadaPorSubir,
   marcarPorSubir,
+  sigueEnLaRevision,
   type AlineacionRepository,
+  type CopiaLocal,
+  type Escritura,
   type RegistroSincronizacion,
+  type ResultadoGuardado,
   type ResumenAlineacion,
 } from './AlineacionRepository';
 
@@ -26,9 +30,18 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
     return this.almacen.get(id);
   }
 
-  async guardar(alineacion: Alineacion): Promise<void> {
+  async abrir(id: string): Promise<{ alineacion: Alineacion; revision: number } | undefined> {
+    const alineacion = this.almacen.get(id);
+    return alineacion ? { alineacion, revision: this.registros.get(id)?.revision ?? 0 } : undefined;
+  }
+
+  async guardar(alineacion: Alineacion, revisionBase?: number): Promise<ResultadoGuardado> {
+    const previo = this.registros.get(alineacion.id);
+    if (!sigueEnLaRevision(previo, revisionBase)) return { guardada: false };
+    const marca = marcarPorSubir(previo, alineacion.id);
     this.almacen.set(alineacion.id, alineacion);
-    this.registros.set(alineacion.id, marcarPorSubir(this.registros.get(alineacion.id), alineacion.id));
+    this.registros.set(alineacion.id, marca);
+    return { guardada: true, revision: marca.revision };
   }
 
   async eliminar(id: string): Promise<void> {
@@ -40,6 +53,10 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
     return [...this.registros.values()].filter((r) => r.pendiente);
   }
 
+  async todasLasMarcas(): Promise<RegistroSincronizacion[]> {
+    return [...this.registros.values()];
+  }
+
   async actualizarMarca(
     id: string,
     cambio: (actual: RegistroSincronizacion | undefined) => RegistroSincronizacion | null,
@@ -48,5 +65,16 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
     if (nueva) this.registros.set(id, nueva);
     else this.registros.delete(id);
     return nueva;
+  }
+
+  async reescribir<T>(id: string, cambio: (actual: CopiaLocal) => { escrituras: Escritura[]; resultado: T }): Promise<T> {
+    const { escrituras, resultado } = cambio({ alineacion: this.almacen.get(id), marca: this.registros.get(id) });
+    for (const escritura of escrituras) {
+      if (escritura.alineacion === null) this.almacen.delete(escritura.id);
+      else if (escritura.alineacion) this.almacen.set(escritura.id, escritura.alineacion);
+      if (escritura.marca === null) this.registros.delete(escritura.id);
+      else if (escritura.marca) this.registros.set(escritura.id, escritura.marca);
+    }
+    return resultado;
   }
 }

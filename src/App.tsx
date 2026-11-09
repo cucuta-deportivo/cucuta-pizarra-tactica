@@ -10,6 +10,7 @@ import { Modal } from './components/ui/Modal';
 import { IndicadorAutoguardado } from './components/ui/IndicadorAutoguardado';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
+import { alBajarCambios, sincronizarAhora } from './data/sincronizacion';
 import { useAlineacionStore } from './store/alineacionStore';
 import { useAuthStore } from './store/authStore';
 import { supabaseConfigurado } from './lib/supabaseClient';
@@ -517,10 +518,14 @@ export default function App() {
 
   useAtajosTeclado();
 
+  // Lo que baja de otros dispositivos se muestra sin pisar lo que se está editando (S1.7).
+  useEffect(() => alBajarCambios((cambios) => void useAlineacionStore.getState().aplicarCambiosDelServidor(cambios)), []);
+
   useEffect(() => {
     if (inicializadoRef.current) return;
     inicializadoRef.current = true;
-    void inicializar();
+    // Al abrir, primero lo de este dispositivo; después se sincroniza con Supabase.
+    void inicializar().then(() => sincronizarAhora());
     void inicializarPlantilla();
   }, [inicializar, inicializarPlantilla]);
 

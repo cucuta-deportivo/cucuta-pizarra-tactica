@@ -68,6 +68,31 @@ export function marcarEliminadaPorSubir(previo: RegistroSincronizacion | undefin
 }
 
 /**
+ * `guardada: false`: la copia local ya no estaba en la revisión de la que partía
+ * quien guardaba (llegó una versión del servidor u otra ventana guardó antes).
+ * No se escribió nada.
+ */
+export type ResultadoGuardado = { guardada: true; revision: number } | { guardada: false };
+
+/** Una alineación de este dispositivo y su marca, leídas a la vez. */
+export interface CopiaLocal {
+  alineacion: Alineacion | undefined;
+  marca: RegistroSincronizacion | undefined;
+}
+
+/** Qué escribir de un id: `null` lo quita y, sin la propiedad, se deja como está. */
+export interface Escritura {
+  id: string;
+  alineacion?: Alineacion | null;
+  marca?: RegistroSincronizacion | null;
+}
+
+/** ¿Sigue la copia local en la revisión de la que parte quien guarda? Sin `revisionBase`, no se comprueba. */
+export function sigueEnLaRevision(marca: RegistroSincronizacion | undefined, revisionBase: number | undefined): boolean {
+  return revisionBase === undefined || (marca?.revision ?? 0) === revisionBase;
+}
+
+/**
  * Puerto de persistencia. Cualquier componente depende solo de esta interfaz,
  * nunca de Dexie/IndexedDB directamente, para poder cambiar de IndexedDB a un
  * backend (p. ej. Supabase) sin tocar la UI.
@@ -75,12 +100,24 @@ export function marcarEliminadaPorSubir(previo: RegistroSincronizacion | undefin
 export interface AlineacionRepository {
   listar(): Promise<ResumenAlineacion[]>;
   obtener(id: string): Promise<Alineacion | undefined>;
-  /** Guarda y la marca por subir, en un solo paso. */
-  guardar(alineacion: Alineacion): Promise<void>;
+  /** La alineación con la revisión de su marca (0 si no tiene), leídas a la vez: desde ahí se guarda. */
+  abrir(id: string): Promise<{ alineacion: Alineacion; revision: number } | undefined>;
+  /**
+   * Guarda y la marca por subir, en un solo paso. Con `revisionBase` (la revisión
+   * que se abrió), solo si la copia local sigue en ella: si no, no escribe nada.
+   */
+  guardar(alineacion: Alineacion, revisionBase?: number): Promise<ResultadoGuardado>;
   /** La borra de este dispositivo y deja su marca de borrado por subir, en un solo paso. */
   eliminar(id: string): Promise<void>;
   /** Lo cambiado o borrado en este dispositivo que falta subir a Supabase. */
   pendientesDeSubir(): Promise<RegistroSincronizacion[]>;
+  /** Todas las marcas, también las que no tienen nada por subir: la bajada compara con ellas. */
+  todasLasMarcas(): Promise<RegistroSincronizacion[]>;
+  /**
+   * Lee la alineación `id` y su marca y escribe lo que diga `cambio`, en un solo
+   * paso: nada se cuela entre la lectura y la escritura. Así se aplica lo que baja.
+   */
+  reescribir<T>(id: string, cambio: (actual: CopiaLocal) => { escrituras: Escritura[]; resultado: T }): Promise<T>;
   /** Cambia la marca de una alineación en un solo paso (lee y escribe sin que nada se cuele); `null` la quita. */
   actualizarMarca(
     id: string,

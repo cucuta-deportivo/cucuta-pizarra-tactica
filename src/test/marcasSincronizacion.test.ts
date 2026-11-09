@@ -108,3 +108,78 @@ describe('repositorio: marca al guardar y al borrar', () => {
     expect((await repositorio.pendientesDeSubir())[0]).toMatchObject({ versionServidor: null, revision: 1 });
   });
 });
+
+/**
+ * S1.7: la pizarra guarda "desde la revisión que abrió". Si la copia local cambió
+ * por debajo (llegó una versión del servidor u otra ventana guardó), no se pisa:
+ * la pizarra lo guarda como copia.
+ */
+describe('repositorio: lo abierto no pisa una copia local más nueva', () => {
+  it('guardar desde la revisión abierta escribe y devuelve la revisión nueva', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    expect(await repositorio.guardar(alineacion('a'), 0)).toEqual({ guardada: true, revision: 1 });
+    expect(await repositorio.guardar(alineacion('a', 'Otra'), 1)).toEqual({ guardada: true, revision: 2 });
+    expect((await repositorio.obtener('a'))?.nombre).toBe('Otra');
+  });
+
+  it('si la copia local cambió desde que se abrió, no escribe nada', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a', 'De aquí'), 0);
+    await repositorio.guardar(alineacion('a', 'De otra ventana'), 1);
+
+    expect(await repositorio.guardar(alineacion('a', 'Vieja'), 1)).toEqual({ guardada: false });
+    expect((await repositorio.obtener('a'))?.nombre).toBe('De otra ventana');
+    expect((await repositorio.pendientesDeSubir())[0]?.revision).toBe(2);
+  });
+
+  it('si se borró desde que se abrió, tampoco: no la resucita', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a'), 0);
+    await repositorio.actualizarMarca('a', () => null);
+    await repositorio.reescribir('a', () => ({ escrituras: [{ id: 'a', alineacion: null }], resultado: null }));
+
+    expect(await repositorio.guardar(alineacion('a'), 1)).toEqual({ guardada: false });
+    expect(await repositorio.obtener('a')).toBeUndefined();
+  });
+
+  it('abrir lee la alineación junto con la revisión de su marca (0 si no tiene)', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a'));
+    await repositorio.guardar(alineacion('a', 'Segunda'));
+
+    expect(await repositorio.abrir('a')).toMatchObject({ alineacion: { nombre: 'Segunda' }, revision: 2 });
+    expect(await repositorio.abrir('no-existe')).toBeUndefined();
+    await repositorio.actualizarMarca('a', () => null);
+    expect((await repositorio.abrir('a'))?.revision).toBe(0);
+  });
+
+  it('todasLasMarcas incluye las que no tienen nada por subir', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a'));
+    await repositorio.guardar(alineacion('b'));
+    await repositorio.actualizarMarca('a', (m) => (m ? { ...m, pendiente: false, versionServidor: 1 } : null));
+
+    expect((await repositorio.todasLasMarcas()).map((m) => [m.id, m.pendiente])).toEqual([
+      ['a', false],
+      ['b', true],
+    ]);
+  });
+
+  it('reescribir lee alineación y marca y escribe de un solo paso, también otro id; sin la propiedad, no la toca', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a', 'Original'));
+
+    const leido = await repositorio.reescribir('a', (actual) => ({
+      escrituras: [
+        { id: 'copia', alineacion: { ...actual.alineacion!, id: 'copia', nombre: 'Copia' }, marca: marcarPorSubir(undefined, 'copia') },
+        { id: 'a', marca: null },
+      ],
+      resultado: [actual.alineacion?.nombre, actual.marca?.revision],
+    }));
+
+    expect(leido).toEqual(['Original', 1]);
+    expect((await repositorio.obtener('a'))?.nombre).toBe('Original');
+    expect((await repositorio.obtener('copia'))?.nombre).toBe('Copia');
+    expect((await repositorio.todasLasMarcas()).map((m) => m.id)).toEqual(['copia']);
+  });
+});

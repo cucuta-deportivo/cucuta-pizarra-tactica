@@ -1,135 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { crearProgramador, crearSubidor, type Remoto } from '../data/sincronizacion/subirPendientes';
+import { crearProgramador, crearSubidor } from '../data/sincronizacion/subirPendientes';
 import { MemoriaAlineacionRepository } from '../data/repositorio/memoriaAlineacionRepository';
-import {
-  ErrorSinConexion,
-  ErrorSupabase,
-  type EstadoRemoto,
-  type ResultadoAlta,
-  type ResultadoSubida,
-} from '../data/supabase/alineacionesApi';
-import { canchaVacia, cuadriculaVacia } from '../utils/anexoA';
-import type { Alineacion } from '../types';
+import { ErrorSupabase } from '../data/supabase/alineacionesApi';
+import { alineacion, ServidorFalso } from './servidorFalso';
 
 /**
  * S1.6: subir lo marcado "por subir" sin pisar nunca el trabajo de otro
- * dispositivo. El servidor falso aplica las mismas reglas que la tabla real
- * (comprobadas en S1.1): la versión la pone el servidor, un cambio solo se
- * escribe si el servidor sigue en la versión de la que parte, y un alta con un
- * id que ya existe no pisa nada.
+ * dispositivo, contra un servidor falso con las reglas de la tabla real.
  */
-interface Fila {
-  alineacion: Alineacion;
-  version: number;
-  ultimoCambio: string;
-  eliminada: boolean;
-}
-
-class ServidorFalso implements Remoto {
-  filas = new Map<string, Fila>();
-  llamadas = 0;
-  /** Se ejecuta al recibir un cambio, antes de aplicarlo: para editar "mientras se sube". */
-  alRecibir: (() => Promise<void>) | null = null;
-  private corte: 'antes' | 'despues' | null = null;
-  private error: Error | null = null;
-
-  /** La próxima llamada se queda sin red: 'antes' no llega; 'despues' sí se aplica, pero se pierde la respuesta. */
-  cortarRed(cuando: 'antes' | 'despues'): void {
-    this.corte = cuando;
-  }
-
-  fallarCon(error: Error): void {
-    this.error = error;
-  }
-
-  /** Otro dispositivo sube un cambio de esta alineación. */
-  cambiarDesdeOtroDispositivo(id: string, nombre = 'Cambiada en otro dispositivo'): void {
-    const fila = this.filas.get(id)!;
-    fila.version += 1;
-    fila.ultimoCambio = 'cambio-de-otro-dispositivo';
-    fila.alineacion = { ...fila.alineacion, nombre };
-  }
-
-  private async llamada<T>(operacion: () => Promise<T> | T): Promise<T> {
-    this.llamadas += 1;
-    if (this.error) {
-      const error = this.error;
-      this.error = null;
-      throw error;
-    }
-    if (this.corte === 'antes') {
-      this.corte = null;
-      throw new ErrorSinConexion();
-    }
-    const resultado = await operacion();
-    if (this.corte === 'despues') {
-      this.corte = null;
-      throw new ErrorSinConexion();
-    }
-    return resultado;
-  }
-
-  crear(alineacion: Alineacion, ultimoCambio: string): Promise<ResultadoAlta> {
-    return this.llamada(() => {
-      if (this.filas.has(alineacion.id)) return { tipo: 'ya-existe' as const };
-      this.filas.set(alineacion.id, { alineacion, version: 1, ultimoCambio, eliminada: false });
-      return { tipo: 'subida' as const, version: 1 };
-    });
-  }
-
-  actualizar(alineacion: Alineacion, versionBase: number, ultimoCambio: string): Promise<ResultadoSubida> {
-    return this.llamada(async () => {
-      if (this.alRecibir) {
-        const alRecibir = this.alRecibir;
-        this.alRecibir = null;
-        await alRecibir();
-      }
-      const fila = this.filas.get(alineacion.id);
-      if (!fila || fila.version !== versionBase) return { tipo: 'sin-cambio' as const };
-      Object.assign(fila, { alineacion, version: fila.version + 1, ultimoCambio });
-      return { tipo: 'subida' as const, version: fila.version };
-    });
-  }
-
-  marcarEliminada(id: string, versionBase: number, ultimoCambio: string): Promise<ResultadoSubida> {
-    return this.llamada(() => {
-      const fila = this.filas.get(id);
-      if (!fila || fila.version !== versionBase) return { tipo: 'sin-cambio' as const };
-      Object.assign(fila, { eliminada: true, version: fila.version + 1, ultimoCambio });
-      return { tipo: 'subida' as const, version: fila.version };
-    });
-  }
-
-  estado(id: string): Promise<EstadoRemoto | null> {
-    return this.llamada(() => {
-      const fila = this.filas.get(id);
-      return fila
-        ? { id, version: fila.version, ultimoCambio: fila.ultimoCambio, eliminada: fila.eliminada, actualizadoEn: '2026-11-09T00:00:00Z' }
-        : null;
-    });
-  }
-}
-
-function alineacion(id: string, nombre = 'Titular del sábado'): Alineacion {
-  return {
-    id,
-    nombre,
-    formacionId: '4-3-3',
-    titulares: [],
-    banquillo: [],
-    trazos: [],
-    notas: '',
-    creadaEn: '2026-11-08T10:00:00.000Z',
-    modificadaEn: '2026-11-08T10:00:00.000Z',
-    objetos: [],
-    balones: [],
-    cuadricula: cuadriculaVacia(),
-    rival: null,
-    marcajes: [],
-    cancha: canchaVacia(),
-  };
-}
-
 function preparar() {
   const local = new MemoriaAlineacionRepository();
   const servidor = new ServidorFalso();

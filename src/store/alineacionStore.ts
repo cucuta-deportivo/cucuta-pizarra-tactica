@@ -14,7 +14,9 @@ import type {
   Trazo,
 } from '../types';
 import { alineacionRepository, type ResumenAlineacion } from '../data/repositorio';
-import { programarSubida } from '../data/sincronizacion';
+import { programarSincronizacion } from '../data/sincronizacion';
+import type { CambioBajado } from '../data/sincronizacion/bajarCambios';
+import { copiaPorConflicto } from '../utils/copias';
 import { obtenerFormacion, FORMACIONES } from '../data/formaciones';
 import {
   actualizarHistorial,
@@ -309,6 +311,8 @@ interface AlineacionState {
   duplicarActual: () => Promise<void>;
   eliminarAlineacion: (id: string) => Promise<void>;
   reemplazarDocumentoCompleto: (alineacion: Alineacion) => void;
+  /** S1.7: muestra lo que bajó de otros dispositivos sin pisar lo que se está editando. */
+  aplicarCambiosDelServidor: (cambios: CambioBajado[]) => Promise<void>;
 
   seleccionarFormacion: (formacionId: string) => void;
   vaciarCampo: () => void;
@@ -417,9 +421,20 @@ interface AlineacionState {
 }
 
 let temporizadorAutoguardado: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Revisión local de la alineación abierta cuando se abrió o se guardó por última
+ * vez. Se guarda "desde ella": si la copia local cambió por debajo (bajó una
+ * versión del servidor u otra ventana guardó), lo de aquí pasa a copia (S1.7).
+ */
+let revisionAbierta = 0;
+/** Hay cambios en la pizarra que todavía no empezaron a guardarse. */
+let sinGuardar = false;
+/** Los guardados van de uno en uno: cada uno parte de la revisión que dejó el anterior. */
+let colaDeGuardado: Promise<void> = Promise.resolve();
 
 export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function marcarPendiente(): void {
+    sinGuardar = true;
     set({ estadoGuardado: 'pendiente' });
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
     temporizadorAutoguardado = setTimeout(() => {
@@ -470,6 +485,78 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     useUiStore.getState().mostrarToast({ tipo: 'info', mensaje, accion: { etiqueta: 'Deshacer', ejecutar: () => get().deshacer() } });
   }
 
+  /** Nada en la pizarra que no esté ya guardado en este dispositivo. */
+  function estaGuardada(): boolean {
+    return !sinGuardar && get().estadoGuardado === 'guardado';
+  }
+
+  /** Pone en la pizarra una alineación leída de este dispositivo, con el deshacer desde cero. */
+  function mostrarAlineacion({ alineacion, revision }: { alineacion: Alineacion; revision: number }, etiqueta: string): void {
+    if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
+    revisionAbierta = revision;
+    sinGuardar = false;
+    set({
+      id: alineacion.id,
+      nombre: alineacion.nombre,
+      creadaEn: alineacion.creadaEn,
+      modificadaEn: alineacion.modificadaEn,
+      categoriaId: alineacion.categoriaId ?? null,
+      fichas: alineacion.fichas ?? [],
+      historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), etiqueta),
+      estadoGuardado: 'guardado',
+    });
+  }
+
+  /**
+   * Una alineación vacía que no se guarda hasta el primer cambio (S1.3): si se
+   * guardara, cada dispositivo subiría la suya a la lista compartida.
+   */
+  function abrirVaciaSinGuardar(): void {
+    get().nuevaAlineacion('Alineación inicial');
+    if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
+    sinGuardar = false;
+    set({ estadoGuardado: 'guardado' });
+  }
+
+  /** La copia local cambió por debajo mientras se editaba: lo de la pizarra se guarda como copia y se sigue ahí. */
+  async function guardarComoCopia(alineacion: Alineacion): Promise<void> {
+    const copia = copiaPorConflicto(alineacion);
+    const resultado = await alineacionRepository.guardar(copia, 0);
+    if (get().id === alineacion.id) {
+      revisionAbierta = resultado.guardada ? resultado.revision : 0;
+      set({ id: copia.id, nombre: copia.nombre, creadaEn: copia.creadaEn });
+    }
+    useUiStore.getState().mostrarToast({
+      tipo: 'info',
+      fijo: true,
+      mensaje: `«${alineacion.nombre}» cambió en otra ventana o dispositivo mientras la editabas. Lo tuyo quedó en «${copia.nombre}».`,
+    });
+  }
+
+  async function guardarUnaVez(): Promise<void> {
+    capturarFichas();
+    const estado = get();
+    sinGuardar = false;
+    set({ estadoGuardado: 'guardando' });
+    const alineacion = alineacionDesdeDocumento(estado, estado.historial.presente, new Date().toISOString());
+    try {
+      const resultado = await alineacionRepository.guardar(alineacion, revisionAbierta);
+      if (!resultado.guardada) await guardarComoCopia(alineacion);
+      else if (get().id === alineacion.id) revisionAbierta = resultado.revision;
+      // Si se editó mientras se guardaba, sigue pendiente: lo guarda el autoguardado que ya está programado.
+      if (!sinGuardar) set({ estadoGuardado: 'guardado', modificadaEn: alineacion.modificadaEn });
+      programarSincronizacion();
+      await get().refrescarListado();
+    } catch {
+      set({ estadoGuardado: 'error' });
+      useUiStore.getState().mostrarToast({
+        tipo: 'error',
+        mensaje: 'No se pudo guardar la alineación. Revisa el espacio de almacenamiento.',
+        accion: { etiqueta: 'Reintentar', ejecutar: () => void get().guardarAhora() },
+      });
+    }
+  }
+
   const ahoraInicial = new Date().toISOString();
 
   return {
@@ -487,15 +574,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     inicializar: async () => {
       set({ cargando: true });
       const listado = await alineacionRepository.listar();
-      if (listado.length === 0) {
-        // Vacía no se guarda: cada dispositivo nuevo subiría la suya a la lista
-        // compartida. Se guarda con el primer cambio, como cualquier otra.
-        get().nuevaAlineacion('Alineación inicial');
-        if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
-        set({ estadoGuardado: 'guardado' });
-      } else {
-        await get().cargarAlineacion(listado[0]!.id);
-      }
+      if (listado.length === 0) abrirVaciaSinGuardar();
+      else await get().cargarAlineacion(listado[0]!.id);
       set({ cargando: false });
     },
 
@@ -507,6 +587,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     nuevaAlineacion: (nombre) => {
       if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
       const ahora = new Date().toISOString();
+      revisionAbierta = 0;
       set({
         id: generarId(),
         nombre: nombre ?? `Alineación ${new Date().toLocaleDateString('es-CO')}`,
@@ -521,39 +602,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     cargarAlineacion: async (id) => {
-      const alineacion = await alineacionRepository.obtener(id);
-      if (!alineacion) return;
-      if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
-      set({
-        id: alineacion.id,
-        nombre: alineacion.nombre,
-        creadaEn: alineacion.creadaEn,
-        modificadaEn: alineacion.modificadaEn,
-        categoriaId: alineacion.categoriaId ?? null,
-        fichas: alineacion.fichas ?? [],
-        historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación cargada'),
-        estadoGuardado: 'guardado',
-      });
+      const abierta = await alineacionRepository.abrir(id);
+      if (abierta) mostrarAlineacion(abierta, 'Alineación cargada');
     },
 
-    guardarAhora: async () => {
-      capturarFichas();
-      const estado = get();
-      set({ estadoGuardado: 'guardando' });
-      const alineacion = alineacionDesdeDocumento(estado, estado.historial.presente, new Date().toISOString());
-      try {
-        await alineacionRepository.guardar(alineacion);
-        set({ estadoGuardado: 'guardado', modificadaEn: alineacion.modificadaEn });
-        programarSubida();
-        await get().refrescarListado();
-      } catch {
-        set({ estadoGuardado: 'error' });
-        useUiStore.getState().mostrarToast({
-          tipo: 'error',
-          mensaje: 'No se pudo guardar la alineación. Revisa el espacio de almacenamiento.',
-          accion: { etiqueta: 'Reintentar', ejecutar: () => void get().guardarAhora() },
-        });
-      }
+    guardarAhora: () => {
+      const turno = colaDeGuardado.then(guardarUnaVez);
+      colaDeGuardado = turno.catch(() => undefined);
+      return turno;
     },
 
     renombrar: (nombre) => {
@@ -570,14 +626,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         ahora,
       );
       await alineacionRepository.guardar(copia);
-      programarSubida();
+      programarSincronizacion();
       await get().cargarAlineacion(copia.id);
       await get().refrescarListado();
     },
 
     eliminarAlineacion: async (id) => {
       await alineacionRepository.eliminar(id);
-      programarSubida();
+      programarSincronizacion();
       await get().refrescarListado();
       if (get().id === id) {
         const listado = get().listado;
@@ -591,6 +647,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
 
     reemplazarDocumentoCompleto: (alineacion) => {
       if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
+      revisionAbierta = 0;
       set({
         id: alineacion.id,
         nombre: alineacion.nombre,
@@ -601,6 +658,41 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación importada'),
       });
       marcarPendiente();
+    },
+
+    aplicarCambiosDelServidor: async (cambios) => {
+      const { mostrarToast } = useUiStore.getState();
+      for (const cambio of cambios) {
+        if (cambio.tipo !== 'copia') continue;
+        const motivo = cambio.borradaEnServidor
+          ? `«${cambio.nombre}» se borró en otro dispositivo`
+          : `Otro dispositivo cambió «${cambio.nombre}» antes`;
+        mostrarToast({ tipo: 'info', fijo: true, mensaje: `${motivo}. Tus cambios quedaron en «${cambio.copia.nombre}».` });
+        // Se sigue trabajando en lo propio, que ahora es la copia: con su deshacer y lo que faltara por guardar.
+        if (get().id === cambio.id) {
+          revisionAbierta = cambio.copia.revision;
+          set({ id: cambio.copia.id, nombre: cambio.copia.nombre, creadaEn: cambio.copia.creadaEn });
+        }
+      }
+
+      // Si la abierta tiene algo sin guardar, no se toca: al guardarse, la guarda de revisión lo pasa a copia.
+      const abierta = cambios.find((c) => c.id === get().id && (c.tipo === 'actualizada' || c.tipo === 'borrada'));
+      if (abierta?.tipo === 'actualizada' && estaGuardada()) {
+        const leida = await alineacionRepository.abrir(abierta.id);
+        if (leida && get().id === abierta.id && estaGuardada()) {
+          mostrarAlineacion(leida, 'Cambios de otro dispositivo');
+          mostrarToast({ tipo: 'info', mensaje: `«${leida.alineacion.nombre}» se actualizó con cambios de otro dispositivo.` });
+        }
+      }
+      if (abierta?.tipo === 'borrada' && estaGuardada()) {
+        const listado = await alineacionRepository.listar();
+        if (get().id === abierta.id && estaGuardada()) {
+          if (listado.length > 0) await get().cargarAlineacion(listado[0]!.id);
+          else abrirVaciaSinGuardar();
+          mostrarToast({ tipo: 'info', mensaje: `«${abierta.nombre}» se borró en otro dispositivo.` });
+        }
+      }
+      await get().refrescarListado();
     },
 
     // Cambiar de formación no mueve a nadie (CLAUDE.md): solo cambian las zonas

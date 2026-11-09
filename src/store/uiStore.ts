@@ -8,6 +8,8 @@ export interface Toast {
   tipo: TipoToast;
   mensaje: string;
   accion?: { etiqueta: string; ejecutar: () => void };
+  /** No se cierra solo: para avisos que no se pueden perder (por ejemplo, que el trabajo quedó en una copia). */
+  fijo?: boolean;
 }
 
 export type OrientacionForzada = 'auto' | 'vertical' | 'horizontal';
@@ -33,7 +35,7 @@ export const useUiStore = create<UiState>((set) => ({
   mostrarToast: (toast) => {
     const id = generarId();
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }));
-    if (toast.tipo !== 'error') {
+    if (toast.tipo !== 'error' && !toast.fijo) {
       setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 4000);
     }
   },

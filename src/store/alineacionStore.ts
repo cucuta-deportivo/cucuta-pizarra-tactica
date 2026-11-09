@@ -637,11 +637,9 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       await get().refrescarListado();
       if (get().id === id) {
         const listado = get().listado;
-        if (listado.length > 0) {
-          await get().cargarAlineacion(listado[0]!.id);
-        } else {
-          get().nuevaAlineacion();
-        }
+        // Si era la última, la vacía no se guarda hasta el primer cambio, igual que al arrancar (S1.3).
+        if (listado.length > 0) await get().cargarAlineacion(listado[0]!.id);
+        else abrirVaciaSinGuardar();
       }
     },
 

@@ -30,20 +30,48 @@ function alineacion(id: string, nombre = 'Prueba'): Alineacion {
   };
 }
 
-const subida = (id: string): RegistroSincronizacion => ({ id, versionServidor: 3, pendiente: false, eliminada: false });
+const subida = (id: string, cambios: Partial<RegistroSincronizacion> = {}): RegistroSincronizacion => ({
+  id,
+  versionServidor: 3,
+  pendiente: false,
+  eliminada: false,
+  revision: 4,
+  cambioEnCurso: null,
+  revisionEnCurso: null,
+  conflicto: false,
+  ...cambios,
+});
 
 describe('marca "por subir"', () => {
   it('guardar marca por subir; si nunca se subió, no hay versión del servidor', () => {
-    expect(marcarPorSubir(undefined, 'a')).toEqual({ id: 'a', versionServidor: null, pendiente: true, eliminada: false });
+    expect(marcarPorSubir(undefined, 'a')).toEqual({
+      id: 'a',
+      versionServidor: null,
+      pendiente: true,
+      eliminada: false,
+      revision: 1,
+      cambioEnCurso: null,
+      revisionEnCurso: null,
+      conflicto: false,
+    });
   });
 
-  it('guardar una ya subida la vuelve a marcar y conserva la versión de la que parte', () => {
-    expect(marcarPorSubir(subida('a'), 'a')).toEqual({ id: 'a', versionServidor: 3, pendiente: true, eliminada: false });
+  it('guardar una ya subida la vuelve a marcar, conserva la versión de la que parte y cuenta un cambio más', () => {
+    expect(marcarPorSubir(subida('a'), 'a')).toEqual(subida('a', { pendiente: true, revision: 5 }));
+  });
+
+  it('guardar durante una subida conserva su identificador y la revisión que llevaba, para reconocerla si se pierde la respuesta', () => {
+    const marca = marcarPorSubir(subida('a', { pendiente: true, cambioEnCurso: 'cambio-7', revisionEnCurso: 4 }), 'a');
+    expect(marca).toMatchObject({ cambioEnCurso: 'cambio-7', revisionEnCurso: 4, revision: 5 });
   });
 
   it('borrar deja una marca de borrado por subir, con la versión de la que parte', () => {
-    expect(marcarEliminadaPorSubir(subida('a'), 'a')).toEqual({ id: 'a', versionServidor: 3, pendiente: true, eliminada: true });
-    expect(marcarEliminadaPorSubir(undefined, 'b')).toEqual({ id: 'b', versionServidor: null, pendiente: true, eliminada: true });
+    expect(marcarEliminadaPorSubir(subida('a'), 'a')).toEqual(subida('a', { pendiente: true, eliminada: true, revision: 5 }));
+    expect(marcarEliminadaPorSubir(undefined, 'b')).toMatchObject({ id: 'b', versionServidor: null, pendiente: true, eliminada: true });
+  });
+
+  it('borrar una en conflicto le quita el conflicto: se resuelve con las reglas del borrado', () => {
+    expect(marcarEliminadaPorSubir(subida('a', { pendiente: true, conflicto: true }), 'a').conflicto).toBe(false);
   });
 });
 
@@ -53,10 +81,7 @@ describe('repositorio: marca al guardar y al borrar', () => {
     await repositorio.guardar(alineacion('a'));
     await repositorio.guardar(alineacion('b'));
 
-    expect(await repositorio.pendientesDeSubir()).toEqual([
-      { id: 'a', versionServidor: null, pendiente: true, eliminada: false },
-      { id: 'b', versionServidor: null, pendiente: true, eliminada: false },
-    ]);
+    expect(await repositorio.pendientesDeSubir()).toEqual([marcarPorSubir(undefined, 'a'), marcarPorSubir(undefined, 'b')]);
   });
 
   it('lo borrado desaparece de la lista pero queda su marca de borrado por subir', async () => {
@@ -67,6 +92,19 @@ describe('repositorio: marca al guardar y al borrar', () => {
 
     expect((await repositorio.listar()).map((r) => r.id)).toEqual(['b']);
     expect(await repositorio.obtener('a')).toBeUndefined();
-    expect(await repositorio.pendientesDeSubir()).toContainEqual({ id: 'a', versionServidor: null, pendiente: true, eliminada: true });
+    expect(await repositorio.pendientesDeSubir()).toContainEqual(marcarEliminadaPorSubir(marcarPorSubir(undefined, 'a'), 'a'));
+  });
+
+  it('una marca se cambia de un solo paso, o se quita', async () => {
+    const repositorio = new MemoriaAlineacionRepository();
+    await repositorio.guardar(alineacion('a'));
+
+    const cambiada = await repositorio.actualizarMarca('a', (actual) => (actual ? { ...actual, versionServidor: 1, pendiente: false } : null));
+    expect(cambiada).toMatchObject({ id: 'a', versionServidor: 1, pendiente: false });
+    expect(await repositorio.pendientesDeSubir()).toEqual([]);
+
+    expect(await repositorio.actualizarMarca('a', () => null)).toBeNull();
+    await repositorio.guardar(alineacion('a'));
+    expect((await repositorio.pendientesDeSubir())[0]).toMatchObject({ versionServidor: null, revision: 1 });
   });
 });

@@ -38,4 +38,16 @@ export class DexieAlineacionRepository implements AlineacionRepository {
   async pendientesDeSubir(): Promise<RegistroSincronizacion[]> {
     return (await db.sincronizacion.toArray()).filter((r) => r.pendiente);
   }
+
+  async actualizarMarca(
+    id: string,
+    cambio: (actual: RegistroSincronizacion | undefined) => RegistroSincronizacion | null,
+  ): Promise<RegistroSincronizacion | null> {
+    return db.transaction('rw', db.sincronizacion, async () => {
+      const nueva = cambio(await db.sincronizacion.get(id));
+      if (nueva) await db.sincronizacion.put(nueva);
+      else await db.sincronizacion.delete(id);
+      return nueva;
+    });
+  }
 }

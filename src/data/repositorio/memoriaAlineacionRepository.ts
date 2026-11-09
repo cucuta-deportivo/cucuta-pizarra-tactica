@@ -39,4 +39,14 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
   async pendientesDeSubir(): Promise<RegistroSincronizacion[]> {
     return [...this.registros.values()].filter((r) => r.pendiente);
   }
+
+  async actualizarMarca(
+    id: string,
+    cambio: (actual: RegistroSincronizacion | undefined) => RegistroSincronizacion | null,
+  ): Promise<RegistroSincronizacion | null> {
+    const nueva = cambio(this.registros.get(id));
+    if (nueva) this.registros.set(id, nueva);
+    else this.registros.delete(id);
+    return nueva;
+  }
 }

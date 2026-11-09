@@ -14,6 +14,7 @@ import type {
   Trazo,
 } from '../types';
 import { alineacionRepository, type ResumenAlineacion } from '../data/repositorio';
+import { programarSubida } from '../data/sincronizacion';
 import { obtenerFormacion, FORMACIONES } from '../data/formaciones';
 import {
   actualizarHistorial,
@@ -543,6 +544,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       try {
         await alineacionRepository.guardar(alineacion);
         set({ estadoGuardado: 'guardado', modificadaEn: alineacion.modificadaEn });
+        programarSubida();
         await get().refrescarListado();
       } catch {
         set({ estadoGuardado: 'error' });
@@ -568,12 +570,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         ahora,
       );
       await alineacionRepository.guardar(copia);
+      programarSubida();
       await get().cargarAlineacion(copia.id);
       await get().refrescarListado();
     },
 
     eliminarAlineacion: async (id) => {
       await alineacionRepository.eliminar(id);
+      programarSubida();
       await get().refrescarListado();
       if (get().id === id) {
         const listado = get().listado;

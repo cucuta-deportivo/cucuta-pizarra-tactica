@@ -21,11 +21,31 @@ export interface RegistroSincronizacion {
   pendiente: boolean;
   /** Se borró en este dispositivo; falta marcarla como borrada en Supabase. */
   eliminada: boolean;
+  /** Cuenta los cambios guardados aquí: si cambia mientras se sube, al terminar sigue por subir. */
+  revision: number;
+  /**
+   * Identificador de la subida en curso, guardado ANTES de enviarla: si se pierde
+   * la respuesta, el reintento lo reutiliza y el servidor lo reconoce como suyo.
+   */
+  cambioEnCurso: string | null;
+  /** La revisión que llevaba esa subida: el identificador solo vale para ese contenido, no para ediciones posteriores. */
+  revisionEnCurso: number | null;
+  /** Al subir, el servidor ya no estaba en `versionServidor` (otro dispositivo la cambió). Lo resuelve S1.7. */
+  conflicto: boolean;
 }
 
 /** El registro tras guardar en este dispositivo: queda por subir, desde la versión que tuviera. */
 export function marcarPorSubir(previo: RegistroSincronizacion | undefined, id: string): RegistroSincronizacion {
-  return { id, versionServidor: previo?.versionServidor ?? null, pendiente: true, eliminada: false };
+  return {
+    id,
+    versionServidor: previo?.versionServidor ?? null,
+    pendiente: true,
+    eliminada: false,
+    revision: (previo?.revision ?? 0) + 1,
+    cambioEnCurso: previo?.cambioEnCurso ?? null,
+    revisionEnCurso: previo?.revisionEnCurso ?? null,
+    conflicto: previo?.conflicto ?? false,
+  };
 }
 
 /**
@@ -34,7 +54,17 @@ export function marcarPorSubir(previo: RegistroSincronizacion | undefined, id: s
  * caso, y así no se pierde el borrado si había una subida a medias.
  */
 export function marcarEliminadaPorSubir(previo: RegistroSincronizacion | undefined, id: string): RegistroSincronizacion {
-  return { id, versionServidor: previo?.versionServidor ?? null, pendiente: true, eliminada: true };
+  return {
+    id,
+    versionServidor: previo?.versionServidor ?? null,
+    pendiente: true,
+    eliminada: true,
+    revision: (previo?.revision ?? 0) + 1,
+    cambioEnCurso: previo?.cambioEnCurso ?? null,
+    revisionEnCurso: previo?.revisionEnCurso ?? null,
+    // Un borrado se resuelve con sus propias reglas (gana la edición del otro), no como conflicto.
+    conflicto: false,
+  };
 }
 
 /**
@@ -51,4 +81,9 @@ export interface AlineacionRepository {
   eliminar(id: string): Promise<void>;
   /** Lo cambiado o borrado en este dispositivo que falta subir a Supabase. */
   pendientesDeSubir(): Promise<RegistroSincronizacion[]>;
+  /** Cambia la marca de una alineación en un solo paso (lee y escribe sin que nada se cuele); `null` la quita. */
+  actualizarMarca(
+    id: string,
+    cambio: (actual: RegistroSincronizacion | undefined) => RegistroSincronizacion | null,
+  ): Promise<RegistroSincronizacion | null>;
 }

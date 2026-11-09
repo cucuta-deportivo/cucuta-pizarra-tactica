@@ -1,5 +1,11 @@
 import type { Alineacion } from '../../types';
-import type { AlineacionRepository, ResumenAlineacion } from './AlineacionRepository';
+import {
+  marcarEliminadaPorSubir,
+  marcarPorSubir,
+  type AlineacionRepository,
+  type RegistroSincronizacion,
+  type ResumenAlineacion,
+} from './AlineacionRepository';
 import { db } from './db';
 
 export class DexieAlineacionRepository implements AlineacionRepository {
@@ -12,11 +18,24 @@ export class DexieAlineacionRepository implements AlineacionRepository {
     return db.alineaciones.get(id);
   }
 
+  // Alineación y marca en una sola transacción: nunca queda un cambio guardado sin marcar.
   async guardar(alineacion: Alineacion): Promise<void> {
-    await db.alineaciones.put(alineacion);
+    await db.transaction('rw', db.alineaciones, db.sincronizacion, async () => {
+      const previo = await db.sincronizacion.get(alineacion.id);
+      await db.alineaciones.put(alineacion);
+      await db.sincronizacion.put(marcarPorSubir(previo, alineacion.id));
+    });
   }
 
   async eliminar(id: string): Promise<void> {
-    await db.alineaciones.delete(id);
+    await db.transaction('rw', db.alineaciones, db.sincronizacion, async () => {
+      const previo = await db.sincronizacion.get(id);
+      await db.alineaciones.delete(id);
+      await db.sincronizacion.put(marcarEliminadaPorSubir(previo, id));
+    });
+  }
+
+  async pendientesDeSubir(): Promise<RegistroSincronizacion[]> {
+    return (await db.sincronizacion.toArray()).filter((r) => r.pendiente);
   }
 }

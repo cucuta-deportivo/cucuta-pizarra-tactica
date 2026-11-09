@@ -1,5 +1,11 @@
 import type { Alineacion } from '../../types';
-import type { AlineacionRepository, ResumenAlineacion } from './AlineacionRepository';
+import {
+  marcarEliminadaPorSubir,
+  marcarPorSubir,
+  type AlineacionRepository,
+  type RegistroSincronizacion,
+  type ResumenAlineacion,
+} from './AlineacionRepository';
 
 /**
  * Repositorio de respaldo cuando IndexedDB no está disponible (p. ej. dentro de
@@ -8,6 +14,7 @@ import type { AlineacionRepository, ResumenAlineacion } from './AlineacionReposi
  */
 export class MemoriaAlineacionRepository implements AlineacionRepository {
   private almacen = new Map<string, Alineacion>();
+  private registros = new Map<string, RegistroSincronizacion>();
 
   async listar(): Promise<ResumenAlineacion[]> {
     return [...this.almacen.values()]
@@ -21,9 +28,15 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
 
   async guardar(alineacion: Alineacion): Promise<void> {
     this.almacen.set(alineacion.id, alineacion);
+    this.registros.set(alineacion.id, marcarPorSubir(this.registros.get(alineacion.id), alineacion.id));
   }
 
   async eliminar(id: string): Promise<void> {
     this.almacen.delete(id);
+    this.registros.set(id, marcarEliminadaPorSubir(this.registros.get(id), id));
+  }
+
+  async pendientesDeSubir(): Promise<RegistroSincronizacion[]> {
+    return [...this.registros.values()].filter((r) => r.pendiente);
   }
 }

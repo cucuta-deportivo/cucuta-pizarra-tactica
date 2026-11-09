@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type { Alineacion, Posicion } from '../../types';
+import type { RegistroSincronizacion } from './AlineacionRepository';
 
 export interface FotoJugadorRegistro {
   jugadorId: string;
@@ -24,6 +25,7 @@ export class PizarraDB extends Dexie {
   alineaciones!: Table<Alineacion, string>;
   fotosJugador!: Table<FotoJugadorRegistro, string>;
   datosJugador!: Table<DatosJugadorRegistro, string>;
+  sincronizacion!: Table<RegistroSincronizacion, string>;
 
   constructor() {
     super('cucuta-pizarra-tactica');
@@ -43,6 +45,15 @@ export class PizarraDB extends Dexie {
       alineaciones: 'id, nombre, formacionId, modificadaEn',
       fotosJugador: 'jugadorId',
       datosJugador: 'jugadorId',
+    });
+    // v4 (S1) añade la marca "por subir" de cada alineación, con la misma
+    // migración automática: las tablas anteriores y sus datos no se tocan, y
+    // las alineaciones que ya había quedan sin marca (las sube la migración).
+    this.version(4).stores({
+      alineaciones: 'id, nombre, formacionId, modificadaEn',
+      fotosJugador: 'jugadorId',
+      datosJugador: 'jugadorId',
+      sincronizacion: 'id',
     });
   }
 }

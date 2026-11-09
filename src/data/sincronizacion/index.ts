@@ -1,6 +1,7 @@
 import { supabaseConfigurado } from '../../lib/supabaseClient';
 import type { Alineacion } from '../../types';
 import { useAuthStore } from '../../store/authStore';
+import { estadoTrasVuelta, useSincronizacionStore } from '../../store/sincronizacionStore';
 import { copiaPorConflicto } from '../../utils/copias';
 import { generarId } from '../../utils/id';
 import { alineacionRepository } from '../repositorio';
@@ -59,13 +60,31 @@ export function alBajarCambios(oyente: (cambios: CambioBajado[]) => void): () =>
   };
 }
 
-/** Sube lo pendiente y baja lo de otros dispositivos. `null` si esta cuenta no sincroniza. */
-export function sincronizarAhora(): Promise<ResumenSincronizacion | null> {
-  return puedeSincronizar() ? sincronizador.sincronizar() : Promise.resolve(null);
+async function contarPendientes(): Promise<number> {
+  return (await alineacionRepository.pendientesDeSubir()).length;
 }
 
-/** Pide sincronizar; se hace a los 5 s del último pedido. */
-export const programarSincronizacion = crearProgramador(() => void sincronizarAhora(), ESPERA_SUBIDA_MS);
+/** Sube lo pendiente y baja lo de otros dispositivos; el indicador lo refleja (S1.9). `null` si esta cuenta no sincroniza. */
+export async function sincronizarAhora(): Promise<ResumenSincronizacion | null> {
+  if (!puedeSincronizar()) return null;
+  useSincronizacionStore.setState({ estado: 'sincronizando' });
+  try {
+    const resumen = await sincronizador.sincronizar();
+    useSincronizacionStore.setState(estadoTrasVuelta(resumen, await contarPendientes(), new Date()));
+    return resumen;
+  } catch (error) {
+    useSincronizacionStore.setState({ estado: 'error', mensaje: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
+const programar = crearProgramador(() => void sincronizarAhora(), ESPERA_SUBIDA_MS);
+
+/** Pide sincronizar; se hace a los 5 s del último pedido. Mientras tanto, el indicador ya cuenta lo que falta subir. */
+export function programarSincronizacion(): void {
+  programar();
+  if (puedeSincronizar()) void contarPendientes().then((pendientes) => useSincronizacionStore.setState({ pendientes }));
+}
 
 /** S1.8: lo de este dispositivo que todavía no entró en la sincronización. `null` si esta cuenta no sincroniza. */
 export function porMigrarAqui(esVacia: (alineacion: Alineacion) => boolean): Promise<PorMigrar | null> {

@@ -7,7 +7,7 @@ import { TimelineTactica } from './components/pizarra/TimelineTactica';
 import { Boton } from './components/ui/Boton';
 import { Dropdown } from './components/ui/Dropdown';
 import { Modal } from './components/ui/Modal';
-import { IndicadorAutoguardado } from './components/ui/IndicadorAutoguardado';
+import { IndicadorEstado } from './components/ui/IndicadorEstado';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
 import { alBajarCambios, descargarRespaldoAqui, migrarAqui, porMigrarAqui, sincronizarAhora } from './data/sincronizacion';
@@ -578,7 +578,7 @@ export default function App() {
           <div className="pointer-events-auto flex shrink-0 items-center gap-2">
             <ControlesHistorial onAbrirHistorial={() => setModalHistorialAbierto(true)} />
             <span className="h-6 w-px bg-white/10" aria-hidden="true" />
-            <IndicadorAutoguardado />
+            <IndicadorEstado />
             <MenuOpciones
               onAbrirAlineaciones={() => setModalAlineacionesAbierto(true)}
               onAbrirGestionPlantilla={() => setModalGestionPlantillaAbierto(true)}
@@ -714,7 +714,8 @@ export default function App() {
           </Boton>
         </div>
       </Modal>
-      <ToastContainer />
+      {/* Los avisos van por encima de la barra inferior y de la jugada abierta: no tapan sus botones. */}
+      <ToastContainer abajo={barrasVisibles ? (timelineVisible ? (modoTrayectoriaActivo ? 228 : 192) : 84) : 16} />
     </div>
   );
 }

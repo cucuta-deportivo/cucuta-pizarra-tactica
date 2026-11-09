@@ -12,10 +12,13 @@ import {
   estadoEnServidor,
   listarEstadosEnServidor,
   marcarEliminadaEnServidor,
+  ErrorSinConexion,
+  ultimaActualizacionEnServidor,
 } from '../supabase/alineacionesApi';
 import { crearBajador, type CambioBajado } from './bajarCambios';
 import { buscarPorMigrar, contarSubidas, crearRespaldo, marcarParaSubir, type PorMigrar } from './migrar';
 import { crearSincronizador, type ResumenSincronizacion } from './sincronizar';
+import { crearComprobador, iniciarDisparadores } from './disparadores';
 import { crearProgramador, crearSubidor } from './subirPendientes';
 
 /** Cuánto se espera tras el último guardado antes de sincronizar: una ráfaga de cambios es una sola vuelta. */
@@ -32,9 +35,20 @@ const subidor = crearSubidor({
   nuevoId: generarId,
 });
 
+/** El último cambio del servidor visto por la bajada de la vuelta en curso. */
+let ultimoCambioVisto: string | null = null;
+
 const bajador = crearBajador({
   local: alineacionRepository,
-  remoto: { listarEstados: listarEstadosEnServidor, descargar: descargarDelServidor },
+  remoto: {
+    // De paso se anota el último cambio que se vio, para la comprobación barata (S1.10).
+    listarEstados: async () => {
+      const estados = await listarEstadosEnServidor();
+      ultimoCambioVisto = estados.reduce<string | null>((max, e) => (max === null || e.actualizadoEn > max ? e.actualizadoEn : max), null);
+      return estados;
+    },
+    descargar: descargarDelServidor,
+  },
   copiar: (alineacion) => copiaPorConflicto(alineacion),
 });
 
@@ -70,6 +84,8 @@ export async function sincronizarAhora(): Promise<ResumenSincronizacion | null> 
   useSincronizacionStore.setState({ estado: 'sincronizando' });
   try {
     const resumen = await sincronizador.sincronizar();
+    // Solo una vuelta que terminó al día cuenta como vista: si se cortó a mitad, se vuelve a mirar.
+    if (resumen.estado === 'al-dia') comprobador.recordar(ultimoCambioVisto);
     useSincronizacionStore.setState(estadoTrasVuelta(resumen, await contarPendientes(), new Date()));
     return resumen;
   } catch (error) {
@@ -109,4 +125,29 @@ export async function migrarAqui(ids: string[], alAvanzar: (subidas: number) => 
 export async function descargarRespaldoAqui(): Promise<void> {
   const [{ exportarRespaldoAJson }, respaldo] = await Promise.all([import('../../utils/exportar'), crearRespaldo(alineacionRepository)]);
   exportarRespaldoAJson(respaldo);
+}
+
+const comprobador = crearComprobador({ contarPendientes, ultimaActualizacion: ultimaActualizacionEnServidor, sincronizar: sincronizarAhora });
+
+/** S1.10: la comprobación barata; sin red, el indicador lo dice. */
+export async function comprobarCambios(): Promise<void> {
+  if (!puedeSincronizar()) return;
+  try {
+    await comprobador.comprobar();
+  } catch (error) {
+    if (error instanceof ErrorSinConexion) useSincronizacionStore.setState({ estado: 'sin-conexion', pendientes: await contarPendientes() });
+    else useSincronizacionStore.setState({ estado: 'error', mensaje: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** S1.10: sincroniza al volver la señal, al volver a la pestaña y cada 45 s mientras se ve. Devuelve cómo parar. */
+export function iniciarSincronizacionAutomatica(): () => void {
+  return iniciarDisparadores({
+    sincronizar: () => void sincronizarAhora(),
+    comprobar: () => void comprobarCambios(),
+    alPerderRed: () => {
+      if (puedeSincronizar()) useSincronizacionStore.setState({ estado: 'sin-conexion' });
+    },
+    entorno: { ventana: window, documento: document },
+  });
 }

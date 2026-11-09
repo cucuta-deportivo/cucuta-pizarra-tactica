@@ -10,7 +10,14 @@ import { Modal } from './components/ui/Modal';
 import { IndicadorEstado } from './components/ui/IndicadorEstado';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
-import { alBajarCambios, descargarRespaldoAqui, migrarAqui, porMigrarAqui, sincronizarAhora } from './data/sincronizacion';
+import {
+  alBajarCambios,
+  descargarRespaldoAqui,
+  iniciarSincronizacionAutomatica,
+  migrarAqui,
+  porMigrarAqui,
+  sincronizarAhora,
+} from './data/sincronizacion';
 import type { PorMigrar } from './data/sincronizacion/migrar';
 import { esAlineacionVaciaSinTocar, useAlineacionStore } from './store/alineacionStore';
 import { useAuthStore } from './store/authStore';
@@ -524,6 +531,9 @@ export default function App() {
 
   // Lo que baja de otros dispositivos se muestra sin pisar lo que se está editando (S1.7).
   useEffect(() => alBajarCambios((cambios) => void useAlineacionStore.getState().aplicarCambiosDelServidor(cambios)), []);
+
+  // Y se sincroniza sola al volver la señal, al volver a la pestaña y cada 45 s mientras se ve (S1.10).
+  useEffect(() => iniciarSincronizacionAutomatica(), []);
 
   useEffect(() => {
     if (inicializadoRef.current) return;

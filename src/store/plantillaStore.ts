@@ -40,6 +40,12 @@ interface PlantillaState {
    * aparecen en la pantalla de plantilla ni en las listas para elegir.
    */
   jugadoresDeFichas: Jugador[];
+  /**
+   * Personalizados de la alineación abierta. Van también dentro de `jugadores`
+   * (el campo, el panel y los selectores los buscan ahí); esta lista sirve para
+   * volver a añadirlos cada vez que se recarga la plantilla de Supabase.
+   */
+  personalizados: Jugador[];
 
   /** Busca en la plantilla cargada y, si no está, en las fichas de la alineación abierta. */
   obtenerPorId: (id: string) => Jugador | undefined;
@@ -68,14 +74,13 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   error: null,
   enlaces: {},
   jugadoresDeFichas: [],
+  personalizados: [],
 
   obtenerPorId: (id) => get().jugadores.find((j) => j.id === id) ?? get().jugadoresDeFichas.find((j) => j.id === id),
 
+  // Sale la lista de la alineación anterior y entra la de la abierta.
   sincronizarPersonalizados: (personalizados) =>
-    set((estado) => {
-      const deSupabase = estado.jugadores.filter((j) => !personalizados.some((p) => p.id === j.id));
-      return { jugadores: [...deSupabase, ...personalizados] };
-    }),
+    set((estado) => ({ personalizados, jugadores: conPersonalizados(sinPersonalizados(estado.jugadores, estado.personalizados), personalizados) })),
 
   sincronizarFichas: (fichas) => {
     set((estado) => ({ jugadoresDeFichas: conEnlaces(fichas.map(jugadorDesdeFicha), estado.enlaces) }));
@@ -103,7 +108,7 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
 
   elegirCategoria: async (categoriaId) => {
     localStorage.setItem(CLAVE_CATEGORIA, categoriaId);
-    set({ categoriaActiva: categoriaId, jugadores: [], enlaces: {} });
+    set({ categoriaActiva: categoriaId, jugadores: get().personalizados, enlaces: {} });
     await get().recargar();
   },
 
@@ -116,7 +121,8 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
       // Un único lote de enlaces firmados para toda la categoría.
       const rutas = jugadores.map((j) => j.fotoPath).filter((r): r is string => Boolean(r));
       const enlaces = await firmarFotos(rutas);
-      set({ jugadores: conEnlaces(jugadores, enlaces), enlaces, cargando: false });
+      // Los personalizados no están en Supabase: se vuelven a añadir (S1.2b).
+      set({ jugadores: conPersonalizados(conEnlaces(jugadores, enlaces), get().personalizados), enlaces, cargando: false });
     } catch (fallo) {
       set({ cargando: false, error: mensajeDe(fallo) });
     }
@@ -223,6 +229,16 @@ export function useBuscarJugador(): (id: string) => Jugador | undefined {
     (id: string) => jugadores.find((j) => j.id === id) ?? jugadoresDeFichas.find((j) => j.id === id),
     [jugadores, jugadoresDeFichas],
   );
+}
+
+function sinPersonalizados(jugadores: Jugador[], personalizados: Jugador[]): Jugador[] {
+  const ids = new Set(personalizados.map((p) => p.id));
+  return jugadores.filter((j) => !ids.has(j.id));
+}
+
+/** La plantilla con los personalizados al final; si alguno ya estaba, manda su versión de la alineación. */
+function conPersonalizados(jugadores: Jugador[], personalizados: Jugador[]): Jugador[] {
+  return [...sinPersonalizados(jugadores, personalizados), ...personalizados];
 }
 
 function conEnlaces(jugadores: Jugador[], enlaces: Record<string, EnlaceFirmado>): Jugador[] {

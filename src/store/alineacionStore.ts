@@ -487,8 +487,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       set({ cargando: true });
       const listado = await alineacionRepository.listar();
       if (listado.length === 0) {
+        // Vacía no se guarda: cada dispositivo nuevo subiría la suya a la lista
+        // compartida. Se guarda con el primer cambio, como cualquier otra.
         get().nuevaAlineacion('Alineación inicial');
-        await get().guardarAhora();
+        if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
+        set({ estadoGuardado: 'guardado' });
       } else {
         await get().cargarAlineacion(listado[0]!.id);
       }

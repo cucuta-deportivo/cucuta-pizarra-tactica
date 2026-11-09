@@ -51,7 +51,7 @@ Decisiones aprobadas el 2026-11-06:
 | --- | --- | --- | --- |
 | S1.1 | SQL de `alineaciones` y `schema.sql` (lo ejecuta el usuario): columnas `documento`, `version`, `ultimo_cambio`, `eliminada_en` y `actualizada_por`; versión, fecha y autores por trigger; leer, crear y editar sí, borrar no. Aplicado el 2026-11-08 | Columnas, políticas, triggers, restricciones y permisos comprobados; pasaron las dos pruebas de funcionamiento (alta en versión 1, edición a versión 2, conflicto sin cambios, borrado bloqueado y nada guardado sin cuenta activa) | Hecho |
 | S1.2 | Copia de las fichas y categoría dentro del documento. Las fichas no incluyen a los personalizados, que ya viajan enteros, y no se ofrecen en las listas para elegir. La categoría es la activa al crear la alineación; las anteriores quedan sin ella | Abrir una alineación de otra categoría: no falta ninguna ficha (campo, banquillo, comparar y JSON) | Hecho |
-| S1.3 | No guardar la alineación vacía inicial | Test | Pendiente |
+| S1.3 | No guardar la alineación vacía inicial: se guarda con el primer cambio | Test y navegador: al abrir sin alineaciones no se guarda nada; al renombrarla, sí | Hecho |
 | S1.4 | Dexie v4: marca "por subir" | Los datos antiguos siguen intactos | Pendiente |
 | S1.5 | `alineacionesApi.ts`, único archivo que conoce las columnas | Tests | Pendiente |
 | S1.6 | Subir pendientes con control de versión | Respuesta perdida sin copia falsa | Pendiente |

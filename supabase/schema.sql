@@ -393,54 +393,9 @@ create index if not exists alineaciones_categoria_idx
 create index if not exists alineaciones_actualizado_idx
   on alineaciones (actualizado_en desc);
 
--- ------------------------------------------------------------
--- alineacion_jugadores y alineacion_objetos: SIN USO desde S1
--- (la alineacion completa va en alineaciones.documento). Se
--- borran en S1.14a si siguen vacias.
--- ------------------------------------------------------------
-
--- ------------------------------------------------------------
--- Fichas dentro de una alineacion
---
--- Guardan copia de dorsal y apellido: si manana se edita la
--- plantilla, la alineacion vieja conserva lo que se jugo ese dia.
--- jugador_id es opcional: permite escribir un nombre suelto que
--- no este en la plantilla, y en ese caso la ficha no lleva foto.
--- ------------------------------------------------------------
-create table if not exists alineacion_jugadores (
-  id                   uuid primary key default gen_random_uuid(),
-  alineacion_id        uuid not null references alineaciones (id) on delete cascade,
-  jugador_id           uuid references jugadores (id) on delete set null,
-  dorsal               smallint,
-  apellido             text not null,
-  posicion_principal   text,
-  posicion_secundaria  text,
-  foto_path            text,             -- copia, para que el historico no se rompa
-  pos_x                numeric(5,2) not null,   -- 0 a 100
-  pos_y                numeric(5,2) not null,   -- 0 a 100
-  es_suplente          boolean not null default false,
-  orden                smallint not null default 0,
-
-  constraint alineacion_jugadores_x_rango check (pos_x between 0 and 100),
-  constraint alineacion_jugadores_y_rango check (pos_y between 0 and 100)
-);
-
-create index if not exists alineacion_jugadores_alineacion_idx
-  on alineacion_jugadores (alineacion_id);
-
--- ------------------------------------------------------------
--- Objetos dibujados sobre el campo (conos, vallas, flechas...)
--- ------------------------------------------------------------
-create table if not exists alineacion_objetos (
-  id             uuid primary key default gen_random_uuid(),
-  alineacion_id  uuid not null references alineaciones (id) on delete cascade,
-  tipo           text not null,          -- 'cono', 'valla', 'flecha', ...
-  datos          jsonb not null default '{}'::jsonb,  -- posicion, escala, rotacion, puntos
-  orden          smallint not null default 0
-);
-
-create index if not exists alineacion_objetos_alineacion_idx
-  on alineacion_objetos (alineacion_id);
+-- Las antiguas alineacion_jugadores y alineacion_objetos se
+-- borraron el 2026-11-09 (S1.14a): estaban vacias, nada dependia
+-- de ellas y la alineacion completa va en alineaciones.documento.
 
 -- ------------------------------------------------------------
 -- Marca de tiempo automatica
@@ -516,8 +471,6 @@ create trigger alineaciones_version
 alter table categorias            enable row level security;
 alter table jugadores             enable row level security;
 alter table alineaciones          enable row level security;
-alter table alineacion_jugadores  enable row level security;
-alter table alineacion_objetos    enable row level security;
 
 drop policy if exists "categorias lectura" on categorias;
 create policy "categorias lectura"
@@ -552,18 +505,6 @@ create policy "alineaciones edicion"
 
 -- Sin esto, un DELETE desde la app no daria error: solo no borraria nada.
 revoke delete, truncate on alineaciones from anon, authenticated;
-
-drop policy if exists "alineacion jugadores acceso" on alineacion_jugadores;
-create policy "alineacion jugadores acceso"
-  on alineacion_jugadores for all to authenticated
-  using ((select public.es_entrenador_activo()))
-  with check ((select public.es_entrenador_activo()));
-
-drop policy if exists "alineacion objetos acceso" on alineacion_objetos;
-create policy "alineacion objetos acceso"
-  on alineacion_objetos for all to authenticated
-  using ((select public.es_entrenador_activo()))
-  with check ((select public.es_entrenador_activo()));
 
 -- ------------------------------------------------------------
 -- Acceso a las fotos del bucket privado 'jugadores'

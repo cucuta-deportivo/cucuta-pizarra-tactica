@@ -78,9 +78,19 @@ async function contarPendientes(): Promise<number> {
   return (await alineacionRepository.pendientesDeSubir()).length;
 }
 
+/** Cuántas alineaciones de este dispositivo tienen cambios sin subir (S1.13: aviso al cerrar sesión). */
+export function contarSinSubir(): Promise<number> {
+  return contarPendientes();
+}
+
 /** Sube lo pendiente y baja lo de otros dispositivos; el indicador lo refleja (S1.9). `null` si esta cuenta no sincroniza. */
 export async function sincronizarAhora(): Promise<ResumenSincronizacion | null> {
   if (!puedeSincronizar()) return null;
+  // En modo avión no se intenta: supabase-js tardaría hasta 30 s en rendirse al renovar el token (S1.13).
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    useSincronizacionStore.setState({ estado: 'sin-conexion', pendientes: await contarPendientes() });
+    return null;
+  }
   useSincronizacionStore.setState({ estado: 'sincronizando' });
   try {
     const resumen = await sincronizador.sincronizar();

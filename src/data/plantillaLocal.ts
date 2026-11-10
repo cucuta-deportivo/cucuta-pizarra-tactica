@@ -36,6 +36,15 @@ function escribir(plantilla: PlantillaGuardada): void {
   }
 }
 
+/** Al cerrar sesión a propósito (S1.13): la copia de la plantilla no se queda en el dispositivo. */
+export function borrarPlantillaGuardada(): void {
+  try {
+    localStorage.removeItem(CLAVE);
+  } catch {
+    // sin almacenamiento: no había copia.
+  }
+}
+
 export function guardarCategorias(categorias: Categoria[]): void {
   escribir({ ...leerPlantillaGuardada(), categorias });
 }

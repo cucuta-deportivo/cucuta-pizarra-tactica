@@ -16,3 +16,7 @@ ReactDOM.createRoot(contenedor).render(
     </AuthGate>
   </React.StrictMode>,
 );
+
+// El service worker (S1.11) se registra después del primer pintado y en un trozo aparte:
+// no retrasa la carga ni suma a la parte inicial del bundle.
+void import('./pwa/registrar').then(({ registrarServiceWorker }) => registrarServiceWorker());

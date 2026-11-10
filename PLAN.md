@@ -67,7 +67,7 @@ Decisiones aprobadas el 2026-11-06:
 
 | Paso | Qué | Prueba principal | Estado |
 | --- | --- | --- | --- |
-| S1.11 | Service worker con `vite-plugin-pwa`: archivos de la app y fuentes, actualización que pregunta | Recargar sin red; una versión nueva pregunta y no recarga sola | Pendiente |
+| S1.11 | Service worker con `vite-plugin-pwa` 1.3 (dependencia de desarrollo). Guarda los archivos de la app (toda, también la exportación) y las fuentes de Google; Supabase va siempre a la red con una regla explícita, así que nunca guarda datos, fotos ni la sesión. Con una versión nueva avisa «Hay una versión nueva» con «Actualizar» y no recarga sola. Manifiesto e iconos para instalarla en la pantalla de inicio (la "C" del favicon hasta tener el escudo del club). Se registra después del primer pintado, fuera de la carga inicial | Tests de las reglas y del aviso. Navegador: sin red la pizarra abre con su fuente y se sigue editando; con una versión nueva sale el aviso, a los 10 s no se ha recargado y al tocar «Actualizar» se recarga; con el Supabase real, 0 entradas de Supabase en las cachés | Hecho |
 | S1.12 | Plantilla guardada localmente, sin fotos | Cambiar un jugador sin red | Pendiente |
 | S1.13 | Entrar sin red con sesión ya abierta y regla de 12 h solo con conexión (autenticación) | Sesión caducada, 12 h y cuenta bloqueada | Pendiente |
 | S1.14b | Prueba final en la tablet real en modo avión, README y PLAN.md | Tablet real en modo avión | Pendiente |

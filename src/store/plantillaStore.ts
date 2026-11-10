@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { create } from 'zustand';
 import type { Categoria, FichaJugador, Jugador } from '../types';
 import { jugadorDesdeFicha } from '../utils/fichas';
+import { guardarCategorias, guardarJugadores, leerPlantillaGuardada } from '../data/plantillaLocal';
 import {
   actualizarJugador as apiActualizar,
   borrarFoto,
@@ -46,6 +47,11 @@ interface PlantillaState {
    * volver a añadirlos cada vez que se recarga la plantilla de Supabase.
    */
   personalizados: Jugador[];
+  /**
+   * Sin conexión, la plantilla que se ve es la copia guardada en este dispositivo
+   * (S1.12): aquí va cuándo se guardó. `null` cuando llegó de Supabase.
+   */
+  copiaLocal: string | null;
 
   /** Busca en la plantilla cargada y, si no está, en las fichas de la alineación abierta. */
   obtenerPorId: (id: string) => Jugador | undefined;
@@ -75,6 +81,7 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   enlaces: {},
   jugadoresDeFichas: [],
   personalizados: [],
+  copiaLocal: null,
 
   obtenerPorId: (id) => get().jugadores.find((j) => j.id === id) ?? get().jugadoresDeFichas.find((j) => j.id === id),
 
@@ -93,17 +100,24 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   inicializar: async () => {
     iniciarRenovacionAutomatica();
     set({ cargando: true, error: null });
+    let categorias: Categoria[];
     try {
-      const categorias = await listarCategorias();
-      const guardada = localStorage.getItem(CLAVE_CATEGORIA);
-      // La categoría guardada puede haber desaparecido de la tabla: se cae a la primera.
-      const activa = categorias.find((c) => c.id === guardada)?.id ?? categorias[0]?.id ?? null;
-      set({ categorias, categoriaActiva: activa });
-      if (activa) await get().recargar();
-      else set({ cargando: false });
+      categorias = await listarCategorias();
+      guardarCategorias(categorias);
     } catch (fallo) {
-      set({ cargando: false, error: mensajeDe(fallo) });
+      // Sin conexión: las categorías guardadas en este dispositivo (S1.12).
+      categorias = leerPlantillaGuardada().categorias;
+      if (categorias.length === 0) {
+        set({ cargando: false, error: mensajeDe(fallo) });
+        return;
+      }
     }
+    const guardada = localStorage.getItem(CLAVE_CATEGORIA);
+    // La categoría guardada puede haber desaparecido de la tabla: se cae a la primera.
+    const activa = categorias.find((c) => c.id === guardada)?.id ?? categorias[0]?.id ?? null;
+    set({ categorias, categoriaActiva: activa });
+    if (activa) await get().recargar();
+    else set({ cargando: false });
   },
 
   elegirCategoria: async (categoriaId) => {
@@ -116,16 +130,31 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
     const categoriaId = get().categoriaActiva;
     if (!categoriaId) return;
     set({ cargando: true, error: null });
+    let jugadores: Jugador[];
     try {
-      const jugadores = await listarJugadores(categoriaId);
-      // Un único lote de enlaces firmados para toda la categoría.
-      const rutas = jugadores.map((j) => j.fotoPath).filter((r): r is string => Boolean(r));
-      const enlaces = await firmarFotos(rutas);
-      // Los personalizados no están en Supabase: se vuelven a añadir (S1.2b).
-      set({ jugadores: conPersonalizados(conEnlaces(jugadores, enlaces), get().personalizados), enlaces, cargando: false });
+      jugadores = await listarJugadores(categoriaId);
     } catch (fallo) {
-      set({ cargando: false, error: mensajeDe(fallo) });
+      // Sin conexión: la copia de esta categoría guardada en el dispositivo, sin fotos (S1.12).
+      const copia = leerPlantillaGuardada().porCategoria[categoriaId];
+      if (!copia) {
+        set({ cargando: false, error: mensajeDe(fallo) });
+        return;
+      }
+      set({ jugadores: conPersonalizados(copia.jugadores, get().personalizados), enlaces: {}, cargando: false, copiaLocal: copia.guardadaEn });
+      return;
     }
+    guardarJugadores(categoriaId, jugadores);
+    // Un único lote de enlaces firmados para toda la categoría. Si fallan, se ven
+    // sin foto (iniciales y dorsal) en lugar de no ver a nadie.
+    const rutas = jugadores.map((j) => j.fotoPath).filter((r): r is string => Boolean(r));
+    let enlaces: Record<string, EnlaceFirmado> = {};
+    try {
+      enlaces = await firmarFotos(rutas);
+    } catch {
+      // Sin enlaces: se ven sin foto, con iniciales y dorsal.
+    }
+    // Los personalizados no están en Supabase: se vuelven a añadir (S1.2b).
+    set({ jugadores: conPersonalizados(conEnlaces(jugadores, enlaces), get().personalizados), enlaces, cargando: false, copiaLocal: null });
   },
 
   crearJugador: async (datos) => {
@@ -299,5 +328,9 @@ function iniciarRenovacionAutomatica(): void {
   window.setInterval(() => void renovarEnlacesCaducados(), INTERVALO_REVISION_ENLACES_MS);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void renovarEnlacesCaducados();
+  });
+  // Si se estaba usando la copia guardada (S1.12), al volver la señal se carga la de Supabase, con fotos.
+  window.addEventListener('online', () => {
+    if (usePlantillaStore.getState().copiaLocal !== null) void usePlantillaStore.getState().inicializar();
   });
 }

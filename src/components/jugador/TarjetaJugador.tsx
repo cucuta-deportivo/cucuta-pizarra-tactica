@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { Jugador } from '../../types';
 import { COLOR, GROSOR, OPACIDAD, SOMBRA_FICHA_OFFSET_PX } from '../../tokens';
 import { obtenerIniciales } from '../../utils/jugador';
@@ -38,6 +38,10 @@ export const TarjetaJugador = memo(function TarjetaJugador({
   rotacion,
 }: TarjetaJugadorProps) {
   const diametro = DIAMETRO[tamano];
+  // Sin señal la foto puede no cargar: entonces salen las iniciales, como sin foto (S1.12).
+  // Se recuerda QUÉ enlace falló: con uno nuevo (al volver la señal) se intenta otra vez.
+  const [fotoFallida, setFotoFallida] = useState<string | null>(null);
+  const conFoto = Boolean(jugador.fotoUrl) && fotoFallida !== jugador.fotoUrl;
   return (
     /*
       El alto del bloque es EXACTAMENTE el del círculo y las etiquetas van
@@ -72,7 +76,7 @@ export const TarjetaJugador = memo(function TarjetaJugador({
         <div
           className="relative flex h-full w-full items-center justify-center rounded-full font-display font-extrabold text-white transition-all duration-base"
           style={{
-            background: jugador.fotoUrl ? undefined : COLOR.marca.rojoFicha,
+            background: conFoto ? undefined : COLOR.marca.rojoFicha,
             border: `${GROSOR.bordeFicha}px solid ${COLOR.campo.linea}`,
             fontSize: diametro * 0.32,
             // Selección en NARANJA, nunca en rojo: el rojo es identidad de marca.
@@ -82,8 +86,14 @@ export const TarjetaJugador = memo(function TarjetaJugador({
             boxShadow: seleccionado ? `0 0 0 6px ${COLOR.interaccion.naranja}22` : undefined,
           }}
         >
-        {jugador.fotoUrl ? (
-          <img src={jugador.fotoUrl} alt="" className="h-full w-full rounded-full object-cover" draggable={false} />
+        {conFoto ? (
+          <img
+            src={jugador.fotoUrl!}
+            alt=""
+            className="h-full w-full rounded-full object-cover"
+            draggable={false}
+            onError={() => setFotoFallida(jugador.fotoUrl)}
+          />
         ) : (
           obtenerIniciales(jugador)
         )}

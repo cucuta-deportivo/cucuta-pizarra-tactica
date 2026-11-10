@@ -15,9 +15,13 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'o
 
 const dosCifras = (n: number) => String(n).padStart(2, '0');
 
+/** "9 nov 18:40": el día, el mes abreviado y la hora. */
+export function fechaCorta(fecha: Date): string {
+  return `${fecha.getDate()} ${MESES[fecha.getMonth()]} ${dosCifras(fecha.getHours())}:${dosCifras(fecha.getMinutes())}`;
+}
+
 export function nombreDeCopia(nombre: string, dispositivo: Dispositivo, fecha: Date): string {
-  const cuando = `${fecha.getDate()} ${MESES[fecha.getMonth()]} ${dosCifras(fecha.getHours())}:${dosCifras(fecha.getMinutes())}`;
-  return `${nombre} (copia ${dispositivo} ${cuando})`;
+  return `${nombre} (copia ${dispositivo} ${fechaCorta(fecha)})`;
 }
 
 /** Una pantalla táctil sin ratón (iPad, tablet Android) es una tablet; lo demás, un computador. */

@@ -8,7 +8,7 @@ import { obtenerFormacion } from '../../data/formaciones';
 import { generarId } from '../../utils/id';
 import type { ElementosExportacion } from '../campo/Campo';
 import {
-  analizarAlineacionDesdeJson,
+  leerArchivoDeAlineaciones,
   capasEnCampo,
   descargarBlob,
   exportarAlineacionAJson,
@@ -40,8 +40,11 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   const nombre = useAlineacionStore((s) => s.nombre);
   const creadaEn = useAlineacionStore((s) => s.creadaEn);
   const modificadaEn = useAlineacionStore((s) => s.modificadaEn);
+  const categoriaId = useAlineacionStore((s) => s.categoriaId);
+  const fichas = useAlineacionStore((s) => s.fichas);
   const documento = useAlineacionStore((s) => s.historial.presente);
   const reemplazarDocumentoCompleto = useAlineacionStore((s) => s.reemplazarDocumentoCompleto);
+  const importarRespaldo = useAlineacionStore((s) => s.importarRespaldo);
   const obtenerJugador = usePlantillaStore((s) => s.obtenerPorId);
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
@@ -63,7 +66,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   }, [abierto]);
 
   function construirAlineacion() {
-    return alineacionDesdeDocumento({ id, nombre, creadaEn }, documento, modificadaEn);
+    return alineacionDesdeDocumento({ id, nombre, creadaEn, categoriaId, fichas }, documento, modificadaEn);
   }
 
   async function exportarImagen(tipo: 'png' | 'pdf'): Promise<void> {
@@ -117,9 +120,22 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
     const lector = new FileReader();
     lector.onload = () => {
       try {
-        const importada = analizarAlineacionDesdeJson(String(lector.result));
+        const leido = leerArchivoDeAlineaciones(String(lector.result));
+        if (leido.tipo === 'respaldo') {
+          // El respaldo de la migración (S1.8): cada alineación entra como copia nueva.
+          importarRespaldo(leido.alineaciones)
+            .then((cuantas) =>
+              mostrarToast({
+                tipo: 'exito',
+                mensaje: cuantas === 1 ? '1 alineación importada como copia nueva.' : `${cuantas} alineaciones importadas como copias nuevas.`,
+              }),
+            )
+            .catch(() => mostrarToast({ tipo: 'error', mensaje: 'No se pudo importar el respaldo.' }));
+          onCerrar();
+          return;
+        }
         const ahora = new Date().toISOString();
-        reemplazarDocumentoCompleto({ ...importada, id: generarId(), creadaEn: ahora, modificadaEn: ahora });
+        reemplazarDocumentoCompleto({ ...leido.alineacion, id: generarId(), creadaEn: ahora, modificadaEn: ahora });
         mostrarToast({ tipo: 'exito', mensaje: 'Alineación importada como copia nueva.' });
         onCerrar();
       } catch (error) {

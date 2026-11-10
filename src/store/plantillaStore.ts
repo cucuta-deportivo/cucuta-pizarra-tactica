@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
 import { create } from 'zustand';
-import type { Categoria, Jugador } from '../types';
+import type { Categoria, FichaJugador, Jugador } from '../types';
+import { jugadorDesdeFicha } from '../utils/fichas';
 import {
   actualizarJugador as apiActualizar,
   borrarFoto,
@@ -32,10 +34,25 @@ interface PlantillaState {
   error: string | null;
   /** Enlaces firmados por ruta del bucket, con su instante de renovación. */
   enlaces: Record<string, EnlaceFirmado>;
+  /**
+   * Jugadores de la alineación abierta tomados de sus fichas guardadas. Van
+   * aparte de `jugadores` a propósito: solo sirven para pintarlos, y así no
+   * aparecen en la pantalla de plantilla ni en las listas para elegir.
+   */
+  jugadoresDeFichas: Jugador[];
+  /**
+   * Personalizados de la alineación abierta. Van también dentro de `jugadores`
+   * (el campo, el panel y los selectores los buscan ahí); esta lista sirve para
+   * volver a añadirlos cada vez que se recarga la plantilla de Supabase.
+   */
+  personalizados: Jugador[];
 
+  /** Busca en la plantilla cargada y, si no está, en las fichas de la alineación abierta. */
   obtenerPorId: (id: string) => Jugador | undefined;
   /** Jugadores creados a mano en la pizarra; se mezclan para que el campo los encuentre. */
   sincronizarPersonalizados: (personalizados: Jugador[]) => void;
+  /** Las fichas de la alineación abierta, para pintar a quien no está en la plantilla cargada. */
+  sincronizarFichas: (fichas: FichaJugador[]) => void;
 
   inicializar: () => Promise<void>;
   elegirCategoria: (categoriaId: string) => Promise<void>;
@@ -56,14 +73,20 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   cargando: false,
   error: null,
   enlaces: {},
+  jugadoresDeFichas: [],
+  personalizados: [],
 
-  obtenerPorId: (id) => get().jugadores.find((j) => j.id === id),
+  obtenerPorId: (id) => get().jugadores.find((j) => j.id === id) ?? get().jugadoresDeFichas.find((j) => j.id === id),
 
+  // Sale la lista de la alineación anterior y entra la de la abierta.
   sincronizarPersonalizados: (personalizados) =>
-    set((estado) => {
-      const deSupabase = estado.jugadores.filter((j) => !personalizados.some((p) => p.id === j.id));
-      return { jugadores: [...deSupabase, ...personalizados] };
-    }),
+    set((estado) => ({ personalizados, jugadores: conPersonalizados(sinPersonalizados(estado.jugadores, estado.personalizados), personalizados) })),
+
+  sincronizarFichas: (fichas) => {
+    set((estado) => ({ jugadoresDeFichas: conEnlaces(fichas.map(jugadorDesdeFicha), estado.enlaces) }));
+    // Si alguna ficha trae foto sin enlace firmado todavía, se pide ya.
+    void renovarEnlacesCaducados();
+  },
 
   limpiarError: () => set({ error: null }),
 
@@ -85,7 +108,7 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
 
   elegirCategoria: async (categoriaId) => {
     localStorage.setItem(CLAVE_CATEGORIA, categoriaId);
-    set({ categoriaActiva: categoriaId, jugadores: [], enlaces: {} });
+    set({ categoriaActiva: categoriaId, jugadores: get().personalizados, enlaces: {} });
     await get().recargar();
   },
 
@@ -98,7 +121,8 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
       // Un único lote de enlaces firmados para toda la categoría.
       const rutas = jugadores.map((j) => j.fotoPath).filter((r): r is string => Boolean(r));
       const enlaces = await firmarFotos(rutas);
-      set({ jugadores: conEnlaces(jugadores, enlaces), enlaces, cargando: false });
+      // Los personalizados no están en Supabase: se vuelven a añadir (S1.2b).
+      set({ jugadores: conPersonalizados(conEnlaces(jugadores, enlaces), get().personalizados), enlaces, cargando: false });
     } catch (fallo) {
       set({ cargando: false, error: mensajeDe(fallo) });
     }
@@ -193,6 +217,30 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   },
 }));
 
+/**
+ * Igual que `obtenerPorId`, para componentes: se suscribe a las dos listas (no
+ * a `obtenerPorId`, que tiene identidad estable), así que vuelve a pintar cuando
+ * cambia la plantilla cargada o las fichas de la alineación abierta.
+ */
+export function useBuscarJugador(): (id: string) => Jugador | undefined {
+  const jugadores = usePlantillaStore((s) => s.jugadores);
+  const jugadoresDeFichas = usePlantillaStore((s) => s.jugadoresDeFichas);
+  return useCallback(
+    (id: string) => jugadores.find((j) => j.id === id) ?? jugadoresDeFichas.find((j) => j.id === id),
+    [jugadores, jugadoresDeFichas],
+  );
+}
+
+function sinPersonalizados(jugadores: Jugador[], personalizados: Jugador[]): Jugador[] {
+  const ids = new Set(personalizados.map((p) => p.id));
+  return jugadores.filter((j) => !ids.has(j.id));
+}
+
+/** La plantilla con los personalizados al final; si alguno ya estaba, manda su versión de la alineación. */
+function conPersonalizados(jugadores: Jugador[], personalizados: Jugador[]): Jugador[] {
+  return [...sinPersonalizados(jugadores, personalizados), ...personalizados];
+}
+
 function conEnlaces(jugadores: Jugador[], enlaces: Record<string, EnlaceFirmado>): Jugador[] {
   return jugadores.map((j) => ({ ...j, fotoUrl: j.fotoPath ? (enlaces[j.fotoPath]?.url ?? null) : null }));
 }
@@ -216,17 +264,18 @@ function mensajeDe(fallo: unknown): string {
  * fotos rotas.
  */
 export async function renovarEnlacesCaducados(): Promise<void> {
-  const { jugadores, enlaces } = usePlantillaStore.getState();
+  const { jugadores, jugadoresDeFichas, enlaces } = usePlantillaStore.getState();
   const ahora = Date.now();
-  const caducadas = jugadores
-    .map((j) => j.fotoPath)
-    .filter((r): r is string => Boolean(r) && (!enlaces[r!] || enlaces[r!]!.renovarEn <= ahora));
+  const caducadas = [...new Set([...jugadores, ...jugadoresDeFichas].map((j) => j.fotoPath))].filter(
+    (r): r is string => Boolean(r) && (!enlaces[r!] || enlaces[r!]!.renovarEn <= ahora),
+  );
   if (caducadas.length === 0) return;
   try {
     const nuevos = await firmarFotos(caducadas);
     usePlantillaStore.setState((estado) => ({
       enlaces: { ...estado.enlaces, ...nuevos },
       jugadores: conEnlaces(estado.jugadores, { ...estado.enlaces, ...nuevos }),
+      jugadoresDeFichas: conEnlaces(estado.jugadoresDeFichas, { ...estado.enlaces, ...nuevos }),
     }));
   } catch {
     // Si falla la renovación las tarjetas caen a su respaldo del dorsal; no

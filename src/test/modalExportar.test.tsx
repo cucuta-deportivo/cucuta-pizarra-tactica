@@ -119,6 +119,29 @@ describe('ventana de exportar: qué sale en la imagen', () => {
     expect(json.trazos).toHaveLength(1);
   });
 
+  it('el JSON lleva la categoría y las fichas de los jugadores, para verse igual en otro dispositivo', async () => {
+    prepararAlineacion(documento());
+    const ficha = {
+      id: 'test-09',
+      categoriaId: 'sub20',
+      nombre: 'Nombre9',
+      apellido: 'Apellido9',
+      dorsal: 9,
+      posicionNatural: 'DC' as const,
+      posicionesSecundarias: [],
+      fotoPath: null,
+    };
+    useAlineacionStore.setState({ categoriaId: 'sub20', fichas: [ficha] });
+    const usuario = userEvent.setup();
+    render(ventana());
+
+    await usuario.click(screen.getByRole('button', { name: /Exportar alineación \(JSON\)/ }));
+
+    const json = vi.mocked(exportar.exportarAlineacionAJson).mock.calls[0]![0];
+    expect(json.categoriaId).toBe('sub20');
+    expect(json.fichas).toEqual([ficha]);
+  });
+
   it('al volver a abrir la ventana, todas vuelven a estar marcadas', async () => {
     prepararAlineacion(documento());
     const usuario = userEvent.setup();

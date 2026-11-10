@@ -31,7 +31,7 @@ import type { DatosArrastreJugador } from '../../hooks/useDragJugador';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { usePizarraStore } from '../../store/pizarraStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
-import { usePlantillaStore } from '../../store/plantillaStore';
+import { useBuscarJugador } from '../../store/plantillaStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { useUiStore } from '../../store/uiStore';
 import { obtenerFormacion } from '../../data/formaciones';
@@ -292,11 +292,11 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   const agregarMarcaje = useAlineacionStore((s) => s.agregarMarcaje);
   const eliminarMarcaje = useAlineacionStore((s) => s.eliminarMarcaje);
 
-  // Se suscribe a la lista, no a `obtenerPorId`: esa función tiene identidad estable
+  // Se suscribe a las listas, no a `obtenerPorId`: esa función tiene identidad estable
   // y Zustand no re-renderizaría al añadirse un jugador personalizado, así que su
-  // ficha no aparecería hasta que otra cosa provocara un render.
-  const jugadoresPlantilla = usePlantillaStore((s) => s.jugadores);
-  const obtenerPorId = (id: string) => jugadoresPlantilla.find((j) => j.id === id);
+  // ficha no aparecería hasta que otra cosa provocara un render. Incluye las fichas
+  // guardadas con la alineación, para pintar a quien no está en la plantilla cargada.
+  const obtenerPorId = useBuscarJugador();
   const modoDibujoActivo = usePizarraStore((s) => s.modoDibujoActivo);
   const mostrarToast = useUiStore((s) => s.mostrarToast);
 

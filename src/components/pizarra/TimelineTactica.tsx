@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
-import { usePlantillaStore } from '../../store/plantillaStore';
+import { useBuscarJugador } from '../../store/plantillaStore';
 import { ControlesReproduccion } from './ControlesReproduccion';
 import { Boton } from '../ui/Boton';
 import {
@@ -58,7 +58,7 @@ export function TimelineTactica() {
   const rival = useAlineacionStore((s) => s.historial.presente.rival);
   // Se suscribe a los datos y no solo a obtenerPorId: esa función es estable y
   // suscribirse a ella no vuelve a renderizar cuando cambia la plantilla.
-  const jugadores = usePlantillaStore((s) => s.jugadores);
+  const buscarJugador = useBuscarJugador();
   const rutaEnEdicion = sujetoTrayectoria
     ? trayectoriaDe(secuencia?.frames[secuencia.indiceActivo]?.trayectorias, sujetoTrayectoria.tipo, sujetoTrayectoria.id)
     : undefined;
@@ -125,7 +125,7 @@ export function TimelineTactica() {
       const jugadorRival = rival?.jugadores.find((j) => j.id === sujetoTrayectoria.id);
       return jugadorRival ? `del rival ${jugadorRival.dorsal}` : 'del rival';
     }
-    const jugador = jugadores.find((j) => j.id === sujetoTrayectoria.id);
+    const jugador = buscarJugador(sujetoTrayectoria.id);
     return jugador ? `de ${jugador.apellido.toUpperCase()}` : 'del jugador';
   }
 

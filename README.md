@@ -110,6 +110,34 @@ npx supabase db dump --remote --data-only --use-copy -f "<carpeta privada>/datos
 
 Hacen falta los dos: el primero guarda la estructura y el segundo los datos (sin `--data-only` no se guarda ninguna fila). Requiere Docker Desktop y tener el proyecto enlazado con `npx supabase link`. Las fotos del bucket `jugadores` no van en este respaldo.
 
+#### Sin Docker: CSV desde el panel de Supabase
+
+Si en el equipo no hay Docker, los datos se exportan a mano desde el panel del proyecto, en **SQL Editor**. Para cada tabla:
+
+1. Ejecuta su consulta (abajo). Llevan un `limit` alto a propósito: sin él, el SQL Editor devuelve solo las primeras filas (100) y el CSV saldría incompleto sin avisar.
+2. En el resultado, abre **Export** y elige **Download CSV** (según la versión del panel, "Download as CSV").
+3. Comprueba que el CSV tiene tantas filas como dice `select count(*) from public.<tabla>;`.
+
+```sql
+select id, categoria_id, nombre, formacion, rival, fecha_partido, notas,
+       creada_por, creado_en, actualizado_en, actualizada_por,
+       version, ultimo_cambio, eliminada_en,
+       documento::text as documento
+from public.alineaciones order by creado_en limit 100000;
+
+select * from public.jugadores order by categoria_id, apellido limit 100000;
+
+select * from public.categorias order by orden limit 100000;
+
+select * from public.perfiles order by creado_en limit 100000;
+```
+
+`documento` va como texto para que cada alineación entera (su JSON) quede en una sola celda del CSV. Las alineaciones borradas también salen: borrar en la app solo las marca (`eliminada_en`).
+
+Otra vía es **Table Editor**: cada tabla tiene en su menú "…" una opción para descargarla en CSV. En algunas versiones solo descarga las filas seleccionadas, así que antes marca la casilla de todas, y comprueba igual el número de filas.
+
+Los CSV se guardan como el dump: **en el lugar privado del club, nunca en el repositorio**. Respaldan los datos, no la estructura: para rehacer la base desde cero hace falta además `supabase/schema.sql`. No incluyen las cuentas de acceso ni las fotos del bucket `jugadores`, y tampoco los códigos de invitación ni el registro de accesos (`intentos_login`), que no hacen falta para recuperar el trabajo.
+
 ## Fuera de alcance
 
 - Estadísticas avanzadas, heatmaps o análisis de datos de partido.

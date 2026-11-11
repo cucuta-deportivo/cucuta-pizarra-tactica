@@ -48,13 +48,15 @@ const PanelActividad = diferido(() => import('./components/auth/PanelActividad')
 
 function EscudoClub() {
   return (
-    <div
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-club-negro font-display text-lg font-black text-club-rojo ring-1 ring-white/15"
+    <img
+      src="/escudos/escudo.png"
+      alt=""
       title="Cúcuta Deportivo"
-      aria-hidden="true"
-    >
-      C
-    </div>
+      width={31}
+      height={40}
+      draggable={false}
+      className="h-10 w-auto shrink-0 select-none"
+    />
   );
 }
 

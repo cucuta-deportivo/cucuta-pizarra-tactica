@@ -105,7 +105,7 @@ Plan aprobado el 2026-11-11 a partir de las láminas: el escudo del club en el �
 
 | Paso | Qué | Prueba principal | Estado |
 | --- | --- | --- | --- |
-| IV1 | Originales del escudo en `marca/` con nombres claros: `escudo.png` (sin año) y `escudo-1924.png` | Mismos archivos que entregó el club, sin tocar | Pendiente |
+| IV1 | Originales del escudo en `marca/` con nombres claros: `escudo.png` (sin año, 527 × 674) y `escudo-1924.png` (404 × 582). Llegaron como `CucutaColor.png` y `CucutaEscudo.png` | Mismo hash SHA-256 antes y después de renombrarlos | Hecho |
 | IV2 | Íconos de la app (512, 192, 180 y maskable) y favicon (32 y 16 px) con el escudo sin año sobre #111111. Reemplazan a la «C» con los mismos nombres, así que el manifiesto no cambia | Navegador: el servidor entrega cada ícono y el favicon con su tamaño; captura | Pendiente |
 | IV3 | Escudos para la interfaz en `public/marca/`: `escudo.png` (barra y exportación) y `escudo-1924.png` (acceso, con el disco relleno) | Navegador: se sirven con su tamaño | Pendiente |
 | IV4 | Paleta: rojo, ficha, hover, negro de marca y dorado en los tokens; capitán en dorado en pantalla y en lo exportado; los marcajes exportados siguen en el rojo táctico, como en pantalla | Colores calculados en navegador; captura de la pizarra y del PNG exportado | Pendiente |

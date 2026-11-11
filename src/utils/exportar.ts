@@ -7,7 +7,6 @@ import { porcentajeAPixeles } from './coordenadas';
 import { obtenerIniciales } from './jugador';
 
 const ESCALA_EXPORTACION = 2;
-const ALTO_ENCABEZADO = 56;
 /**
  * El PDF lleva la imagen en JPEG: un PNG lo guarda jsPDF descomprimido (unos
  * 11 MB por página) y el JPEG va tal cual (unos 150 KB, para WhatsApp). A esta
@@ -25,6 +24,24 @@ const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const PESOS_FUENTE = ['500', '600', '700', '800'];
 /** Las líneas de `CapaMarcajes`: rojo táctico, no el de la marca, para que lo exportado siga igual que la pantalla. */
 const ROJO_MARCAJE = '#D4111E';
+
+/**
+ * Encabezado de lo exportado: banda negra con el escudo, el club, la categoría
+ * y el rival, ENCIMA del campo (nunca lo tapa). Mide 76 px en una fila; si el
+ * campo es estrecho (vertical) y el rival no cabe al lado, baja a su propia
+ * línea y mide 100.
+ */
+const ALTO_ENCABEZADO = { unaFila: 76, dosFilas: 100 } as const;
+const ALTO_ESCUDO = { unaFila: 52, dosFilas: 60 } as const;
+const MARGEN_ENCABEZADO = 16;
+const SEPARACION_CATEGORIA = 10;
+/** El escudo sin año (94 × 120), el mismo de la barra superior. */
+const RUTA_ESCUDO = '/escudos/escudo.png';
+const PROPORCION_ESCUDO = 94 / 120;
+const FUENTE_CLUB = `800 24px ${FUENTE}`;
+const FUENTE_VS = `600 16px ${FUENTE}`;
+const FUENTE_RIVAL_ABAJO = `700 20px ${FUENTE}`;
+const FUENTE_DETALLE = `500 14px ${FUENTE}`;
 
 /**
  * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
@@ -46,6 +63,8 @@ export interface DatosExportacion {
   altoContenedor: number;
   orientacion: Orientacion;
   nombreClub?: string;
+  /** Nombre de la categoría de la alineación ("Sub-17"). Sin ella, el encabezado no la pone. */
+  categoria?: string | null;
   /** Dibujar la foto de cada jugador en su ficha. Por defecto, no. */
   incluirFotos?: boolean;
   /** Capas que el entrenador desmarcó en la ventana de exportar. Sin indicar, salen todas. */
@@ -413,9 +432,147 @@ function dibujarBalonEnLienzo(ctx: CanvasRenderingContext2D, cx: number, cy: num
   });
 }
 
+/** Lo que dice el encabezado de lo exportado. Va aparte del dibujo para poder probarlo sin lienzo. */
+export interface TextosEncabezado {
+  club: string;
+  /** Categoría de la alineación ("SUB-17"), en dorado. */
+  categoria: string | null;
+  rival: string | null;
+  /** Segunda línea: nombre de la alineación, formación y fecha. */
+  detalle: string;
+}
+
+/** El nombre que trae un rival recién añadido no dice nada: el encabezado no lo pone. */
+const NOMBRE_RIVAL_POR_DEFECTO = 'rival';
+
+export function textosEncabezado(
+  alineacion: Pick<Alineacion, 'nombre' | 'modificadaEn' | 'rival'>,
+  formacion: Pick<Formacion, 'nombre' | 'variante'> | undefined,
+  categoria?: string | null,
+  nombreClub = 'Cúcuta Deportivo',
+): TextosEncabezado {
+  const rival = alineacion.rival?.nombre?.trim() ?? '';
+  const nombreCategoria = categoria?.trim() ?? '';
+  const fecha = new Date(alineacion.modificadaEn).toLocaleDateString('es-CO');
+  const esquema = `${formacion?.nombre ?? '—'}${formacion?.variante ? ' ' + formacion.variante : ''}`;
+  return {
+    club: nombreClub.toLocaleUpperCase('es'),
+    categoria: nombreCategoria ? nombreCategoria.toLocaleUpperCase('es') : null,
+    rival: rival && rival.toLocaleLowerCase('es') !== NOMBRE_RIVAL_POR_DEFECTO ? rival.toLocaleUpperCase('es') : null,
+    detalle: `${alineacion.nombre || 'Alineación sin nombre'} · ${esquema} · ${fecha}`,
+  };
+}
+
+export interface PlanEncabezado {
+  alto: number;
+  /** El rival va a la derecha de la primera línea; si no cabe, baja a la segunda. */
+  unaFila: boolean;
+}
+
+/** Donde empiezan los textos: a la derecha del escudo. */
+function inicioTextoEncabezado(altoEscudo: number): number {
+  return MARGEN_ENCABEZADO + altoEscudo * PROPORCION_ESCUDO + 12;
+}
+
+/** `mide` devuelve el ancho de un texto con una fuente (en el lienzo, `measureText`). */
+export function planEncabezado(mide: (texto: string, fuente: string) => number, ancho: number, textos: TextosEncabezado): PlanEncabezado {
+  if (!textos.rival) return { alto: ALTO_ENCABEZADO.unaFila, unaFila: true };
+  const izquierda = mide(textos.club, FUENTE_CLUB) + (textos.categoria ? SEPARACION_CATEGORIA + mide(textos.categoria, FUENTE_CLUB) : 0);
+  const derecha = mide('vs', FUENTE_VS) + 8 + mide(textos.rival, FUENTE_CLUB);
+  const unaFila = inicioTextoEncabezado(ALTO_ESCUDO.unaFila) + izquierda + 32 + derecha <= ancho - MARGEN_ENCABEZADO;
+  return { alto: unaFila ? ALTO_ENCABEZADO.unaFila : ALTO_ENCABEZADO.dosFilas, unaFila };
+}
+
+function medidorDeTexto(ctx: CanvasRenderingContext2D): (texto: string, fuente: string) => number {
+  return (texto, fuente) => {
+    ctx.font = fuente;
+    return ctx.measureText(texto).width;
+  };
+}
+
+/** Corta con «…» lo que no cabe en `maximo`, con la fuente que ya tiene el contexto. */
+function recortarTexto(ctx: CanvasRenderingContext2D, texto: string, maximo: number): string {
+  if (ctx.measureText(texto).width <= maximo) return texto;
+  let corto = texto;
+  while (corto.length > 1 && ctx.measureText(`${corto}…`).width > maximo) corto = corto.slice(0, -1);
+  return `${corto.trimEnd()}…`;
+}
+
+/**
+ * Banda negra con el escudo, «CÚCUTA DEPORTIVO» y la categoría en dorado; el
+ * rival a la derecha o en su propia línea; debajo, alineación, formación y
+ * fecha. Una raya roja la separa del campo. Si el escudo no cargó, sale sin él.
+ */
+function dibujarEncabezado(
+  ctx: CanvasRenderingContext2D,
+  ancho: number,
+  textos: TextosEncabezado,
+  { alto, unaFila }: PlanEncabezado,
+  escudo: HTMLImageElement | null,
+): void {
+  ctx.fillStyle = COLOR.marca.negro;
+  ctx.fillRect(0, 0, ancho, alto);
+  ctx.fillStyle = COLOR.marca.rojo;
+  ctx.fillRect(0, alto - 3, ancho, 3);
+
+  const altoEscudo = unaFila ? ALTO_ESCUDO.unaFila : ALTO_ESCUDO.dosFilas;
+  if (escudo) {
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(escudo, MARGEN_ENCABEZADO, (alto - 3 - altoEscudo) / 2, altoEscudo * PROPORCION_ESCUDO, altoEscudo);
+  }
+  const x = inicioTextoEncabezado(altoEscudo);
+  const limite = ancho - MARGEN_ENCABEZADO;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  // Línea 1: club y categoría. En un campo muy estrecho la letra se reduce para que quepan.
+  const izquierda =
+    medidorDeTexto(ctx)(textos.club, FUENTE_CLUB) + (textos.categoria ? SEPARACION_CATEGORIA + medidorDeTexto(ctx)(textos.categoria, FUENTE_CLUB) : 0);
+  const tamano = izquierda > limite - x ? Math.max(16, Math.floor((24 * (limite - x)) / izquierda)) : 24;
+  const base1 = unaFila ? 35 : 32;
+  ctx.font = `800 ${tamano}px ${FUENTE}`;
+  ctx.fillStyle = COLOR.texto.principal;
+  const club = recortarTexto(ctx, textos.club, limite - x);
+  ctx.fillText(club, x, base1);
+  const xCategoria = x + ctx.measureText(club).width + (SEPARACION_CATEGORIA * tamano) / 24;
+  if (textos.categoria && limite - xCategoria > 20) {
+    ctx.fillStyle = COLOR.marca.dorado;
+    ctx.fillText(recortarTexto(ctx, textos.categoria, limite - xCategoria), xCategoria, base1);
+  }
+
+  if (unaFila) {
+    if (textos.rival) {
+      ctx.textAlign = 'right';
+      ctx.font = FUENTE_CLUB;
+      ctx.fillStyle = COLOR.texto.principal;
+      ctx.fillText(textos.rival, limite, base1);
+      const anchoRival = ctx.measureText(textos.rival).width;
+      ctx.font = FUENTE_VS;
+      ctx.fillStyle = COLOR.texto.secundario;
+      ctx.fillText('vs', limite - anchoRival - 8, base1);
+      ctx.textAlign = 'left';
+    }
+    ctx.font = FUENTE_DETALLE;
+    ctx.fillStyle = COLOR.texto.secundario;
+    ctx.fillText(recortarTexto(ctx, textos.detalle, limite - x), x, 57);
+  } else {
+    ctx.font = FUENTE_VS;
+    ctx.fillStyle = COLOR.texto.secundario;
+    ctx.fillText('vs', x, 58);
+    const xRival = x + ctx.measureText('vs').width + 6;
+    ctx.font = FUENTE_RIVAL_ABAJO;
+    ctx.fillStyle = COLOR.texto.principal;
+    ctx.fillText(recortarTexto(ctx, textos.rival ?? '', limite - xRival), xRival, 58);
+    ctx.font = FUENTE_DETALLE;
+    ctx.fillStyle = COLOR.texto.secundario;
+    ctx.fillText(recortarTexto(ctx, textos.detalle, limite - x), x, 82);
+  }
+}
+
 async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement> {
-  const { alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, incluirFotos, incluir } =
-    datos;
+  const {
+    alineacion, formacion, obtenerJugador, svgCampo, canvasDibujo, anchoContenedor, altoContenedor, orientacion, nombreClub, categoria, incluirFotos, incluir,
+  } = datos;
   const elementos = elementosAExportar(alineacion, incluir);
 
   // Las fotos se cargan TODAS antes de empezar a dibujar: el lienzo es síncrono
@@ -432,42 +589,34 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
     );
     for (const par of cargadas) if (par) fotos.set(par[0], par[1]);
   }
-  await cargarFuentes();
+  // El escudo se carga como una foto: si falla, el encabezado sale sin él y la exportación sigue.
+  const [escudo] = await Promise.all([cargarFoto(RUTA_ESCUDO), cargarFuentes()]);
 
   const lienzo = document.createElement('canvas');
-  lienzo.width = Math.round(anchoContenedor * ESCALA_EXPORTACION);
-  lienzo.height = Math.round((altoContenedor + ALTO_ENCABEZADO) * ESCALA_EXPORTACION);
   const ctx = lienzo.getContext('2d');
   if (!ctx) throw new Error('No se pudo crear el contexto de exportación.');
+  // El alto del encabezado depende de lo que mida el texto: se mide antes de dar
+  // tamaño al lienzo (cambiarlo reinicia el contexto, no las medidas ya tomadas).
+  const textos = textosEncabezado(alineacion, formacion, categoria, nombreClub);
+  const encabezado = planEncabezado(medidorDeTexto(ctx), anchoContenedor, textos);
+  const altoEncabezado = encabezado.alto;
+  lienzo.width = Math.round(anchoContenedor * ESCALA_EXPORTACION);
+  lienzo.height = Math.round((altoContenedor + altoEncabezado) * ESCALA_EXPORTACION);
   ctx.scale(ESCALA_EXPORTACION, ESCALA_EXPORTACION);
 
   ctx.fillStyle = COLOR.superficie.fondo;
-  ctx.fillRect(0, 0, anchoContenedor, altoContenedor + ALTO_ENCABEZADO);
-
-  ctx.fillStyle = COLOR.marca.rojo;
-  ctx.fillRect(0, 0, anchoContenedor, ALTO_ENCABEZADO);
-  ctx.fillStyle = COLOR.texto.principal;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.font = `700 20px ${FUENTE}`;
-  ctx.fillText(alineacion.nombre || 'Alineación sin nombre', 16, ALTO_ENCABEZADO / 2 - 4);
-  ctx.font = `500 12px ${FUENTE}`;
-  const fecha = new Date(alineacion.modificadaEn).toLocaleDateString('es-CO');
-  ctx.fillText(
-    `${nombreClub ?? 'Cúcuta Deportivo'} · ${formacion?.nombre ?? '—'}${formacion?.variante ? ' ' + formacion.variante : ''} · ${fecha}`,
-    16,
-    ALTO_ENCABEZADO / 2 + 14,
-  );
+  ctx.fillRect(0, 0, anchoContenedor, altoContenedor + altoEncabezado);
+  dibujarEncabezado(ctx, anchoContenedor, textos, encabezado, escudo);
 
   const imagenCampo = await svgAImagen(svgCampo);
-  ctx.drawImage(imagenCampo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
+  ctx.drawImage(imagenCampo, 0, altoEncabezado, anchoContenedor, altoContenedor);
 
   // Mismo orden de capas que en pantalla, que lo marca el z-index de Campo.tsx:
   // marcajes y dibujos (sin z-index, los dibujos después), objetos (5), balón
   // suelto (6), rivales (8), nuestros (10) y el balón en posesión (11).
   const aLienzo = (x: number, y: number) => {
     const punto = porcentajeAPixeles({ x, y }, { ancho: anchoContenedor, alto: altoContenedor }, orientacion);
-    return { cx: punto.x, cy: punto.y + ALTO_ENCABEZADO };
+    return { cx: punto.x, cy: punto.y + altoEncabezado };
   };
   const dibujarBalon = (balon: Balon) => {
     const { x, y } = posicionEfectivaBalon(balon, alineacion.titulares);
@@ -480,7 +629,7 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
   }
 
   if (canvasDibujo && elementos.dibujos) {
-    ctx.drawImage(canvasDibujo, 0, ALTO_ENCABEZADO, anchoContenedor, altoContenedor);
+    ctx.drawImage(canvasDibujo, 0, altoEncabezado, anchoContenedor, altoContenedor);
   }
 
   for (const objeto of elementos.objetos) {
@@ -499,7 +648,7 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
     const jugador = obtenerJugador(titular.jugadorId);
     if (!jugador) continue;
     dibujarJugadorEnLienzo(
-      ctx, jugador, titular, anchoContenedor, altoContenedor, ALTO_ENCABEZADO, orientacion, fotos.get(titular.jugadorId),
+      ctx, jugador, titular, anchoContenedor, altoContenedor, altoEncabezado, orientacion, fotos.get(titular.jugadorId),
     );
   }
   elementos.balonesEnPosesion.forEach(dibujarBalon);
@@ -528,8 +677,9 @@ export function descargarBlob(blob: Blob, nombreArchivo: string): void {
 export async function exportarCampoAPdf(datos: DatosExportacion): Promise<void> {
   const [{ default: jsPDF }, lienzo] = await Promise.all([import('jspdf'), dibujarCampo(datos)]);
   const urlDatos = lienzo.toDataURL('image/jpeg', CALIDAD_JPEG_PDF);
-  const anchoTotal = datos.anchoContenedor;
-  const altoTotal = datos.altoContenedor + ALTO_ENCABEZADO;
+  // Proporción de la imagen entera, encabezado incluido: su alto depende del ancho del campo.
+  const anchoTotal = lienzo.width;
+  const altoTotal = lienzo.height;
   const documento = new jsPDF({
     orientation: anchoTotal >= altoTotal ? 'landscape' : 'portrait',
     unit: 'pt',

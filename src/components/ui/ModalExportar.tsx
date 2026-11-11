@@ -46,6 +46,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   const reemplazarDocumentoCompleto = useAlineacionStore((s) => s.reemplazarDocumentoCompleto);
   const importarRespaldo = useAlineacionStore((s) => s.importarRespaldo);
   const obtenerJugador = usePlantillaStore((s) => s.obtenerPorId);
+  const categorias = usePlantillaStore((s) => s.categorias);
 
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const [trabajo, setTrabajo] = useState<TrabajoExportacion>(null);
@@ -87,6 +88,8 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
         anchoContenedor: elementos.ancho,
         altoContenedor: elementos.alto,
         orientacion: elementos.orientacion,
+        // La de la alineación, no la activa: una de Sub-15 abierta desde Sub-17 sale como Sub-15.
+        categoria: categorias.find((c) => c.id === alineacion.categoriaId)?.nombre ?? null,
         incluirFotos: incluirFotos && hayFotos,
         incluir: incluirCapas,
       };

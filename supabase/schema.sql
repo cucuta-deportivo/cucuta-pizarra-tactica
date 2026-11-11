@@ -119,6 +119,8 @@ as $$
 $$;
 
 -- Cuenta intentos fallidos recientes para el bloqueo temporal (5 en 15 min).
+-- Desde Seg1 (2026-11-11) no la usa nadie: el bloqueo lo decide reservar_intento_login.
+-- Sin permisos para el navegador; se puede borrar cuando no quede ninguna pizarra antigua.
 create or replace function public.verificar_bloqueo_usuario(p_usuario text)
 returns table (bloqueado boolean, intentos_recientes int)
 language sql
@@ -133,8 +135,9 @@ as $$
   where lower(usuario_intentado) = lower(p_usuario);
 $$;
 
--- Único punto de escritura en intentos_login: el cliente nunca inserta
--- directamente (evita que alguien manipule o borre su propio historial).
+-- Versión anterior a Seg1: confiaba en el cliente, y cualquiera podía anotar fallidos a
+-- nombre de otro. Desde el 2026-11-11 solo escriben en intentos_login reservar_intento_login
+-- y cerrar_intento_login, desde la Edge Function; esta queda sin permisos hasta borrarla.
 create or replace function public.registrar_intento_login(
   p_usuario_intentado text,
   p_resultado text,
@@ -298,8 +301,9 @@ revoke execute on function public.resolver_correo_por_usuario(text) from public,
 grant execute on function public.resolver_correo_por_usuario(text) to service_role;
 revoke execute on function public.usuario_disponible(text) from public;
 grant execute on function public.usuario_disponible(text) to anon, authenticated;
-grant execute on function public.verificar_bloqueo_usuario(text) to anon, authenticated;
-grant execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) to anon, authenticated;
+-- Seg1 (SQL B, 2026-11-11): el navegador ya no consulta bloqueos ni anota intentos.
+revoke execute on function public.verificar_bloqueo_usuario(text) from public, anon, authenticated;
+revoke execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) from public, anon, authenticated;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;
 grant execute on function public.es_entrenador_activo() to authenticated;
 -- Seg1 y Seg2: solo la Edge Function. Supabase da EXECUTE a anon y authenticated en

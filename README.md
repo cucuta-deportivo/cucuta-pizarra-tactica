@@ -138,6 +138,13 @@ Otra vía es **Table Editor**: cada tabla tiene en su menú "…" una opción pa
 
 Los CSV se guardan como el dump: **en el lugar privado del club, nunca en el repositorio**. Respaldan los datos, no la estructura: para rehacer la base desde cero hace falta además `supabase/schema.sql`. No incluyen las cuentas de acceso ni las fotos del bucket `jugadores`, y tampoco los códigos de invitación ni el registro de accesos (`intentos_login`), que no hacen falta para recuperar el trabajo.
 
+## Uso en la tablet del banquillo
+
+- **Bloqueo de pantalla con PIN, obligatorio.** Sin señal, la pizarra se abre con la sesión guardada en la tablet, sin pedir contraseña: quien tenga la tablet desbloqueada ve las alineaciones y la plantilla. En los ajustes de la tablet, activa el bloqueo con PIN (o código) y el bloqueo automático a los pocos minutos.
+- **Entrar una vez con señal y con "Recordar este dispositivo" marcado.** Así quedan guardados la sesión y el perfil, y la pizarra se abre aunque en la cancha no haya señal. Si nunca se entró así en esa tablet, sin señal no se puede entrar.
+- **12 h sin uso.** Si la tablet llevaba más de 12 h sin usarse, al volver la señal la pizarra sube lo pendiente y cierra la sesión de esa tablet. Si alguien la usó desde que se abrió sin señal, no la cierra: no saca a nadie en pleno partido.
+- **Tablet perdida o robada.** "Cerrar sesión" (⋯) cierra solo la sesión del dispositivo donde se toca. Para cerrar también la de la tablet, desde otro dispositivo con sesión (por ejemplo, el computador de la oficina): ⋯ (Más opciones) → **Cerrar sesión en todos los dispositivos**. Hace falta señal en ese dispositivo. La tablet pierde la sesión cuando tenga señal y caduque su token de acceso: hasta 1 h después con la configuración por defecto de Supabase, porque ese token no se puede anular. Mientras tanto la protege el PIN. Las alineaciones guardadas en la tablet se quedan en ella; la app no las muestra sin sesión.
+
 ## Fuera de alcance
 
 - Estadísticas avanzadas, heatmaps o análisis de datos de partido.

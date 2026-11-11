@@ -155,25 +155,6 @@ async function obtenerPerfil(userId: string): Promise<Perfil | null> {
   return lectura.tipo === 'perfil' ? lectura.perfil : null;
 }
 
-async function registrarIntento(
-  usuarioIntentado: string,
-  resultado: 'exito' | 'fallido' | 'bloqueado',
-  sessionId?: string,
-): Promise<void> {
-  const datosIp = await obtenerDatosIp();
-  await supabase.rpc('registrar_intento_login', {
-    p_usuario_intentado: usuarioIntentado,
-    p_resultado: resultado,
-    p_metodo: 'password',
-    p_dispositivo: describirDispositivo(navigator.userAgent),
-    p_user_agent: navigator.userAgent,
-    p_ip: datosIp.ip,
-    p_ciudad: datosIp.ciudad,
-    p_pais: datosIp.pais,
-    p_session_id: sessionId ?? null,
-  });
-}
-
 /** Antes de cerrar por 12 h sin uso, se sube lo pendiente. Lo registra la sincronización (S1.13). */
 let antesDeCerrarPorInactividad: (perfil: Perfil | null) => Promise<unknown> = async () => undefined;
 
@@ -326,49 +307,46 @@ export const useAuthStore = create<AuthState>((set, get) => {
       if (!hayRed()) return { ok: false, mensaje: MENSAJE_SIN_CONEXION };
       set({ enviando: true });
       try {
-        const { data: bloqueo } = await supabase
-          .rpc('verificar_bloqueo_usuario', { p_usuario: usuarioOCorreo })
-          .maybeSingle<{ bloqueado: boolean; intentos_recientes: number }>();
-        if (bloqueo?.bloqueado) {
-          await registrarIntento(usuarioOCorreo, 'bloqueado');
-          return { ok: false, mensaje: 'Demasiados intentos fallidos. Vuelve a intentarlo en 15 minutos.' };
-        }
-
+        const cuentaBloqueada = 'Esta cuenta está bloqueada. Contacta a un entrenador del cuerpo técnico.';
         // Antes de crear la sesión: decide en qué almacenamiento se guarda.
         establecerRecordarDispositivo(recordar);
-        let respuesta;
-        if (usuarioOCorreo.includes('@')) {
-          respuesta = await supabase.auth.signInWithPassword({ email: usuarioOCorreo, password });
-        } else {
-          // Con usuario, el correo se resuelve y la sesión se abre en el servidor
-          // (Edge Function `login-usuario`): el navegador nunca ve el correo.
-          const { data: tokens } = await supabase.functions.invoke<{ access_token: string; refresh_token: string }>(
-            'login-usuario',
-            { body: { usuario: usuarioOCorreo, password } },
-          );
-          if (!tokens) {
-            await registrarIntento(usuarioOCorreo, 'fallido');
-            return { ok: false, mensaje: MENSAJE_GENERICO };
-          }
-          respuesta = await supabase.auth.setSession(tokens);
-        }
-        const { data: inicio, error } = respuesta;
-        if (error && isAuthRetryableFetchError(error)) return { ok: false, mensaje: MENSAJE_SIN_CONEXION };
-        if (error || !inicio.session) {
-          await registrarIntento(usuarioOCorreo, 'fallido');
+        // Con usuario o con correo, todo pasa por la Edge Function `login-usuario` (Seg1 y Seg2):
+        // ella decide el bloqueo, prueba la contraseña y anota el intento. El navegador nunca ve
+        // el correo de un usuario ni puede anotar intentos. VITE_FUNCION_LOGIN solo sirve para
+        // probar en local contra una copia de la función (login-usuario-prueba).
+        const datosIp = await obtenerDatosIp();
+        const { data: tokens, error: errorFuncion } = await supabase.functions.invoke<{
+          access_token: string;
+          refresh_token: string;
+        }>(import.meta.env.VITE_FUNCION_LOGIN || 'login-usuario', {
+          body: {
+            identificador: usuarioOCorreo,
+            password,
+            datos: { dispositivo: describirDispositivo(navigator.userAgent), ...datosIp },
+          },
+        });
+        if (!tokens) {
+          // Sin respuesta de la función (sin red o wifi sin internet) no hay código HTTP.
+          const estado = (errorFuncion as { context?: { status?: unknown } } | null)?.context?.status;
+          if (typeof estado !== 'number') return { ok: false, mensaje: MENSAJE_SIN_CONEXION };
+          if (estado === 429) return { ok: false, mensaje: 'Demasiados intentos fallidos. Vuelve a intentarlo en 15 minutos.' };
+          if (estado === 403) return { ok: false, mensaje: cuentaBloqueada };
+          if (estado >= 500) return { ok: false, mensaje: 'No se pudo comprobar la contraseña. Inténtalo de nuevo en un momento.' };
           return { ok: false, mensaje: MENSAJE_GENERICO };
         }
+        const { data: inicio, error } = await supabase.auth.setSession(tokens);
+        if (error && isAuthRetryableFetchError(error)) return { ok: false, mensaje: MENSAJE_SIN_CONEXION };
+        if (error || !inicio.session) return { ok: false, mensaje: MENSAJE_GENERICO };
 
         const perfil = await obtenerPerfil(inicio.session.user.id);
         if (perfil?.estado === 'bloqueado') {
-          await registrarIntento(usuarioOCorreo, 'fallido');
+          // La función ya no da sesión a una cuenta bloqueada; esto cubre un bloqueo justo en este momento.
           await supabase.auth.signOut();
-          return { ok: false, mensaje: 'Esta cuenta está bloqueada. Contacta a un entrenador del cuerpo técnico.' };
+          return { ok: false, mensaje: cuentaBloqueada };
         }
 
         set({ session: inicio.session, perfil });
         marcarActividad();
-        await registrarIntento(usuarioOCorreo, 'exito');
         return { ok: true };
       } finally {
         set({ enviando: false });

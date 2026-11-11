@@ -66,8 +66,14 @@ const ETIQUETA_RESULTADO: Record<IntentoLogin['resultado'], { texto: string; cla
  */
 type ConsultaSupabase = ReturnType<ReturnType<typeof supabase.from>['select']>;
 
-function aplicarFiltros(consulta: ConsultaSupabase, filtros: Filtros, dispositivoActual: string): ConsultaSupabase {
-  let resultado = consulta;
+/** Solo los intentos de esta cuenta (Seg4); la base hace lo mismo con la política ver_propios_intentos. */
+function aplicarFiltros(
+  consulta: ConsultaSupabase,
+  idCuenta: string,
+  filtros: Filtros,
+  dispositivoActual: string,
+): ConsultaSupabase {
+  let resultado = consulta.eq('user_id', idCuenta);
   if (filtros.desde) resultado = resultado.gte('ocurrido_en', new Date(filtros.desde).toISOString());
   if (filtros.hasta) {
     const hasta = new Date(filtros.hasta);
@@ -94,6 +100,7 @@ export function PanelActividad({ onCerrar }: PanelActividadProps) {
   const [horaBogota, setHoraBogota] = useState(true);
   const [cerrandoOtras, setCerrandoOtras] = useState(false);
   const [dispositivoActual] = useState(() => describirDispositivo(navigator.userAgent));
+  const idCuenta = session?.user.id ?? null;
   const sentinelaRef = useRef<HTMLDivElement | null>(null);
 
   const cargarPagina = useCallback(
@@ -101,7 +108,8 @@ export function PanelActividad({ onCerrar }: PanelActividadProps) {
       if (reiniciar) setCargando(true);
       else setCargandoMas(true);
       try {
-        const base = aplicarFiltros(supabase.from('intentos_login').select('*'), filtros, dispositivoActual);
+        if (!idCuenta) return;
+        const base = aplicarFiltros(supabase.from('intentos_login').select('*'), idCuenta, filtros, dispositivoActual);
         const { data, error } = await base
           .order('ocurrido_en', { ascending: false })
           .range(paginaObjetivo * TAMANO_PAGINA, paginaObjetivo * TAMANO_PAGINA + TAMANO_PAGINA - 1);
@@ -117,7 +125,7 @@ export function PanelActividad({ onCerrar }: PanelActividadProps) {
         setCargandoMas(false);
       }
     },
-    [filtros, dispositivoActual],
+    [idCuenta, filtros, dispositivoActual],
   );
 
   useEffect(() => {
@@ -158,7 +166,8 @@ export function PanelActividad({ onCerrar }: PanelActividadProps) {
   }, [intentos]);
 
   async function exportarCsv(): Promise<void> {
-    const base = aplicarFiltros(supabase.from('intentos_login').select('*'), filtros, dispositivoActual);
+    if (!idCuenta) return;
+    const base = aplicarFiltros(supabase.from('intentos_login').select('*'), idCuenta, filtros, dispositivoActual);
     const { data } = await base.order('ocurrido_en', { ascending: false }).limit(1000);
     const filas = (data as IntentoLogin[] | null) ?? [];
     const encabezado = ['Fecha', 'Resultado', 'Dispositivo', 'IP', 'Ciudad', 'País'];

@@ -23,8 +23,8 @@ const ESCALA_FICHAS = 20 / 32;
 /** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
 const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
 const PESOS_FUENTE = ['500', '600', '700', '800'];
-/** El `bg-amber-400` de la insignia de capitán en `TarjetaJugador`. */
-const AMBAR_CAPITAN = '#FBBF24';
+/** Las líneas de `CapaMarcajes`: rojo táctico, no el de la marca, para que lo exportado siga igual que la pantalla. */
+const ROJO_MARCAJE = '#D4111E';
 
 /**
  * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
@@ -212,7 +212,7 @@ function dibujarJugadorEnLienzo(
     const by = cy - radio * 0.78;
     ctx.beginPath();
     ctx.arc(bx, by, 9, 0, Math.PI * 2);
-    ctx.fillStyle = AMBAR_CAPITAN;
+    ctx.fillStyle = COLOR.marca.dorado;
     ctx.fill();
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
@@ -239,7 +239,7 @@ function dibujarJugadorEnLienzo(
 /** La línea de `CapaMarcajes`: de centro a centro, roja y discontinua. */
 function dibujarMarcajeEnLienzo(ctx: CanvasRenderingContext2D, desde: { cx: number; cy: number }, hasta: { cx: number; cy: number }): void {
   ctx.save();
-  ctx.strokeStyle = COLOR.marca.rojo;
+  ctx.strokeStyle = ROJO_MARCAJE;
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 5]);
   ctx.globalAlpha = 0.85;

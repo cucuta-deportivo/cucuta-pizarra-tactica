@@ -11,7 +11,8 @@ export default {
         club: {
           rojo: COLOR.marca.rojo,
           'rojo-ficha': COLOR.marca.rojoFicha,
-          'rojo-oscuro': '#8C0B14',
+          'rojo-oscuro': COLOR.marca.rojoOscuro,
+          dorado: COLOR.marca.dorado,
           naranja: COLOR.interaccion.naranja,
           negro: COLOR.superficie.fondo,
           carbon: COLOR.superficie.panel,

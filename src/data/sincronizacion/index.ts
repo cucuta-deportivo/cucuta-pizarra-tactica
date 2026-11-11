@@ -1,6 +1,6 @@
 import { supabaseConfigurado } from '../../lib/supabaseClient';
 import type { Alineacion } from '../../types';
-import { useAuthStore } from '../../store/authStore';
+import { alCerrarPorInactividad, useAuthStore } from '../../store/authStore';
 import { estadoTrasVuelta, useSincronizacionStore } from '../../store/sincronizacionStore';
 import { copiaPorConflicto } from '../../utils/copias';
 import { generarId } from '../../utils/id';
@@ -58,6 +58,12 @@ const sincronizador = crearSincronizador({
   subidor,
   bajador,
   alBajar: (cambios) => oyentes.forEach((oyente) => oyente(cambios)),
+});
+
+// Antes de cerrar la sesión por 12 h sin uso, se sube lo pendiente, con el perfil que acaba de llegar del
+// servidor (S1.13). Lo que no suba se queda en el dispositivo.
+alCerrarPorInactividad(async (perfil) => {
+  if (supabaseConfigurado && perfil?.rol === 'entrenador' && perfil.estado === 'activo') await sincronizador.sincronizar();
 });
 
 /** Solo sincroniza quien puede escribir en la tabla: un entrenador con la cuenta activa (igual que su RLS). */

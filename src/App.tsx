@@ -255,8 +255,8 @@ function SeccionCuenta({
 }: {
   onAbrirActividad: () => void;
   onCerrar: () => void;
-  /** Hay alineaciones sin subir: se pregunta antes de cerrar sesión (S1.13). */
-  onPedirConfirmacion: (sinSubir: number) => void;
+  /** Se pregunta antes de cerrar: si hay alineaciones sin subir, o si es en todos los dispositivos (S1.13). */
+  onPedirConfirmacion: (cierre: { sinSubir: number; enTodos: boolean }) => void;
 }) {
   const perfil = useAuthStore((s) => s.perfil);
   const cerrarSesion = useAuthStore((s) => s.cerrarSesion);
@@ -265,12 +265,13 @@ function SeccionCuenta({
 
   if (!supabaseConfigurado || !perfil) return null;
 
-  async function manejarCerrarSesion(): Promise<void> {
+  async function manejarCerrarSesion(enTodos: boolean): Promise<void> {
     // Lo que esté por guardar se guarda antes en el dispositivo: no se pierde y cuenta como "sin subir".
     if (estadoGuardado !== 'guardado') await guardarAhora();
     const sinSubir = await contarSinSubir();
     onCerrar();
-    if (sinSubir > 0) onPedirConfirmacion(sinSubir);
+    // Cerrar en todos los dispositivos siempre se confirma; aquí solo, cuando hay algo sin subir.
+    if (enTodos || sinSubir > 0) onPedirConfirmacion({ sinSubir, enTodos });
     else await cerrarSesion();
   }
 
@@ -293,7 +294,8 @@ function SeccionCuenta({
       >
         🕓 Actividad de la cuenta
       </ItemMenu>
-      <ItemMenu onClick={() => void manejarCerrarSesion()}>🚪 Cerrar sesión</ItemMenu>
+      <ItemMenu onClick={() => void manejarCerrarSesion(false)}>🚪 Cerrar sesión</ItemMenu>
+      <ItemMenu onClick={() => void manejarCerrarSesion(true)}>🔒 Cerrar sesión en todos los dispositivos</ItemMenu>
     </div>
   );
 }
@@ -328,8 +330,10 @@ function MenuOpciones({
   const nuevaAlineacion = useAlineacionStore((s) => s.nuevaAlineacion);
   const titularesEnCampo = useAlineacionStore((s) => s.historial.presente.titulares.length);
   const cerrarSesion = useAuthStore((s) => s.cerrarSesion);
+  const cerrarSesionEnTodos = useAuthStore((s) => s.cerrarSesionEnTodos);
+  const mostrarToast = useUiStore((s) => s.mostrarToast);
   // Fuera del desplegable: un toque en el aviso no debe cerrarlo junto con el menú.
-  const [cierreSinSubir, setCierreSinSubir] = useState<number | null>(null);
+  const [cierre, setCierre] = useState<{ sinSubir: number; enTodos: boolean } | null>(null);
 
   return (
     <>
@@ -342,7 +346,8 @@ function MenuOpciones({
         )}
       >
         {(cerrar) => (
-          <div className="superficie-vidrio w-64 overflow-hidden rounded-lg border border-white/10 shadow-elevada">
+          // Alto máximo por encima de la barra inferior: en tablet apaisada las opciones de cuenta quedaban debajo de ella.
+          <div className="superficie-vidrio barra-scroll max-h-[calc(100dvh_-_148px)] w-64 overflow-y-auto overflow-x-hidden rounded-lg border border-white/10 shadow-elevada">
             <ItemMenu
               onClick={() => {
                 onAbrirAlineaciones();
@@ -451,17 +456,25 @@ function MenuOpciones({
                 ))}
               </div>
             </div>
-            <SeccionCuenta onAbrirActividad={onAbrirActividad} onCerrar={cerrar} onPedirConfirmacion={setCierreSinSubir} />
+            <SeccionCuenta onAbrirActividad={onAbrirActividad} onCerrar={cerrar} onPedirConfirmacion={setCierre} />
           </div>
         )}
       </Dropdown>
-      {cierreSinSubir !== null && (
+      {cierre !== null && (
         <ConfirmarCierreSesion
-          sinSubir={cierreSinSubir}
-          onCancelar={() => setCierreSinSubir(null)}
+          sinSubir={cierre.sinSubir}
+          enTodos={cierre.enTodos}
+          onCancelar={() => setCierre(null)}
           onCerrarIgual={() => {
-            setCierreSinSubir(null);
-            void cerrarSesion();
+            const { enTodos } = cierre;
+            setCierre(null);
+            if (!enTodos) {
+              void cerrarSesion();
+              return;
+            }
+            void cerrarSesionEnTodos().then((resultado) => {
+              if (!resultado.ok) mostrarToast({ tipo: 'error', mensaje: resultado.mensaje ?? 'No se pudo cerrar la sesión en todos los dispositivos.' });
+            });
           }}
         />
       )}

@@ -13,6 +13,8 @@ const falso = vi.hoisted(() => ({
   /** El token guardado sigue vigente (no hace falta renovarlo para leer la sesión). */
   tokenVigente: true,
   revocada: false,
+  /** Cerrar las demás sesiones falla en el servidor. */
+  otrasFallan: false,
   sesion: null as unknown,
   perfil: null as unknown,
   oyentes: [] as Array<(evento: string, sesion: unknown) => void>,
@@ -42,8 +44,10 @@ vi.mock('../lib/supabaseClient', async () => {
         }
         return { data: { session: falso.sesion }, error: null };
       }),
-      signOut: vi.fn(async () => {
+      signOut: vi.fn(async (opciones?: { scope?: string }) => {
         if (!falso.red) return { error: sinRed() };
+        // Las demás sesiones se cierran en el servidor; la de aquí sigue.
+        if (opciones?.scope === 'others') return { error: falso.otrasFallan ? new AuthApiError('fallo', 500, 'unexpected_failure') : null };
         emitir('SIGNED_OUT', null);
         return { error: null };
       }),
@@ -218,14 +222,59 @@ describe('la regla de 12 h, solo con conexión', () => {
     expect(store.getState().session).not.toBeNull();
   });
 
-  it('con red la cierra, como hasta ahora', async () => {
+  it('con red la cierra, solo en este dispositivo y después de subir lo pendiente', async () => {
     conRed(true);
     const store = await cargarStore();
+    const { alCerrarPorInactividad } = await import('../store/authStore');
     const { supabase } = await import('../lib/supabaseClient');
     vi.mocked(supabase.auth.signOut).mockClear();
+    const orden: string[] = [];
+    alCerrarPorInactividad(async () => void orden.push('subir'));
+    vi.mocked(supabase.auth.signOut).mockImplementationOnce(async () => {
+      orden.push('cerrar');
+      return { error: null };
+    });
     store.getState().inicializar();
 
-    await vi.waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalled());
+    await vi.waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+    expect(orden).toEqual(['subir', 'cerrar']);
+  });
+
+  it('abierta sin red tras 12 h y sin tocarla: al volver la señal sube lo pendiente y cierra (opción A)', async () => {
+    conRed(false);
+    const store = await cargarStore();
+    const { alCerrarPorInactividad } = await import('../store/authStore');
+    const { supabase } = await import('../lib/supabaseClient');
+    const subir = vi.fn(async () => undefined);
+    alCerrarPorInactividad(subir);
+    store.getState().inicializar();
+    await listo(store);
+    expect(store.getState().sinConexion).toBe(true);
+    vi.mocked(supabase.auth.signOut).mockClear();
+
+    conRed(true);
+    window.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+    expect(subir).toHaveBeenCalledWith(expect.objectContaining({ estado: 'activo' }));
+    await vi.waitFor(() => expect(store.getState().session).toBeNull());
+  });
+
+  it('abierta sin red tras 12 h pero usada: al volver la señal no cierra', async () => {
+    conRed(false);
+    const store = await cargarStore();
+    const { supabase } = await import('../lib/supabaseClient');
+    store.getState().inicializar();
+    await listo(store);
+    // Abrirla no cuenta como uso; tocarla sí.
+    expect(Number(localStorage.getItem(CLAVE_ACTIVIDAD))).toBeLessThan(Date.now() - 12 * 60 * 60 * 1000);
+    window.dispatchEvent(new Event('pointerdown'));
+    vi.mocked(supabase.auth.signOut).mockClear();
+
+    conRed(true);
+    window.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(store.getState().sinConexion).toBe(false));
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(store.getState().session).not.toBeNull();
   });
 });
 
@@ -289,16 +338,56 @@ describe('cerrar sesión a propósito', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('borra la copia del perfil y la de la plantilla', async () => {
+  it('cierra solo la sesión de este dispositivo y borra la copia del perfil y la de la plantilla', async () => {
     conRed(true);
     const store = await cargarStore();
+    const { supabase } = await import('../lib/supabaseClient');
     store.getState().inicializar();
     await vi.waitFor(() => expect(localStorage.getItem(CLAVE_PERFIL)).not.toBeNull());
+    vi.mocked(supabase.auth.signOut).mockClear();
 
     await store.getState().cerrarSesion();
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(store.getState()).toMatchObject({ session: null, perfil: null });
     expect(localStorage.getItem(CLAVE_PERFIL)).toBeNull();
     expect(localStorage.getItem(CLAVE_PLANTILLA)).toBeNull();
+  });
+
+  it('"en todos los dispositivos": primero cierra las demás en el servidor y después la de aquí', async () => {
+    conRed(true);
+    const store = await cargarStore();
+    const { supabase } = await import('../lib/supabaseClient');
+    store.getState().inicializar();
+    await vi.waitFor(() => expect(store.getState().perfil).not.toBeNull());
+    vi.mocked(supabase.auth.signOut).mockClear();
+
+    expect(await store.getState().cerrarSesionEnTodos()).toEqual({ ok: true });
+    expect(vi.mocked(supabase.auth.signOut).mock.calls).toEqual([[{ scope: 'others' }], [{ scope: 'local' }]]);
+    expect(store.getState().session).toBeNull();
+  });
+
+  it('"en todos los dispositivos" sin red, o si el servidor falla: lo dice y no cierra la de aquí', async () => {
+    conRed(true);
+    const store = await cargarStore();
+    const { supabase } = await import('../lib/supabaseClient');
+    store.getState().inicializar();
+    await vi.waitFor(() => expect(store.getState().perfil).not.toBeNull());
+
+    falso.otrasFallan = true;
+    expect(await store.getState().cerrarSesionEnTodos()).toEqual({
+      ok: false,
+      mensaje: 'No se pudo cerrar la sesión en los demás dispositivos. Inténtalo otra vez con señal.',
+    });
+    expect(store.getState().session).not.toBeNull();
+
+    conRed(false);
+    vi.mocked(supabase.auth.signOut).mockClear();
+    expect(await store.getState().cerrarSesionEnTodos()).toEqual({
+      ok: false,
+      mensaje: 'Sin conexión: para cerrar la sesión en los demás dispositivos hace falta señal.',
+    });
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(store.getState().session).not.toBeNull();
   });
 
   it('sin red también: quita la sesión del dispositivo aunque el servidor no responda', async () => {
@@ -348,5 +437,17 @@ describe('las pantallas', () => {
 
     rerender(<ConfirmarCierreSesion sinSubir={1} onCerrarIgual={cerrarIgual} onCancelar={cancelar} />);
     expect(screen.getByText('Hay 1 alineación sin subir; se subirá cuando vuelvas a entrar.')).toBeInTheDocument();
+  });
+
+  it('cerrar en todos los dispositivos explica qué hace, aunque no haya nada sin subir', async () => {
+    const { ConfirmarCierreSesion } = await import('../components/auth/ConfirmarCierreSesion');
+    render(<ConfirmarCierreSesion sinSubir={0} enTodos onCerrarIgual={vi.fn()} onCancelar={vi.fn()} />);
+
+    expect(screen.getByText('Cerrar sesión en todos los dispositivos')).toBeInTheDocument();
+    expect(screen.getByText(/aquí y en todos los dispositivos donde hayas entrado; por ejemplo, una tablet perdida o robada/)).toBeInTheDocument();
+    // El token de acceso de los demás no se puede anular: vale hasta que caduca (1 h por defecto en Supabase).
+    expect(screen.getByText(/puede tardar hasta una hora/)).toBeInTheDocument();
+    expect(screen.queryByText(/sin subir/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cerrar en todos' })).toBeInTheDocument();
   });
 });

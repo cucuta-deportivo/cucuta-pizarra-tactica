@@ -19,6 +19,8 @@ const CLAVE_PERFIL_GUARDADO = 'pizarra:perfil-guardado';
 const ESPERA_SIN_RESPUESTA_MS = 8000;
 /** La sesión que guarda supabase-js: `sb-<proyecto>-auth-token`. */
 const CLAVE_SESION = /^sb-.+-auth-token$/;
+const MENSAJE_EN_TODOS_SIN_RED = 'Sin conexión: para cerrar la sesión en los demás dispositivos hace falta señal.';
+const MENSAJE_EN_TODOS_FALLO = 'No se pudo cerrar la sesión en los demás dispositivos. Inténtalo otra vez con señal.';
 
 export interface DatosRegistro {
   correo: string;
@@ -51,6 +53,8 @@ interface AuthState {
   registrar: (datos: DatosRegistro) => Promise<ResultadoAuth>;
   cerrarSesion: () => Promise<void>;
   cerrarOtrasSesiones: () => Promise<void>;
+  /** Tablet perdida o robada: cierra la sesión en los demás dispositivos (en el servidor) y después aquí. */
+  cerrarSesionEnTodos: () => Promise<ResultadoAuth>;
   refrescarPerfil: () => Promise<void>;
   finalizarRecuperacion: () => void;
 }
@@ -170,6 +174,13 @@ async function registrarIntento(
   });
 }
 
+/** Antes de cerrar por 12 h sin uso, se sube lo pendiente. Lo registra la sincronización (S1.13). */
+let antesDeCerrarPorInactividad: (perfil: Perfil | null) => Promise<unknown> = async () => undefined;
+
+export function alCerrarPorInactividad(accion: (perfil: Perfil | null) => Promise<unknown>): void {
+  antesDeCerrarPorInactividad = accion;
+}
+
 export const useAuthStore = create<AuthState>((set, get) => {
   function usarPerfil(perfil: Perfil | null): void {
     // Mientras se cierra la sesión por inactividad, una segunda lectura del perfil no la vuelve a mostrar.
@@ -177,48 +188,60 @@ export const useAuthStore = create<AuthState>((set, get) => {
     set({ perfil, sinConexion: false, sinDatosSinConexion: false });
   }
 
-  /** Sin respuesta del servidor, el perfil guardado en el dispositivo. Si el de verdad llega tarde, se usa ese. */
   /**
-   * 12 h sin uso al abrir (S1.13): la sesión se cierra, pero solo cuando el servidor contesta. Con un
-   * wifi sin internet el navegador dice que hay red, y supabase-js quita la sesión del dispositivo
-   * aunque el servidor no conteste: sin conexión no se podría volver a entrar.
+   * 12 h sin uso (S1.13): la sesión se cierra solo cuando el servidor contesta. Con un wifi sin internet
+   * el navegador dice que hay red, y supabase-js quita la sesión del dispositivo aunque el servidor no
+   * conteste: sin conexión no se podría volver a entrar. Si se abrió sin señal, se revisa al volver la
+   * señal y solo se cierra si nadie la tocó desde entonces: abrirla no cuenta como uso (opción A).
    */
   let inactividadPorRevisar = false;
   let cerrandoPorInactividad = false;
 
-  async function cerrarPorInactividad(): Promise<void> {
+  /** Solo la sesión de este dispositivo; antes se sube lo pendiente (lo que no suba se queda aquí). */
+  async function cerrarPorInactividad(perfil: Perfil | null): Promise<void> {
     cerrandoPorInactividad = true;
-    await supabase.auth.signOut();
+    try {
+      await antesDeCerrarPorInactividad(perfil);
+    } catch {
+      // Lo que no se pudo subir se queda en el dispositivo y se sube al volver a entrar.
+    }
+    await supabase.auth.signOut({ scope: 'local' });
     set({ session: null, perfil: null, sinConexion: false, sinDatosSinConexion: false });
     cerrandoPorInactividad = false;
   }
 
+  /** Llegó el perfil del servidor, así que hay conexión: si quedaba una inactividad por revisar, se revisa ahora. */
+  async function alLlegarPerfil(perfil: Perfil | null): Promise<void> {
+    if (inactividadPorRevisar) {
+      inactividadPorRevisar = false;
+      // Se cuenta desde el último toque: si alguien usó la app sin señal, ya no está "sin uso".
+      if (inactividadExcedida()) {
+        await cerrarPorInactividad(perfil);
+        return;
+      }
+    }
+    usarPerfil(perfil);
+  }
+
+  /** Sin respuesta del servidor, el perfil guardado en el dispositivo. Si el de verdad llega tarde, se usa ese. */
   async function cargarPerfil(userId: string): Promise<void> {
     const lectura = leerPerfil(userId);
     const pronto = await conLimite(lectura, ESPERA_SIN_RESPUESTA_MS);
     if (pronto?.tipo === 'perfil') {
-      if (inactividadPorRevisar) {
-        inactividadPorRevisar = false;
-        await cerrarPorInactividad();
-        return;
-      }
-      usarPerfil(pronto.perfil);
+      await alLlegarPerfil(pronto.perfil);
       return;
     }
-    // Se abrió sin conexión: la regla de 12 h no se aplica en esta apertura.
-    inactividadPorRevisar = false;
     const guardado = leerPerfilGuardado(userId);
     set({ perfil: guardado, sinConexion: true, sinDatosSinConexion: !guardado });
     if (pronto === null) {
       void lectura.then((tarde) => {
-        if (tarde.tipo === 'perfil') usarPerfil(tarde.perfil);
+        if (tarde.tipo === 'perfil') void alLlegarPerfil(tarde.perfil);
       });
     }
   }
 
   /** Entra con lo guardado en el dispositivo, sin preguntar al servidor. `false` si no hay sesión guardada. */
   function entrarSinConexion(): boolean {
-    inactividadPorRevisar = false;
     const sesion = leerSesionGuardada();
     if (!sesion) return false;
     const perfil = leerPerfilGuardado(sesion.user.id);
@@ -259,9 +282,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ inicializado: true });
 
       const conRed = hayRed();
-      // La regla de 12 h solo con conexión (S1.13): se comprueba cuando el servidor contesta (cargarPerfil).
+      // La regla de 12 h solo con conexión (S1.13): se revisa cuando el servidor contesta (alLlegarPerfil).
+      // Si ya pasaron 12 h, abrir la app no cuenta como uso: solo tocarla.
       inactividadPorRevisar = inactividadExcedida();
-      marcarActividad();
+      if (!inactividadPorRevisar) marcarActividad();
       for (const evento of ['pointerdown', 'keydown']) {
         window.addEventListener(evento, marcarActividad, { passive: true });
       }
@@ -388,17 +412,28 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    // A propósito: fuera las copias de la cuenta (perfil y plantilla); las alineaciones se quedan (S1.13).
+    // A propósito y solo en este dispositivo (S1.13). Fuera las copias de la cuenta (perfil y plantilla);
+    // las alineaciones se quedan.
     cerrarSesion: async () => {
       borrarCopiasDeLaCuenta();
-      const { error } = hayRed() ? await supabase.auth.signOut() : { error: new Error('Sin conexión') };
-      // Sin red (o si el servidor falla), supabase-js deja la sesión guardada: se quita del dispositivo igual.
-      if (error) quitarSesionGuardada();
+      if (hayRed()) await supabase.auth.signOut({ scope: 'local' });
+      // Sin red no se llama al servidor (supabase-js tardaría en rendirse) y la sesión se quita aquí.
+      // Con red, supabase-js ya la quitó: quitarla otra vez no hace nada.
+      quitarSesionGuardada();
       set({ session: null, perfil: null, sinConexion: false, sinDatosSinConexion: false });
     },
 
     cerrarOtrasSesiones: async () => {
       await supabase.auth.signOut({ scope: 'others' });
+    },
+
+    cerrarSesionEnTodos: async () => {
+      if (!hayRed()) return { ok: false, mensaje: MENSAJE_EN_TODOS_SIN_RED };
+      // Primero las demás, que se cierran en el servidor; si eso falla, la de aquí no se toca.
+      const { error } = await supabase.auth.signOut({ scope: 'others' });
+      if (error) return { ok: false, mensaje: MENSAJE_EN_TODOS_FALLO };
+      await get().cerrarSesion();
+      return { ok: true };
     },
 
     refrescarPerfil: async () => {

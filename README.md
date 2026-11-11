@@ -140,6 +140,28 @@ Los CSV se guardan como el dump: **en el lugar privado del club, nunca en el rep
 
 ## Uso en la tablet del banquillo
 
+### Instalar la pizarra en la pantalla de inicio
+
+Se hace una vez, con señal y antes de entrar por primera vez en la tablet. Así la pizarra se abre desde su icono a pantalla completa y, sin señal, carga igual. Usa la dirección de producción, no una vista previa de Vercel: en las vistas previas no se puede entrar con el usuario, solo con el correo.
+
+**iPad (Safari)**
+
+1. Abre la pizarra en Safari.
+2. Toca Compartir (el cuadrado con la flecha hacia arriba; en versiones recientes puede estar dentro del menú ⋯ de la barra de direcciones) → **Añadir a pantalla de inicio** → **Añadir**.
+3. Abre la pizarra desde el icono nuevo y entra **ahí** con "Recordar este dispositivo". La app instalada guarda su sesión y sus alineaciones aparte de Safari: lo que se haga en Safari no aparece en ella, ni al revés.
+
+En el iPad es importante instalarla: Safari puede borrar los datos de una web que lleva 7 días sin abrirse, y entre ellos irían las alineaciones sin subir y la sesión guardada. Según WebKit, a una app instalada en la pantalla de inicio no se le borran así.
+
+**Android (Chrome)**
+
+1. Abre la pizarra en Chrome.
+2. Menú ⋮ → **Instalar app** (en algunas versiones, **Añadir a pantalla de inicio**) → **Instalar**. Brave tiene la misma opción en su menú ⋮.
+3. Ábrela desde el icono y entra con "Recordar este dispositivo". En Android, la app instalada comparte los datos con el navegador donde se instaló.
+
+**Actualizaciones**: cuando se publica una versión nueva, la pizarra avisa «Hay una versión nueva». Nunca se actualiza sola: toca **Actualizar** cuando no haya un partido en curso, porque la pizarra se recarga.
+
+### Sesión y seguridad
+
 - **Bloqueo de pantalla con PIN, obligatorio.** Sin señal, la pizarra se abre con la sesión guardada en la tablet, sin pedir contraseña: quien tenga la tablet desbloqueada ve las alineaciones y la plantilla. En los ajustes de la tablet, activa el bloqueo con PIN (o código) y el bloqueo automático a los pocos minutos.
 - **Entrar una vez con señal y con "Recordar este dispositivo" marcado.** Así quedan guardados la sesión y el perfil, y la pizarra se abre aunque en la cancha no haya señal. Si nunca se entró así en esa tablet, sin señal no se puede entrar.
 - **12 h sin uso.** Si la tablet llevaba más de 12 h sin usarse, al volver la señal la pizarra sube lo pendiente y cierra la sesión de esa tablet. Si alguien la usó desde que se abrió sin señal, no la cierra: no saca a nadie en pleno partido.

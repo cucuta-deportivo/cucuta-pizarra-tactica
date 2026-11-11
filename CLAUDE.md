@@ -26,7 +26,7 @@ Aplicación web de pizarra táctica para el cuerpo técnico de las categorías f
 - Nunca subir claves al repositorio. El cliente solo usa la `anon key`. La `service role key` no va en el frontend.
 
 ## Identidad visual
-- Rojo #D4111E y negro #111111, interfaz oscura estilo FIFA / EA FC.
+- Rojo #DA3939 (el del escudo, #DC3B3B, ajustado para que el texto blanco encima pase AA) y negro #111111, interfaz oscura estilo FIFA / EA FC. Dorado #B89D63 solo como acento: insignia del capitán y categoría en lo exportado. Las marcas tácticas (dibujos, marcajes, trayectorias) siguen en #D4111E.
 - Tipografía condensada: Barlow Condensed, Oswald o Archivo.
 - Botones y zonas táctiles de al menos 44 px (uso en tablet).
 

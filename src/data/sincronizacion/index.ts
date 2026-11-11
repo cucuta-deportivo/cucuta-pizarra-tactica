@@ -1,6 +1,6 @@
 import { supabaseConfigurado } from '../../lib/supabaseClient';
 import type { Alineacion } from '../../types';
-import { useAuthStore } from '../../store/authStore';
+import { alCerrarPorInactividad, useAuthStore } from '../../store/authStore';
 import { estadoTrasVuelta, useSincronizacionStore } from '../../store/sincronizacionStore';
 import { copiaPorConflicto } from '../../utils/copias';
 import { generarId } from '../../utils/id';
@@ -60,6 +60,12 @@ const sincronizador = crearSincronizador({
   alBajar: (cambios) => oyentes.forEach((oyente) => oyente(cambios)),
 });
 
+// Antes de cerrar la sesión por 12 h sin uso, se sube lo pendiente, con el perfil que acaba de llegar del
+// servidor (S1.13). Lo que no suba se queda en el dispositivo.
+alCerrarPorInactividad(async (perfil) => {
+  if (supabaseConfigurado && perfil?.rol === 'entrenador' && perfil.estado === 'activo') await sincronizador.sincronizar();
+});
+
 /** Solo sincroniza quien puede escribir en la tabla: un entrenador con la cuenta activa (igual que su RLS). */
 export function puedeSincronizar(): boolean {
   const perfil = useAuthStore.getState().perfil;
@@ -78,9 +84,19 @@ async function contarPendientes(): Promise<number> {
   return (await alineacionRepository.pendientesDeSubir()).length;
 }
 
+/** Cuántas alineaciones de este dispositivo tienen cambios sin subir (S1.13: aviso al cerrar sesión). */
+export function contarSinSubir(): Promise<number> {
+  return contarPendientes();
+}
+
 /** Sube lo pendiente y baja lo de otros dispositivos; el indicador lo refleja (S1.9). `null` si esta cuenta no sincroniza. */
 export async function sincronizarAhora(): Promise<ResumenSincronizacion | null> {
   if (!puedeSincronizar()) return null;
+  // En modo avión no se intenta: supabase-js tardaría hasta 30 s en rendirse al renovar el token (S1.13).
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    useSincronizacionStore.setState({ estado: 'sin-conexion', pendientes: await contarPendientes() });
+    return null;
+  }
   useSincronizacionStore.setState({ estado: 'sincronizando' });
   try {
     const resumen = await sincronizador.sincronizar();

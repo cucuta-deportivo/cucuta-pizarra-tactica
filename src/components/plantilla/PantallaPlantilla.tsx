@@ -5,13 +5,17 @@ import { FormularioJugador } from './FormularioJugador';
 import { usePlantillaStore } from '../../store/plantillaStore';
 import type { Jugador } from '../../types';
 import { COLOR } from '../../tokens';
+import { fechaCorta } from '../../utils/copias';
 
 function TarjetaJugadorPlantilla({
   jugador,
+  soloLectura,
   onEditar,
   onDesactivar,
 }: {
   jugador: Jugador;
+  /** Sin conexión (copia guardada, S1.12): se ve, pero no se cambia. */
+  soloLectura: boolean;
   onEditar: () => void;
   onDesactivar: () => void;
 }) {
@@ -59,17 +63,19 @@ function TarjetaJugadorPlantilla({
         <div className="mt-2 flex gap-1.5">
           <button
             type="button"
+            disabled={soloLectura}
             onClick={onEditar}
-            className="min-h-[44px] flex-1 rounded-lg border border-white/10 bg-white/5 text-xs text-white transition-colors duration-base hover:bg-white/10"
+            className="min-h-[44px] flex-1 rounded-lg border border-white/10 bg-white/5 text-xs text-white transition-colors duration-base hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
           >
             Editar
           </button>
           <button
             type="button"
+            disabled={soloLectura}
             onClick={() => (confirmando ? onDesactivar() : setConfirmando(true))}
             onBlur={() => setConfirmando(false)}
             title="Desactivar no borra al jugador: las alineaciones guardadas que lo incluyen siguen funcionando"
-            className="min-h-[44px] flex-1 rounded-lg border text-xs transition-colors duration-base"
+            className="min-h-[44px] flex-1 rounded-lg border text-xs transition-colors duration-base disabled:pointer-events-none disabled:opacity-40"
             style={{
               borderColor: confirmando ? COLOR.marca.rojo : 'rgba(255,255,255,0.1)',
               color: confirmando ? COLOR.marca.rojo : COLOR.texto.secundario,
@@ -98,6 +104,7 @@ export function PantallaPlantilla({ abierto, onCerrar }: PantallaPlantillaProps)
   const jugadores = usePlantillaStore((s) => s.jugadores);
   const cargando = usePlantillaStore((s) => s.cargando);
   const error = usePlantillaStore((s) => s.error);
+  const copiaLocal = usePlantillaStore((s) => s.copiaLocal);
   const inicializar = usePlantillaStore((s) => s.inicializar);
   const elegirCategoria = usePlantillaStore((s) => s.elegirCategoria);
   const recargar = usePlantillaStore((s) => s.recargar);
@@ -137,7 +144,7 @@ export function PantallaPlantilla({ abierto, onCerrar }: PantallaPlantillaProps)
 
             <Boton
               variante="primario"
-              disabled={!categoriaActiva}
+              disabled={!categoriaActiva || copiaLocal !== null}
               onClick={() => {
                 setEditando(null);
                 setFormularioAbierto(true);
@@ -146,6 +153,22 @@ export function PantallaPlantilla({ abierto, onCerrar }: PantallaPlantillaProps)
               ＋ Agregar jugador
             </Boton>
           </div>
+
+          {copiaLocal && (
+            <div
+              role="status"
+              className="flex items-center gap-3 rounded-lg border border-amber-400/40 px-3 py-2 text-xs"
+              style={{ color: COLOR.texto.principal }}
+            >
+              <span className="flex-1">
+                Sin conexión: es la plantilla guardada en este dispositivo el {fechaCorta(new Date(copiaLocal))}, sin fotos. Para
+                cambiarla hace falta conexión.
+              </span>
+              <Boton variante="secundario" onClick={() => void inicializar()}>
+                Reintentar
+              </Boton>
+            </div>
+          )}
 
           {error && (
             <div
@@ -182,6 +205,7 @@ export function PantallaPlantilla({ abierto, onCerrar }: PantallaPlantillaProps)
                 <TarjetaJugadorPlantilla
                   key={jugador.id}
                   jugador={jugador}
+                  soloLectura={copiaLocal !== null}
                   onEditar={() => {
                     setEditando(jugador);
                     setFormularioAbierto(true);

@@ -1,9 +1,12 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+import { opcionesPwa } from './pwa.config';
 
 export default defineConfig({
-  plugins: [react()],
+  // Service worker para abrir sin señal (S1.11): ver pwa.config.ts.
+  plugins: [react(), VitePWA(opcionesPwa)],
   build: {
     target: 'es2020',
     sourcemap: true,

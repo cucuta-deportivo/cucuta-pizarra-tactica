@@ -12,6 +12,7 @@ import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
 import {
   alBajarCambios,
+  contarSinSubir,
   descargarRespaldoAqui,
   iniciarSincronizacionAutomatica,
   migrarAqui,
@@ -20,6 +21,7 @@ import {
 } from './data/sincronizacion';
 import type { PorMigrar } from './data/sincronizacion/migrar';
 import { esAlineacionVaciaSinTocar, useAlineacionStore } from './store/alineacionStore';
+import { ConfirmarCierreSesion } from './components/auth/ConfirmarCierreSesion';
 import { useAuthStore } from './store/authStore';
 import { supabaseConfigurado } from './lib/supabaseClient';
 import { usePizarraStore } from './store/pizarraStore';
@@ -246,20 +248,31 @@ const ETIQUETAS_ORIENTACION: Record<OrientacionForzada, string> = {
   horizontal: 'Horizontal',
 };
 
-function SeccionCuenta({ onAbrirActividad, onCerrar }: { onAbrirActividad: () => void; onCerrar: () => void }) {
+function SeccionCuenta({
+  onAbrirActividad,
+  onCerrar,
+  onPedirConfirmacion,
+}: {
+  onAbrirActividad: () => void;
+  onCerrar: () => void;
+  /** Se pregunta antes de cerrar: si hay alineaciones sin subir, o si es en todos los dispositivos (S1.13). */
+  onPedirConfirmacion: (cierre: { sinSubir: number; enTodos: boolean }) => void;
+}) {
   const perfil = useAuthStore((s) => s.perfil);
   const cerrarSesion = useAuthStore((s) => s.cerrarSesion);
   const estadoGuardado = useAlineacionStore((s) => s.estadoGuardado);
+  const guardarAhora = useAlineacionStore((s) => s.guardarAhora);
 
   if (!supabaseConfigurado || !perfil) return null;
 
-  async function manejarCerrarSesion(): Promise<void> {
-    if (estadoGuardado === 'pendiente' || estadoGuardado === 'guardando') {
-      const continuar = window.confirm('Hay cambios sin guardar todavía. ¿Cerrar sesión de todas formas?');
-      if (!continuar) return;
-    }
+  async function manejarCerrarSesion(enTodos: boolean): Promise<void> {
+    // Lo que esté por guardar se guarda antes en el dispositivo: no se pierde y cuenta como "sin subir".
+    if (estadoGuardado !== 'guardado') await guardarAhora();
+    const sinSubir = await contarSinSubir();
     onCerrar();
-    await cerrarSesion();
+    // Cerrar en todos los dispositivos siempre se confirma; aquí solo, cuando hay algo sin subir.
+    if (enTodos || sinSubir > 0) onPedirConfirmacion({ sinSubir, enTodos });
+    else await cerrarSesion();
   }
 
   return (
@@ -281,7 +294,8 @@ function SeccionCuenta({ onAbrirActividad, onCerrar }: { onAbrirActividad: () =>
       >
         🕓 Actividad de la cuenta
       </ItemMenu>
-      <ItemMenu onClick={() => void manejarCerrarSesion()}>🚪 Cerrar sesión</ItemMenu>
+      <ItemMenu onClick={() => void manejarCerrarSesion(false)}>🚪 Cerrar sesión</ItemMenu>
+      <ItemMenu onClick={() => void manejarCerrarSesion(true)}>🔒 Cerrar sesión en todos los dispositivos</ItemMenu>
     </div>
   );
 }
@@ -315,130 +329,156 @@ function MenuOpciones({
   const setOrientacionForzada = useUiStore((s) => s.setOrientacionForzada);
   const nuevaAlineacion = useAlineacionStore((s) => s.nuevaAlineacion);
   const titularesEnCampo = useAlineacionStore((s) => s.historial.presente.titulares.length);
+  const cerrarSesion = useAuthStore((s) => s.cerrarSesion);
+  const cerrarSesionEnTodos = useAuthStore((s) => s.cerrarSesionEnTodos);
+  const mostrarToast = useUiStore((s) => s.mostrarToast);
+  // Fuera del desplegable: un toque en el aviso no debe cerrarlo junto con el menú.
+  const [cierre, setCierre] = useState<{ sinSubir: number; enTodos: boolean } | null>(null);
 
   return (
-    <Dropdown
-      alineacion="derecha"
-      gatillo={({ abierto, alternar }) => (
-        <Boton tamano="icono" onClick={alternar} aria-haspopup="true" aria-expanded={abierto} aria-label="Más opciones">
-          ⋯
-        </Boton>
-      )}
-    >
-      {(cerrar) => (
-        <div className="superficie-vidrio w-64 overflow-hidden rounded-lg border border-white/10 shadow-elevada">
-          <ItemMenu
-            onClick={() => {
-              onAbrirAlineaciones();
-              cerrar();
-            }}
-          >
-            📁 Alineaciones guardadas
-          </ItemMenu>
-          {/* ⬇️ Exportar vive en la barra inferior desde el breakpoint lg; por debajo se
-              colapsa aquí (Anexo A §A.1: "colapsa 💾 y ⬇️ dentro de [⋯], nunca los tácticos"). */}
-          <div className="lg:hidden">
+    <>
+      <Dropdown
+        alineacion="derecha"
+        gatillo={({ abierto, alternar }) => (
+          <Boton tamano="icono" onClick={alternar} aria-haspopup="true" aria-expanded={abierto} aria-label="Más opciones">
+            ⋯
+          </Boton>
+        )}
+      >
+        {(cerrar) => (
+          // Alto máximo por encima de la barra inferior: en tablet apaisada las opciones de cuenta quedaban debajo de ella.
+          <div className="superficie-vidrio barra-scroll max-h-[calc(100dvh_-_148px)] w-64 overflow-y-auto overflow-x-hidden rounded-lg border border-white/10 shadow-elevada">
             <ItemMenu
               onClick={() => {
-                onAbrirExportar();
+                onAbrirAlineaciones();
                 cerrar();
               }}
             >
-              ⬇️ Exportar
+              📁 Alineaciones guardadas
             </ItemMenu>
-          </div>
-          <ItemMenu
-            onClick={() => {
-              onAbrirComparacion();
-              cerrar();
-            }}
-          >
-            ⚖️ Comparar alineaciones
-          </ItemMenu>
-          <ItemMenu
-            onClick={() => {
-              onAbrirGestionPlantilla();
-              cerrar();
-            }}
-          >
-            👤 Plantilla
-          </ItemMenu>
-          <ItemMenu
-            onClick={() => {
-              onAbrirCancha();
-              cerrar();
-            }}
-          >
-            🏟️ Cancha
-          </ItemMenu>
-          {!hayJugada && (
-            <>
+            {/* ⬇️ Exportar vive en la barra inferior desde el breakpoint lg; por debajo se
+                colapsa aquí (Anexo A §A.1: "colapsa 💾 y ⬇️ dentro de [⋯], nunca los tácticos"). */}
+            <div className="lg:hidden">
               <ItemMenu
                 onClick={() => {
-                  onCrearJugada();
+                  onAbrirExportar();
                   cerrar();
                 }}
               >
-                🎬 Crear jugada
+                ⬇️ Exportar
               </ItemMenu>
-              <ItemMenu
-                onClick={() => {
-                  onGrabarJugada();
-                  cerrar();
-                }}
-              >
-                ⏺ Grabar jugada
-              </ItemMenu>
-            </>
-          )}
-          {titularesEnCampo > 0 && (
-            <ItemMenu
-              onClick={() => {
-                onVaciarCampo();
-                cerrar();
-              }}
-            >
-              🧹 Vaciar campo
-            </ItemMenu>
-          )}
-          <ItemMenu
-            onClick={() => {
-              nuevaAlineacion();
-              cerrar();
-            }}
-          >
-            + Nueva alineación
-          </ItemMenu>
-          <ItemMenu
-            onClick={() => {
-              setPantallaCompleta(!pantallaCompleta);
-              cerrar();
-            }}
-          >
-            {pantallaCompleta ? '⤢ Salir de pantalla completa' : '⛶ Pantalla completa (F)'}
-          </ItemMenu>
-          <div className="border-t border-white/10 px-4 py-2.5">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-club-plata/70">Orientación del campo</p>
-            <div className="flex gap-1.5">
-              {(Object.keys(ETIQUETAS_ORIENTACION) as OrientacionForzada[]).map((valor) => (
-                <button
-                  key={valor}
-                  type="button"
-                  onClick={() => setOrientacionForzada(valor)}
-                  aria-pressed={orientacionForzada === valor}
-                  className={`min-h-[44px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
-                    orientacionForzada === valor ? 'bg-club-rojo text-white' : 'bg-white/5 text-club-plata hover:bg-white/10'
-                  }`}
-                >
-                  {ETIQUETAS_ORIENTACION[valor]}
-                </button>
-              ))}
             </div>
+            <ItemMenu
+              onClick={() => {
+                onAbrirComparacion();
+                cerrar();
+              }}
+            >
+              ⚖️ Comparar alineaciones
+            </ItemMenu>
+            <ItemMenu
+              onClick={() => {
+                onAbrirGestionPlantilla();
+                cerrar();
+              }}
+            >
+              👤 Plantilla
+            </ItemMenu>
+            <ItemMenu
+              onClick={() => {
+                onAbrirCancha();
+                cerrar();
+              }}
+            >
+              🏟️ Cancha
+            </ItemMenu>
+            {!hayJugada && (
+              <>
+                <ItemMenu
+                  onClick={() => {
+                    onCrearJugada();
+                    cerrar();
+                  }}
+                >
+                  🎬 Crear jugada
+                </ItemMenu>
+                <ItemMenu
+                  onClick={() => {
+                    onGrabarJugada();
+                    cerrar();
+                  }}
+                >
+                  ⏺ Grabar jugada
+                </ItemMenu>
+              </>
+            )}
+            {titularesEnCampo > 0 && (
+              <ItemMenu
+                onClick={() => {
+                  onVaciarCampo();
+                  cerrar();
+                }}
+              >
+                🧹 Vaciar campo
+              </ItemMenu>
+            )}
+            <ItemMenu
+              onClick={() => {
+                nuevaAlineacion();
+                cerrar();
+              }}
+            >
+              + Nueva alineación
+            </ItemMenu>
+            <ItemMenu
+              onClick={() => {
+                setPantallaCompleta(!pantallaCompleta);
+                cerrar();
+              }}
+            >
+              {pantallaCompleta ? '⤢ Salir de pantalla completa' : '⛶ Pantalla completa (F)'}
+            </ItemMenu>
+            <div className="border-t border-white/10 px-4 py-2.5">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-club-plata/70">Orientación del campo</p>
+              <div className="flex gap-1.5">
+                {(Object.keys(ETIQUETAS_ORIENTACION) as OrientacionForzada[]).map((valor) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => setOrientacionForzada(valor)}
+                    aria-pressed={orientacionForzada === valor}
+                    className={`min-h-[44px] flex-1 rounded-md px-1 text-xs font-medium transition-colors duration-rapido ${
+                      orientacionForzada === valor ? 'bg-club-rojo text-white' : 'bg-white/5 text-club-plata hover:bg-white/10'
+                    }`}
+                  >
+                    {ETIQUETAS_ORIENTACION[valor]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <SeccionCuenta onAbrirActividad={onAbrirActividad} onCerrar={cerrar} onPedirConfirmacion={setCierre} />
           </div>
-          <SeccionCuenta onAbrirActividad={onAbrirActividad} onCerrar={cerrar} />
-        </div>
+        )}
+      </Dropdown>
+      {cierre !== null && (
+        <ConfirmarCierreSesion
+          sinSubir={cierre.sinSubir}
+          enTodos={cierre.enTodos}
+          onCancelar={() => setCierre(null)}
+          onCerrarIgual={() => {
+            const { enTodos } = cierre;
+            setCierre(null);
+            if (!enTodos) {
+              void cerrarSesion();
+              return;
+            }
+            void cerrarSesionEnTodos().then((resultado) => {
+              if (!resultado.ok) mostrarToast({ tipo: 'error', mensaje: resultado.mensaje ?? 'No se pudo cerrar la sesión en todos los dispositivos.' });
+            });
+          }}
+        />
       )}
-    </Dropdown>
+    </>
   );
 }
 

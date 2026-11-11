@@ -85,7 +85,7 @@ Fuera de S1: filtro por categoría en la lista, papelera, unir cambios de dos ve
 
 ## Fase 3 · Seguridad (rama `seguridad-login`)
 
-Plan aprobado el 2026-11-11: todo inicio de sesión con contraseña, con usuario o con correo, pasa por la Edge Function `login-usuario`. La función decide el bloqueo, prueba la contraseña y anota el resultado; el navegador ya no puede anotar intentos ni consultar bloqueos. Orden para no cortar el acceso en producción: SQL que solo añade, la función probada antes con otro nombre (`login-usuario-prueba`), la función real seguida del cierre de permisos y la app al final. Hecho el 2026-11-11: SQL A, la función probada como `login-usuario-prueba` (pruebas C y D), la función real y SQL B (paso 3, comprobado en producción con la app de entonces). Seg4 en la base, el mismo día. Al fusionar el PR de `seguridad-login` se publica la app (paso 4); después, la limpieza de las pruebas (paso 5).
+Plan aprobado el 2026-11-11: todo inicio de sesión con contraseña, con usuario o con correo, pasa por la Edge Function `login-usuario`. La función decide el bloqueo, prueba la contraseña y anota el resultado; el navegador ya no puede anotar intentos ni consultar bloqueos. Orden para no cortar el acceso en producción: SQL que solo añade, la función probada antes con otro nombre (`login-usuario-prueba`), la función real seguida del cierre de permisos y la app al final. Hecho el 2026-11-11: SQL A, la función probada como `login-usuario-prueba` (pruebas C y D), la función real y SQL B (paso 3, comprobado en producción con la app de entonces). Seg4 en la base, el mismo día. El PR #7 se fusionó el 2026-11-11 y la app quedó publicada (paso 4; el usuario la comprobó en producción). La limpieza de las pruebas (paso 5) queda sin confirmar.
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
@@ -93,3 +93,23 @@ Plan aprobado el 2026-11-11: todo inicio de sesión con contraseña, con usuario
 | Seg2 | Contadores separados: el bloqueo cuenta por el texto escrito, así que usuario y correo de la misma cuenta suman aparte. Arreglo: se cuenta por cuenta (usuario y correo juntos) y lo que no es de ninguna cuenta, por el texto, para que exista o no se comporte igual. Un acceso correcto reinicia el contador; con la cuenta ya bloqueada no se prueba la contraseña, así que no se reinicia hasta que pasan los 15 min | Hecho |
 | Seg4 | El panel «Actividad de la cuenta» enseñaba a un entrenador activo los intentos de todas las cuentas sin decir de quién eran (la política `entrenadores_ven_todos_los_intentos` y una consulta sin filtro): se mezclaban con los suyos, «Solo este dispositivo» y el aviso de dispositivo nuevo contaban los de otros y el CSV salía con las IP completas de todos. Arreglo: cada cuenta ve solo sus intentos, en la base (se quita esa política y queda `ver_propios_intentos`) y en la pantalla (la consulta filtra por la cuenta) | Hecho |
 | Seg3 | CAPTCHA de Supabase (Turnstile o hCaptcha) para cerrar el acceso directo a Auth con el correo, que se salta el bloqueo de Seg1 (Auth solo limita por IP: 150 intentos cada 5 min). Trae un servicio externo y cambia las pantallas de acceso, registro y recuperación. El hook de verificación de contraseña, que lo haría dentro de Auth, solo existe en los planes Teams y Enterprise | Pendiente de decisión |
+
+## Fase 4 · Identidad visual (rama `identidad-visual`, un commit por paso)
+
+Plan aprobado el 2026-11-11 a partir de las láminas: el escudo del club en el ícono de la app, el favicon, el acceso, la barra superior y la exportación, y la paleta ajustada al escudo. Colores medidos píxel a píxel en los PNG del escudo: rojo #DC3B3B, negro #000000 y dorado #B89D63.
+
+- **Rojo de la interfaz #DA3939:** el del escudo un punto más oscuro. No se distingue a la vista (ΔE 0,65) y el texto blanco encima cumple AA (4,54:1; el exacto da 4,44:1). Fichas #C93333 y botón al pasar el ratón #A82828. Las marcas tácticas (dibujos, marcajes, trayectorias, cuadrícula y conos) siguen en #D4111E: el color de cada dibujo va guardado dentro de la alineación.
+- **Dorado #B89D63:** solo para la insignia del capitán y la categoría en lo exportado. El ámbar queda para los avisos, como el aro de "fuera de esquema".
+- **Escudo con 1924:** el archivo trae el disco transparente; se rellena de blanco por dentro del aro, como en el escudo sin año.
+- **Peso:** las imágenes van en `public/`, fuera del JavaScript, en PNG de paleta.
+
+| Paso | Qué | Prueba principal | Estado |
+| --- | --- | --- | --- |
+| IV1 | Originales del escudo en `marca/` con nombres claros: `escudo.png` (sin año) y `escudo-1924.png` | Mismos archivos que entregó el club, sin tocar | Pendiente |
+| IV2 | Íconos de la app (512, 192, 180 y maskable) y favicon (32 y 16 px) con el escudo sin año sobre #111111. Reemplazan a la «C» con los mismos nombres, así que el manifiesto no cambia | Navegador: el servidor entrega cada ícono y el favicon con su tamaño; captura | Pendiente |
+| IV3 | Escudos para la interfaz en `public/marca/`: `escudo.png` (barra y exportación) y `escudo-1924.png` (acceso, con el disco relleno) | Navegador: se sirven con su tamaño | Pendiente |
+| IV4 | Paleta: rojo, ficha, hover, negro de marca y dorado en los tokens; capitán en dorado en pantalla y en lo exportado; los marcajes exportados siguen en el rojo táctico, como en pantalla | Colores calculados en navegador; captura de la pizarra y del PNG exportado | Pendiente |
+| IV5 | Barra superior: el escudo (40 px) en el sitio de la «C» | Captura; la barra y el campo miden lo mismo que antes | Pendiente |
+| IV6 | Pantalla de acceso: el escudo con 1924 (128 px; 96 px con menos de 700 px de alto). Solo cambian las líneas de la «C» | Capturas en 1180 × 820 y 1024 × 690; la tarjeta cabe | Pendiente |
+| IV7 | Exportación PNG y PDF: encabezado negro con el escudo, «CÚCUTA DEPORTIVO», la categoría en dorado y el rival; debajo, el nombre de la alineación, la formación y la fecha. El campo va debajo, sin tapar | Tests de los textos y de la distribución; PNG y PDF en horizontal y vertical; sin red, con la build de producción | Pendiente |
+| IV8 | CLAUDE.md: la línea de identidad visual con la paleta nueva | — | Pendiente |

@@ -16,5 +16,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // La Edge Function login-usuario (Deno) importa así supabase-js; en los tests, el paquete instalado.
+    alias: { 'npm:@supabase/supabase-js@2': '@supabase/supabase-js' },
   },
 });

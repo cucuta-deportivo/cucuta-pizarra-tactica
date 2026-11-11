@@ -171,6 +171,111 @@ begin
 end;
 $$;
 
+-- Seg1 y Seg2 (aplicado el 2026-11-11). Solo las usa la Edge Function `login-usuario`,
+-- con la service_role (ver los revoke más abajo). Antes de probar la contraseña:
+-- reservar_intento_login dice si hay bloqueo y anota el intento como 'fallido' (si la
+-- contraseña es buena, cerrar_intento_login lo pasa a 'exito'). Cuenta por CUENTA
+-- (usuario y correo juntos) y solo los fallidos posteriores a su último éxito dentro de
+-- los 15 min; lo que no es de ninguna cuenta, por el texto, para que exista o no se
+-- comporte igual. El cerrojo pone en fila los intentos simultáneos de la misma cuenta.
+create or replace function public.reservar_intento_login(
+  p_identificador text,
+  p_ip text default null,
+  p_user_agent text default null,
+  p_dispositivo text default null,
+  p_ciudad text default null,
+  p_pais text default null
+)
+returns table (intento_id bigint, esta_bloqueado boolean, correo_cuenta text, estado_cuenta text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_texto text := lower(trim(p_identificador));
+  v_user_id uuid;
+  v_correo text;
+  v_estado text;
+  v_desde timestamptz := now() - interval '15 minutes';
+  v_fallidos int;
+  v_bloqueado boolean;
+  v_id bigint;
+begin
+  if coalesce(v_texto, '') = '' then
+    raise exception 'identificador vacío';
+  end if;
+
+  select u.id, u.email::text, p.estado
+    into v_user_id, v_correo, v_estado
+  from auth.users u
+  join public.perfiles p on p.id = u.id
+  where case when strpos(v_texto, '@') > 0 then lower(u.email) = v_texto
+             else lower(p.usuario) = v_texto end
+  limit 1;
+
+  perform pg_advisory_xact_lock(hashtextextended(coalesce(v_user_id::text, 'texto:' || v_texto), 0));
+
+  if v_user_id is not null then
+    -- Un acceso correcto reinicia el contador.
+    select greatest(v_desde, coalesce(max(i.ocurrido_en), '-infinity'::timestamptz))
+      into v_desde
+    from public.intentos_login i
+    where i.user_id = v_user_id and i.resultado = 'exito';
+
+    select count(*) into v_fallidos
+    from public.intentos_login i
+    where i.user_id = v_user_id and i.resultado = 'fallido' and i.ocurrido_en > v_desde;
+  else
+    select count(*) into v_fallidos
+    from public.intentos_login i
+    where i.user_id is null and lower(i.usuario_intentado) = v_texto
+      and i.resultado = 'fallido' and i.ocurrido_en > v_desde;
+  end if;
+
+  v_bloqueado := v_fallidos >= 5;
+
+  insert into public.intentos_login
+    (user_id, usuario_intentado, resultado, metodo, dispositivo, user_agent, ip, ciudad, pais)
+  values
+    (v_user_id, left(trim(p_identificador), 256),
+     case when v_bloqueado then 'bloqueado' else 'fallido' end, 'password',
+     left(p_dispositivo, 120), left(p_user_agent, 512), left(p_ip, 64),
+     left(p_ciudad, 120), left(p_pais, 120))
+  returning id into v_id;
+
+  -- Bloqueada: no se prueba la contraseña, así que el correo no sale de aquí.
+  return query select v_id, v_bloqueado,
+    case when v_bloqueado then null else v_correo end,
+    case when v_bloqueado then null else v_estado end;
+end;
+$$;
+
+-- Después de probar la contraseña. 'exito': pasa a éxito con su sesión.
+-- 'fallido': se queda igual. 'descartado': Auth no contestó; no fue un intento real.
+create or replace function public.cerrar_intento_login(
+  p_intento_id bigint,
+  p_resultado text,
+  p_session_id uuid default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_resultado = 'exito' then
+    update public.intentos_login
+    set resultado = 'exito', session_id = p_session_id
+    where id = p_intento_id and resultado = 'fallido';
+  elsif p_resultado = 'descartado' then
+    delete from public.intentos_login
+    where id = p_intento_id and resultado = 'fallido';
+  elsif p_resultado is distinct from 'fallido' then
+    raise exception 'resultado no válido: %', p_resultado;
+  end if;
+end;
+$$;
+
 -- Aprobar una cuenta "pendiente" (registrada sin código de invitación válido).
 -- Solo un entrenador activo puede llamarla.
 create or replace function public.aprobar_usuario(p_usuario_id uuid)
@@ -197,6 +302,12 @@ grant execute on function public.verificar_bloqueo_usuario(text) to anon, authen
 grant execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) to anon, authenticated;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;
 grant execute on function public.es_entrenador_activo() to authenticated;
+-- Seg1 y Seg2: solo la Edge Function. Supabase da EXECUTE a anon y authenticated en
+-- las funciones nuevas, así que hay que quitárselo de forma explícita.
+revoke execute on function public.reservar_intento_login(text, text, text, text, text, text) from public, anon, authenticated;
+revoke execute on function public.cerrar_intento_login(bigint, text, uuid) from public, anon, authenticated;
+grant execute on function public.reservar_intento_login(text, text, text, text, text, text) to service_role;
+grant execute on function public.cerrar_intento_login(bigint, text, uuid) to service_role;
 
 -- ============================================================
 -- 3. TRIGGER: crear el perfil automáticamente al registrarse

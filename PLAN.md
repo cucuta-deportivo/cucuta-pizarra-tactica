@@ -83,9 +83,12 @@ Decisiones aprobadas el 2026-11-06:
 
 Fuera de S1: filtro por categoría en la lista, papelera, unir cambios de dos versiones y editar la plantilla sin red.
 
-## Fase 3 · Seguridad
+## Fase 3 · Seguridad (rama `seguridad-login`)
+
+Plan aprobado el 2026-11-11: todo inicio de sesión con contraseña, con usuario o con correo, pasa por la Edge Function `login-usuario`. La función decide el bloqueo, prueba la contraseña y anota el resultado; el navegador ya no puede anotar intentos ni consultar bloqueos. Orden para no cortar el acceso en producción: SQL que solo añade, la función probada antes con otro nombre (`login-usuario-prueba`), la función real seguida del cierre de permisos y la app al final.
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
-| Seg1 | Bloqueos falsos: `registrar_intento_login` confía en el cliente y cualquiera puede registrar 5 fallidos con el usuario de otro | Pendiente |
-| Seg2 | Contadores separados: el bloqueo cuenta por el texto escrito, así que usuario y correo de la misma cuenta suman aparte | Pendiente |
+| Seg1 | Bloqueos falsos: `registrar_intento_login` confía en el cliente y cualquiera puede registrar 5 fallidos con el usuario de otro. Arreglo: solo la función anota intentos y aplica el bloqueo; los intentos simultáneos de una cuenta esperan su turno, así que no pasan más de 5; si Auth no contesta, el intento no cuenta. La función no escribe en sus registros la contraseña, el correo ni el usuario | En curso |
+| Seg2 | Contadores separados: el bloqueo cuenta por el texto escrito, así que usuario y correo de la misma cuenta suman aparte. Arreglo: se cuenta por cuenta (usuario y correo juntos) y lo que no es de ninguna cuenta, por el texto, para que exista o no se comporte igual. Un acceso correcto reinicia el contador; con la cuenta ya bloqueada no se prueba la contraseña, así que no se reinicia hasta que pasan los 15 min | En curso |
+| Seg3 | CAPTCHA de Supabase (Turnstile o hCaptcha) para cerrar el acceso directo a Auth con el correo, que se salta el bloqueo de Seg1 (Auth solo limita por IP: 150 intentos cada 5 min). Trae un servicio externo y cambia las pantallas de acceso, registro y recuperación. El hook de verificación de contraseña, que lo haría dentro de Auth, solo existe en los planes Teams y Enterprise | Pendiente de decisión |

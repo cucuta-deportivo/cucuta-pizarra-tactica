@@ -385,9 +385,10 @@ drop policy if exists "ver_propios_intentos" on public.intentos_login;
 create policy "ver_propios_intentos" on public.intentos_login
   for select using (user_id = auth.uid());
 
+-- Seg4 (2026-11-11): cada cuenta ve solo sus propios intentos (ver_propios_intentos). Se quitó la
+-- política que dejaba a los entrenadores activos ver los de todas las cuentas sin saber de quién
+-- eran; este drop la borra también en una base creada con una versión anterior de este archivo.
 drop policy if exists "entrenadores_ven_todos_los_intentos" on public.intentos_login;
-create policy "entrenadores_ven_todos_los_intentos" on public.intentos_login
-  for select using (public.es_entrenador_activo());
 
 -- ============================================================
 -- 5. (Opcional) Purga automática a los 90 días — requiere la extensión

@@ -4,6 +4,7 @@ import type { Alineacion, Balon, Formacion, Jugador, JugadorEnCampo, JugadorRiva
 import { posicionEfectivaBalon } from './balon';
 import { COLORES_OBJETO, DIAMETRO_BALON_PX, PALETA_RIVAL } from './constantes';
 import { porcentajeAPixeles } from './coordenadas';
+import { cargarFuentesBarlow } from './fuentes';
 import { obtenerIniciales } from './jugador';
 
 const ESCALA_EXPORTACION = 2;
@@ -21,7 +22,6 @@ const CALIDAD_JPEG_PDF = 0.92;
 const ESCALA_FICHAS = 20 / 32;
 /** La misma tipografía condensada de la interfaz (CLAUDE.md), con respaldo si no llegó a cargar. */
 const FUENTE = '"Barlow Condensed", "Arial Narrow", sans-serif';
-const PESOS_FUENTE = ['500', '600', '700', '800'];
 /** Las líneas de `CapaMarcajes`: rojo táctico, no el de la marca, para que lo exportado siga igual que la pantalla. */
 const ROJO_MARCAJE = '#D4111E';
 
@@ -42,16 +42,6 @@ const FUENTE_CLUB = `800 24px ${FUENTE}`;
 const FUENTE_VS = `600 16px ${FUENTE}`;
 const FUENTE_RIVAL_ABAJO = `700 20px ${FUENTE}`;
 const FUENTE_DETALLE = `500 14px ${FUENTE}`;
-
-/**
- * El lienzo no espera a las fuentes web: si un peso aún no se ha usado en
- * pantalla, el texto saldría en la fuente de respaldo. Se piden todos antes de
- * dibujar; si no hay red, la exportación sigue con el respaldo.
- */
-async function cargarFuentes(): Promise<void> {
-  if (!document.fonts) return;
-  await Promise.all(PESOS_FUENTE.map((peso) => document.fonts.load(`${peso} 16px "Barlow Condensed"`))).catch(() => undefined);
-}
 
 export interface DatosExportacion {
   alineacion: Alineacion;
@@ -590,7 +580,7 @@ async function dibujarCampo(datos: DatosExportacion): Promise<HTMLCanvasElement>
     for (const par of cargadas) if (par) fotos.set(par[0], par[1]);
   }
   // El escudo se carga como una foto: si falla, el encabezado sale sin él y la exportación sigue.
-  const [escudo] = await Promise.all([cargarFoto(RUTA_ESCUDO), cargarFuentes()]);
+  const [escudo] = await Promise.all([cargarFoto(RUTA_ESCUDO), cargarFuentesBarlow()]);
 
   const lienzo = document.createElement('canvas');
   const ctx = lienzo.getContext('2d');

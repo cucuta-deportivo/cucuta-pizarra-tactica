@@ -49,9 +49,9 @@ export function PantallaAcceso({ onIrARegistro }: PantallaAccesoProps) {
       />
       <div className="superficie-vidrio relative z-10 w-full max-w-[380px] rounded-2xl border border-white/10 p-6 shadow-elevada animar-entrada-tarjeta">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-club-negro font-display text-2xl font-black text-club-rojo ring-1 ring-white/15">
-            C
-          </div>
+          <img src="/escudos/escudo-1924.png" alt="" width={88} height={128} draggable={false}
+            className="h-24 w-auto select-none [@media(min-height:700px)]:h-32"
+          />
           <div>
             <h1 className="font-display text-xl font-bold uppercase tracking-wide text-white">Pizarra Táctica</h1>
             <p className="text-xs text-club-plata/60">Cúcuta Deportivo · Cuerpo técnico</p>

@@ -44,6 +44,7 @@ vi.mock('../data/supabase/plantillaApi', async (original) => ({
 }));
 
 const { usePlantillaStore } = await import('../store/plantillaStore');
+const api = await import('../data/supabase/plantillaApi');
 const { leerPlantillaGuardada } = await import('../data/plantillaLocal');
 const { TarjetaJugador } = await import('../components/jugador/TarjetaJugador');
 const plantilla = () => usePlantillaStore.getState();
@@ -101,6 +102,42 @@ describe('la plantilla, con y sin conexión', () => {
 
     expect(plantilla()).toMatchObject({ error: null, copiaLocal: null });
     expect(plantilla().jugadores).toMatchObject([{ id: 'sub20-1', fotoUrl: null }]);
+  });
+
+  it('sin red al abrir, las categorías guardadas están de inmediato, sin preguntar a Supabase (IV11)', async () => {
+    await plantilla().inicializar();
+    red.caida = true;
+    const sinRed = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    vi.mocked(api.listarCategorias).mockClear();
+    usePlantillaStore.setState({ categorias: [], categoriaActiva: null });
+
+    const abriendo = plantilla().inicializar();
+    // Antes de que termine nada asíncrono ya están: no esperan a los reintentos.
+    expect(plantilla().categorias.map((c) => c.id)).toEqual(['sub20', 'sub15']);
+    expect(plantilla().categoriaActiva).toBe('sub20');
+    expect(api.listarCategorias).not.toHaveBeenCalled();
+    await abriendo;
+    expect(plantilla()).toMatchObject({ error: null, copiaLocal: leerPlantillaGuardada().porCategoria['sub20']?.guardadaEn });
+    sinRed.mockRestore();
+  });
+
+  it('sin red al abrir y sin categorías guardadas, lo intenta con Supabase y avisa, como antes', async () => {
+    red.caida = true;
+    const sinRed = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    vi.mocked(api.listarCategorias).mockClear();
+
+    await plantilla().inicializar();
+    expect(api.listarCategorias).toHaveBeenCalledTimes(1);
+    expect(plantilla().error).toMatch(/No se pudo conectar/);
+    sinRed.mockRestore();
+  });
+
+  it('con red, las pide a Supabase aunque haya guardadas', async () => {
+    await plantilla().inicializar();
+    vi.mocked(api.listarCategorias).mockClear();
+
+    await plantilla().inicializar();
+    expect(api.listarCategorias).toHaveBeenCalledTimes(1);
   });
 
   it('al volver la señal, se vuelve a cargar de Supabase, con fotos', async () => {

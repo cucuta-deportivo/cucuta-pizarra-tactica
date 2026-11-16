@@ -126,7 +126,7 @@ export const TarjetaJugador = memo(function TarjetaJugador({
 
         {esCapitan && (
           <span
-            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-club-negro ring-1 ring-white/40"
+            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-club-dorado text-[10px] font-black text-club-negro ring-1 ring-white/40"
             title="Capitán"
             aria-label="Capitán"
           >

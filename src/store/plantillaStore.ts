@@ -101,15 +101,25 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
     iniciarRenovacionAutomatica();
     set({ cargando: true, error: null });
     let categorias: Categoria[];
-    try {
-      categorias = await listarCategorias();
-      guardarCategorias(categorias);
-    } catch (fallo) {
-      // Sin conexión: las categorías guardadas en este dispositivo (S1.12).
-      categorias = leerPlantillaGuardada().categorias;
-      if (categorias.length === 0) {
-        set({ cargando: false, error: mensajeDe(fallo) });
-        return;
+    const guardadas = leerPlantillaGuardada().categorias;
+    if (!navigator.onLine && guardadas.length > 0) {
+      // IV11: sin red al abrir, las guardadas en este dispositivo, ya. Pedirlas a
+      // Supabase tardaría unos 7 s en fallar (postgrest-js reintenta 3 veces) y,
+      // mientras, no habría categorías: lo exportado saldría sin la suya. Si la
+      // plantilla también sale de la copia, al volver la señal se recarga todo de
+      // Supabase (el aviso 'online' de abajo).
+      categorias = guardadas;
+    } else {
+      try {
+        categorias = await listarCategorias();
+        guardarCategorias(categorias);
+      } catch (fallo) {
+        // Sin conexión: las categorías guardadas en este dispositivo (S1.12).
+        categorias = guardadas;
+        if (categorias.length === 0) {
+          set({ cargando: false, error: mensajeDe(fallo) });
+          return;
+        }
       }
     }
     const guardada = localStorage.getItem(CLAVE_CATEGORIA);

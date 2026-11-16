@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capasEnCampo, elementosAExportar } from './exportar';
+import { capasEnCampo, elementosAExportar, planEncabezado, textosEncabezado, type TextosEncabezado } from './exportar';
 import type { Balon, EquipoRival, JugadorEnCampo, Marcaje, ObjetoCampo, Trazo } from '../types';
 
 /**
@@ -92,5 +92,56 @@ describe('elementosAExportar: qué se dibuja', () => {
     expect(elementosAExportar(campo({ rival: rival({ modoVista: 'solo_rival' }) })).marcajes).toEqual([]);
     const sinSuRival = { ...marcaje, jugadorRivalId: 'r-que-ya-no-esta' };
     expect(elementosAExportar(campo({ marcajes: [sinSuRival] })).marcajes).toEqual([]);
+  });
+});
+
+describe('textosEncabezado: lo que dice el encabezado de lo exportado', () => {
+  const base = { nombre: 'Once inicial', modificadaEn: '2026-11-11T15:00:00.000Z', rival: rival({ nombre: 'Atlético Bucaramanga' }) };
+  const formacion = { nombre: '4-3-3' };
+  const fecha = new Date(base.modificadaEn).toLocaleDateString('es-CO');
+
+  it('club, categoría y rival en mayúsculas; debajo, alineación, formación y fecha', () => {
+    expect(textosEncabezado(base, formacion, 'Sub-17')).toEqual({
+      club: 'CÚCUTA DEPORTIVO',
+      categoria: 'SUB-17',
+      rival: 'ATLÉTICO BUCARAMANGA',
+      detalle: `Once inicial · 4-3-3 · ${fecha}`,
+    });
+  });
+
+  it('sin rival, o con el nombre que trae por defecto («Rival»), no pone rival', () => {
+    expect(textosEncabezado({ ...base, rival: null }, formacion, 'Sub-17').rival).toBeNull();
+    expect(textosEncabezado({ ...base, rival: rival() }, formacion, 'Sub-17').rival).toBeNull();
+    expect(textosEncabezado({ ...base, rival: rival({ nombre: '  rival ' }) }, formacion).rival).toBeNull();
+    expect(textosEncabezado({ ...base, rival: rival({ nombre: '   ' }) }, formacion).rival).toBeNull();
+  });
+
+  it('sin categoría (las alineaciones de antes de S1.2 no la tienen) no la pone', () => {
+    expect(textosEncabezado(base, formacion, null).categoria).toBeNull();
+    expect(textosEncabezado(base, formacion).categoria).toBeNull();
+    expect(textosEncabezado(base, formacion, '  ').categoria).toBeNull();
+  });
+
+  it('sin nombre ni formación conocida usa los mismos respaldos que antes', () => {
+    expect(textosEncabezado({ ...base, nombre: '' }, undefined).detalle).toBe(`Alineación sin nombre · — · ${fecha}`);
+    expect(textosEncabezado(base, { nombre: '4-4-2', variante: 'rombo' }).detalle).toBe(`Once inicial · 4-4-2 rombo · ${fecha}`);
+  });
+});
+
+describe('planEncabezado: el rival al lado o en su propia línea, según el ancho', () => {
+  // 10 px por letra: club 160 + categoría 10 + 60, «vs» 20 + 8 + rival 200, escudo y márgenes 69.
+  const mide = (texto: string) => texto.length * 10;
+  const textos: TextosEncabezado = { club: 'CÚCUTA DEPORTIVO', categoria: 'SUB-17', rival: 'ATLÉTICO BUCARAMANGA', detalle: '—' };
+
+  it('campo ancho (horizontal): todo en una fila de 76 px', () => {
+    expect(planEncabezado(mide, 1044, textos)).toEqual({ alto: 76, unaFila: true });
+  });
+
+  it('campo estrecho (vertical): el rival baja a su línea y el encabezado mide 100 px', () => {
+    expect(planEncabezado(mide, 438, textos)).toEqual({ alto: 100, unaFila: false });
+  });
+
+  it('sin rival siempre es una fila', () => {
+    expect(planEncabezado(mide, 438, { ...textos, rival: null })).toEqual({ alto: 76, unaFila: true });
   });
 });

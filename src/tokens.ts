@@ -24,9 +24,20 @@ export const COLOR = {
 
   /** Identidad del club. Nunca se usa para indicar selección: eso es naranja. */
   marca: {
-    rojo: '#D4111E',
-    /** Variante de la ficha sobre césped: algo más apagada para no vibrar sobre el verde. */
-    rojoFicha: '#C4121F',
+    /**
+     * El rojo del escudo (#DC3B3B) un punto más oscuro: a la vista es el mismo
+     * (ΔE 0,65) y el texto blanco encima cumple AA (4,54:1; el exacto da 4,44:1).
+     * Las marcas tácticas (dibujos, marcajes, trayectorias) siguen en #D4111E.
+     */
+    rojo: '#DA3939',
+    /** Variante de la ficha sobre césped: el mismo tono, algo más apagado para no vibrar sobre el verde. */
+    rojoFicha: '#C93333',
+    /** Botón principal al pasar el ratón. */
+    rojoOscuro: '#A82828',
+    /** Negro de la marca: ícono de la app, color del tema y banda de la exportación. */
+    negro: '#111111',
+    /** La estrella y el 1924 del escudo. Solo distinción (insignia de capitán, categoría en lo exportado); nunca sobre rojo (1,70:1). */
+    dorado: '#B89D63',
   },
 
   /** Estado activo, selección y tiradores. El único color que significa "esto está elegido". */

@@ -91,7 +91,7 @@ Login, registro e historial de accesos, con **Supabase** como backend (Postgres 
 ### Puesta en marcha de Supabase
 
 1. Crear un proyecto en [supabase.com](https://supabase.com).
-2. Abrir el **SQL Editor** del proyecto y ejecutar el contenido completo de [supabase/schema.sql](supabase/schema.sql) una sola vez (crea las tablas `perfiles`, `codigos_invitacion`, `intentos_login`, las funciones `SECURITY DEFINER`, las políticas RLS y siembra el código de invitación `CUCUTA-2026`).
+2. Abrir el **SQL Editor** del proyecto y ejecutar el contenido completo de [supabase/schema.sql](supabase/schema.sql) una sola vez (crea las tablas `perfiles`, `codigos_invitacion`, `intentos_login`, las funciones `SECURITY DEFINER` y las políticas RLS). No crea ningún código de invitación: se crean a mano en el SQL Editor y nunca se escriben en el repositorio.
 3. Publicar la Edge Function de acceso, sin ella no se puede entrar: `npx supabase functions deploy login-usuario --no-verify-jwt --project-ref <proyecto>` (la CLI pide iniciar sesión con la cuenta del club).
 4. Copiar [.env.example](.env.example) a `.env.local` y completar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` con los datos de **Project Settings → API** del proyecto (la clave pública/`anon`, nunca la `service_role`).
 5. En hosting (Vercel/Netlify/etc.), definir esas mismas dos variables de entorno en la configuración del proyecto.

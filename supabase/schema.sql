@@ -403,11 +403,10 @@ drop policy if exists "entrenadores_ven_todos_los_intentos" on public.intentos_l
 -- );
 
 -- ============================================================
--- 6. Primer código de invitación de ejemplo (bórralo o cámbialo)
+-- 6. Códigos de invitación
 -- ============================================================
-
-insert into public.codigos_invitacion (codigo) values ('CUCUTA-2026')
-  on conflict (codigo) do nothing;
+-- Este archivo no crea ninguno. Los códigos se crean a mano en el SQL Editor
+-- y nunca se escriben en el repositorio.
 
 -------------------------------------------------------------------
 -- ============================================================

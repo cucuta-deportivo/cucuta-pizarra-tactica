@@ -10,7 +10,7 @@ const CONTENIDO: Record<Exclude<EstadoCuenta, 'activo'>, { titulo: string; mensa
   pendiente: {
     titulo: 'Cuenta pendiente de aprobación',
     mensaje:
-      'Tu cuenta fue creada correctamente, pero un entrenador del cuerpo técnico todavía debe aprobarla antes de que puedas entrar. Vuelve a intentarlo más tarde o contacta a un entrenador.',
+      'Tu cuenta fue creada correctamente, pero un entrenador del cuerpo técnico todavía debe aprobarla antes de que puedas entrar. Avísale y, cuando te apruebe, toca «Comprobar de nuevo».',
   },
   bloqueado: {
     titulo: 'Cuenta bloqueada',
@@ -30,6 +30,12 @@ export function PantallaEstadoCuenta({ estado }: PantallaEstadoCuentaProps) {
         </div>
         <h1 className="mb-2 font-display text-lg font-bold uppercase tracking-wide text-white">{contenido.titulo}</h1>
         <p className="mb-6 text-sm text-club-plata/70">{contenido.mensaje}</p>
+        {estado === 'pendiente' && (
+          // Recargar vuelve a leer la cuenta: si ya la aprobaron, entra. Sin señal se queda aquí, como antes.
+          <Boton variante="primario" onClick={() => window.location.reload()} className="mb-2 w-full">
+            Comprobar de nuevo
+          </Boton>
+        )}
         <Boton variante="secundario" onClick={() => void cerrarSesion()} className="w-full">
           Cerrar sesión
         </Boton>

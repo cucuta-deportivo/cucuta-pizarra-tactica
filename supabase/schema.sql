@@ -7,11 +7,11 @@
 --
 -- Resumen de lo que crea:
 --   - public.perfiles           1 fila por usuario (auth.users), rol y estado
---   - public.codigos_invitacion códigos que el club reparte para registrarse ya "activo"
+--   - public.codigos_invitacion sin uso: ningún código activa cuentas (se borrará más adelante)
 --   - public.intentos_login     historial de accesos (FA8), inmutable desde el cliente
---   - Funciones SECURITY DEFINER para todo lo que el cliente anónimo necesita
---     hacer sin poder leer las tablas directamente (verificar código, resolver
---     usuario→correo, registrar un intento, comprobar bloqueo por fuerza bruta).
+--   - Funciones SECURITY DEFINER para todo lo que el cliente necesita hacer sin
+--     poder leer o cambiar las tablas directamente (resolver usuario→correo,
+--     anotar un intento, comprobar bloqueos, aprobar o rechazar una cuenta).
 --   - Políticas de Row Level Security en las tres tablas.
 --   - Un trigger que crea el perfil automáticamente al registrarse.
 
@@ -70,6 +70,8 @@ as $$
   );
 $$;
 
+-- Sin uso desde el cierre de la pantalla «Cuentas»: el alta ya no mira códigos.
+-- Sin permisos para el navegador (ver los revoke); se borrará junto con su tabla.
 create or replace function public.verificar_codigo_invitacion(p_codigo text)
 returns boolean
 language sql
@@ -279,8 +281,10 @@ begin
 end;
 $$;
 
--- Aprobar una cuenta "pendiente" (registrada sin código de invitación válido).
--- Solo un entrenador activo puede llamarla.
+-- Pantalla "Cuentas" (aplicado el 2026-11-19). Si otro entrenador ya revisó la cuenta,
+-- las dos avisan con "La cuenta ya no está pendiente.".
+-- Aprobar: solo una cuenta 'pendiente' pasa a 'activo', y siempre como entrenador:
+-- el rol lo decide quien aprueba, no quien se registra. Solo la llama un entrenador activo.
 create or replace function public.aprobar_usuario(p_usuario_id uuid)
 returns void
 language plpgsql
@@ -289,13 +293,36 @@ set search_path = public
 as $$
 begin
   if not public.es_entrenador_activo() then
-    raise exception 'Solo un entrenador puede aprobar cuentas.';
+    raise exception 'Solo un entrenador activo puede aprobar cuentas.' using errcode = '42501';
   end if;
-  update public.perfiles set estado = 'activo' where id = p_usuario_id;
+  update public.perfiles set estado = 'activo', rol = 'entrenador'
+  where id = p_usuario_id and estado = 'pendiente';
+  if not found then
+    raise exception 'La cuenta ya no está pendiente.';
+  end if;
 end;
 $$;
 
-grant execute on function public.verificar_codigo_invitacion(text) to anon, authenticated;
+-- Rechazar: la cuenta 'pendiente' pasa a 'bloqueado'. No se borra: se puede deshacer desde el SQL Editor.
+create or replace function public.rechazar_usuario(p_usuario_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.es_entrenador_activo() then
+    raise exception 'Solo un entrenador activo puede rechazar cuentas.' using errcode = '42501';
+  end if;
+  update public.perfiles set estado = 'bloqueado'
+  where id = p_usuario_id and estado = 'pendiente';
+  if not found then
+    raise exception 'La cuenta ya no está pendiente.';
+  end if;
+end;
+$$;
+
+revoke execute on function public.verificar_codigo_invitacion(text) from public, anon, authenticated;
 -- PUBLIC no basta: Supabase también da EXECUTE explícito a anon y authenticated.
 revoke execute on function public.resolver_correo_por_usuario(text) from public, anon, authenticated;
 grant execute on function public.resolver_correo_por_usuario(text) to service_role;
@@ -304,7 +331,11 @@ grant execute on function public.usuario_disponible(text) to anon, authenticated
 -- Seg1 (SQL B, 2026-11-11): el navegador ya no consulta bloqueos ni anota intentos.
 revoke execute on function public.verificar_bloqueo_usuario(text) from public, anon, authenticated;
 revoke execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) from public, anon, authenticated;
+-- Pantalla "Cuentas": Supabase da EXECUTE a anon en las funciones nuevas, se quita de forma explícita.
+revoke execute on function public.aprobar_usuario(uuid) from public, anon;
+revoke execute on function public.rechazar_usuario(uuid) from public, anon;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;
+grant execute on function public.rechazar_usuario(uuid) to authenticated;
 grant execute on function public.es_entrenador_activo() to authenticated;
 -- Seg1 y Seg2: solo la Edge Function. Supabase da EXECUTE a anon y authenticated en
 -- las funciones nuevas, así que hay que quitárselo de forma explícita.
@@ -317,37 +348,25 @@ grant execute on function public.cerrar_intento_login(bigint, text, uuid) to ser
 -- 3. TRIGGER: crear el perfil automáticamente al registrarse
 -- ============================================================
 
+-- Cierre de la pantalla «Cuentas» (se ejecuta después de publicar la app que la trae).
+-- Alta de cuentas: toda cuenta nueva queda 'pendiente' y como entrenador, también la primera
+-- del proyecto. No se lee ningún código ni el rol que mande el cliente: la activación la decide
+-- quien aprueba (aprobar_usuario, desde ⋯ → Cuentas). El primer entrenador de un proyecto
+-- nuevo se activa a mano desde el SQL Editor (README, "Cuentas desde el panel de Supabase").
 create or replace function public.manejar_nuevo_usuario()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  v_codigo text;
-  v_codigo_valido boolean := false;
-  v_estado text;
-  v_es_primero boolean;
 begin
-  select not exists (select 1 from public.perfiles) into v_es_primero;
-
-  v_codigo := new.raw_user_meta_data ->> 'codigo_invitacion';
-  if v_codigo is not null and v_codigo <> '' then
-    select public.verificar_codigo_invitacion(v_codigo) into v_codigo_valido;
-  end if;
-
-  -- El primer usuario del club siempre queda activo (si no, nadie podría
-  -- aprobar cuentas jamás: se necesitaría un entrenador activo para crear
-  -- al primer entrenador activo).
-  v_estado := case when v_es_primero or v_codigo_valido then 'activo' else 'pendiente' end;
-
   insert into public.perfiles (id, usuario, nombre_completo, rol, estado)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'usuario', ''), split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data ->> 'nombre_completo', ''),
-    coalesce(nullif(new.raw_user_meta_data ->> 'rol', ''), 'entrenador'),
-    v_estado
+    'entrenador',
+    'pendiente'
   );
   return new;
 end;
@@ -374,12 +393,12 @@ drop policy if exists "entrenadores_ven_todos_los_perfiles" on public.perfiles;
 create policy "entrenadores_ven_todos_los_perfiles" on public.perfiles
   for select using (public.es_entrenador_activo());
 
+-- Cierre de la pantalla «Cuentas»: el estado y el rol de una cuenta solo cambian con
+-- aprobar_usuario / rechazar_usuario (o desde el SQL Editor); ningún entrenador edita perfiles
+-- directamente. Este drop quita la política también en una base creada con una versión anterior.
 drop policy if exists "entrenadores_actualizan_perfiles" on public.perfiles;
-create policy "entrenadores_actualizan_perfiles" on public.perfiles
-  for update using (public.es_entrenador_activo());
 
--- codigos_invitacion: sin políticas de lectura directa a propósito — solo se
--- consulta a través de verificar_codigo_invitacion(), que no revela la lista.
+-- codigos_invitacion: sin políticas a propósito, nadie la lee desde el navegador. Ya sin uso.
 
 drop policy if exists "ver_propios_intentos" on public.intentos_login;
 create policy "ver_propios_intentos" on public.intentos_login
@@ -405,8 +424,9 @@ drop policy if exists "entrenadores_ven_todos_los_intentos" on public.intentos_l
 -- ============================================================
 -- 6. Códigos de invitación
 -- ============================================================
--- Este archivo no crea ninguno. Los códigos se crean a mano en el SQL Editor
--- y nunca se escriben en el repositorio.
+-- Ya no se usan: ningún código activa cuentas. Toda cuenta nueva queda pendiente y la
+-- aprueba un entrenador activo en ⋯ → Cuentas. La tabla y verificar_codigo_invitacion
+-- se borrarán más adelante.
 
 -------------------------------------------------------------------
 -- ============================================================

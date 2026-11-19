@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { isAuthRetryableFetchError, type Session } from '@supabase/supabase-js';
 import { borrarPlantillaGuardada } from '../data/plantillaLocal';
 import { establecerRecordarDispositivo, supabase, supabaseConfigurado } from '../lib/supabaseClient';
-import type { EstadoCuenta, Perfil, RolUsuario } from '../types/auth';
+import type { EstadoCuenta, Perfil } from '../types/auth';
 import { describirDispositivo } from '../utils/deviceInfo';
 import { obtenerDatosIp } from '../utils/ipLookup';
 
@@ -27,8 +27,6 @@ export interface DatosRegistro {
   password: string;
   usuario: string;
   nombreCompleto: string;
-  rol: RolUsuario;
-  codigoInvitacion: string;
 }
 
 export interface ResultadoAuth {
@@ -359,12 +357,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const { data, error } = await supabase.auth.signUp({
           email: datos.correo,
           password: datos.password,
+          // Sin rol ni código: toda cuenta nueva queda pendiente y el rol lo pone quien la aprueba (⋯ → Cuentas).
           options: {
             data: {
               usuario: datos.usuario,
               nombre_completo: datos.nombreCompleto,
-              rol: datos.rol,
-              codigo_invitacion: datos.codigoInvitacion || undefined,
             },
           },
         });

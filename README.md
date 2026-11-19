@@ -46,7 +46,7 @@ npm run build      # tsc -b && vite build → genera dist/
 npm run preview     # sirve dist/ localmente para verificarlo
 ```
 
-La carga inicial (el chunk de entrada) pesa ~205 KB gzip, por debajo del presupuesto de 250 KB; lo más pesado es el cliente de Supabase (~59 KB), React (~46 KB) y Dexie (~33 KB). Las ventanas secundarias (alineaciones, historial, plantilla, comparar, zonas, rival, cancha, exportar y actividad de la cuenta) van en trozos aparte, ~20 KB gzip en total, que se descargan justo después de pintar la pizarra (el de actividad, al abrirla). jsPDF (~127 KB gzip) solo se descarga al exportar a PDF.
+La carga inicial (el chunk de entrada) pesa ~205 KB gzip, por debajo del presupuesto de 250 KB; lo más pesado es el cliente de Supabase (~59 KB), React (~46 KB) y Dexie (~33 KB). Las ventanas secundarias (alineaciones, historial, plantilla, comparar, zonas, rival, cancha, exportar, actividad de la cuenta y cuentas) van en trozos aparte, ~20 KB gzip en total, que se descargan justo después de pintar la pizarra (los de actividad y cuentas, al abrirlos). jsPDF (~127 KB gzip) solo se descarga al exportar a PDF.
 
 ## Despliegue
 
@@ -83,7 +83,7 @@ Todas viven en el mismo `DocumentoTactico`/`Alineacion` (se guardan, deshacen y 
 Login, registro e historial de accesos, con **Supabase** como backend (Postgres + Auth). El cliente solo usa la clave pública `anon`; toda operación con privilegios (resolver usuario→correo, comprobar bloqueo por intentos fallidos, registrar un intento de acceso, aprobar una cuenta) pasa por funciones Postgres `SECURITY DEFINER` con `RLS` habilitado en las tres tablas — la clave `anon` nunca toca las tablas directamente salvo lo que las políticas permiten explícitamente.
 
 - **FA6 — Login**: [PantallaAcceso.tsx](src/components/auth/PantallaAcceso.tsx). Entrar con usuario o correo, mostrar/ocultar contraseña, "Recordar este dispositivo" (alterna `localStorage`/`sessionStorage` para la sesión de Supabase), recuperación de contraseña por enlace de correo (mensaje siempre genérico, no revela si el correo existe). Con usuario o con correo, la entrada pasa por la Edge Function [login-usuario](supabase/functions/login-usuario/index.ts): ella decide el bloqueo (5 intentos fallidos en 15 minutos por cuenta, con usuario y correo sumando juntos; un acceso correcto lo reinicia), prueba la contraseña y anota el intento. El navegador no ve el correo de un usuario ni puede anotar intentos. Cierre de sesión automático tras 12 h de inactividad.
-- **FA7 — Registro**: [FormularioRegistro.tsx](src/components/auth/FormularioRegistro.tsx). Nombre, usuario (con comprobación de disponibilidad en vivo), correo, contraseña con medidor de fortaleza ([MedidorFortaleza.tsx](src/components/auth/MedidorFortaleza.tsx)), rol y código de invitación opcional. Sin código válido, la cuenta queda `pendiente` hasta que un entrenador la aprueba (`aprobar_usuario`); **la primera cuenta creada en el proyecto se activa sola como entrenador** para evitar quedarse sin forma de aprobar a nadie.
+- **FA7 — Registro y aprobación de cuentas**: [FormularioRegistro.tsx](src/components/auth/FormularioRegistro.tsx). Nombre, usuario (con comprobación de disponibilidad en vivo), correo y contraseña con medidor de fortaleza ([MedidorFortaleza.tsx](src/components/auth/MedidorFortaleza.tsx)). **Toda cuenta nueva queda `pendiente`**, también la primera del proyecto: no hay códigos de invitación y quien se registra no elige el rol. Mientras espera, ve una pantalla de "pendiente" con un botón para comprobar de nuevo. Un entrenador activo la aprueba o la rechaza desde ⋯ → "Cuentas" ([PanelCuentas.tsx](src/components/auth/PanelCuentas.tsx)), con las funciones `aprobar_usuario` (queda activa y como entrenador) y `rechazar_usuario` (queda bloqueada, sin borrarla); las dos solo actúan sobre cuentas pendientes. La pantalla lista las cuentas pendientes, activas y bloqueadas, sin correos. Lo demás (activar al primer entrenador, bloquear a uno activo, deshacer un rechazo) se hace en el panel de Supabase: ver "Cuentas desde el panel de Supabase".
 - **FA8 — Historial de accesos**: [PanelActividad.tsx](src/components/auth/PanelActividad.tsx), desde ⋯ → "Actividad de la cuenta". Sesión actual + botón para cerrar todas las demás sesiones; lista paginada (20 por página, scroll infinito) de los intentos de la propia cuenta (`intentos_login`; la política `ver_propios_intentos` lo asegura también en la base) agrupada por día con encabezados fijos; filtros por rango de fechas, solo fallidos y solo este dispositivo; IP enmascarada con botón para revelarla; exportar a CSV; hora relativa y absoluta (`America/Bogota` por defecto, con opción de usar la hora del dispositivo); aviso en pantalla si el último acceso viene de un dispositivo no visto antes.
 
 **Simplificaciones deliberadas**: no hay envío de correo de alerta ante un dispositivo nuevo (solo el aviso dentro de la app — enviar correo requeriría credenciales de un servicio de email que no se proporcionaron); "cerrar sesión" en otros dispositivos revoca *todas* las demás sesiones a la vez (`signOut({scope:'others'})`), no una por una, porque el SDK de Supabase no expone un listado de sesiones activas individuales sin la `service_role key`; la IP la anota la Edge Function a partir de la petición; la ciudad y el país los resuelve la app con un servicio público de terceros (`ipapi.co`) de forma best-effort y no bloqueante — si el club prefiere no enviar la IP del usuario a un tercero, basta con no llamar a `obtenerDatosIp()` en [src/store/authStore.ts](src/store/authStore.ts) (la IP se seguiría anotando desde el servidor).
@@ -91,14 +91,61 @@ Login, registro e historial de accesos, con **Supabase** como backend (Postgres 
 ### Puesta en marcha de Supabase
 
 1. Crear un proyecto en [supabase.com](https://supabase.com).
-2. Abrir el **SQL Editor** del proyecto y ejecutar el contenido completo de [supabase/schema.sql](supabase/schema.sql) una sola vez (crea las tablas `perfiles`, `codigos_invitacion`, `intentos_login`, las funciones `SECURITY DEFINER` y las políticas RLS). No crea ningún código de invitación: se crean a mano en el SQL Editor y nunca se escriben en el repositorio.
+2. Abrir el **SQL Editor** del proyecto y ejecutar el contenido completo de [supabase/schema.sql](supabase/schema.sql) una sola vez (crea las tablas `perfiles` e `intentos_login`, las funciones `SECURITY DEFINER` y las políticas RLS; también la tabla `codigos_invitacion`, que ya no se usa: ningún código activa cuentas).
 3. Publicar la Edge Function de acceso, sin ella no se puede entrar: `npx supabase functions deploy login-usuario --no-verify-jwt --project-ref <proyecto>` (la CLI pide iniciar sesión con la cuenta del club).
 4. Copiar [.env.example](.env.example) a `.env.local` y completar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` con los datos de **Project Settings → API** del proyecto (la clave pública/`anon`, nunca la `service_role`).
 5. En hosting (Vercel/Netlify/etc.), definir esas mismas dos variables de entorno en la configuración del proyecto.
+6. Activar al primer entrenador, como se explica en "Cuentas desde el panel de Supabase".
 
 Si estas variables no están definidas, la app sigue funcionando con normalidad **sin pedir login** (`supabaseConfigurado` queda en `false` y `AuthGate` deja pasar directo a la pizarra) — útil para desarrollar FA1–FA5 sin depender de Supabase.
 
 **Límite de correos del SMTP por defecto**: mientras no se configure un proveedor SMTP propio, Supabase usa su servicio de correo compartido, limitado a ~2 correos de confirmación por hora por proyecto. Registrar varias cuentas seguidas (por ejemplo, dar de alta a todo el cuerpo técnico el mismo día) agota ese límite y las siguientes altas devuelven `429` en `/auth/v1/signup` hasta que se resetea (más o menos una hora) — no es un error de la app. Antes de un uso real con varias personas, configurar un proveedor SMTP propio (Resend, SendGrid, Postmark…) en **Authentication → Settings → SMTP Settings** del dashboard de Supabase quita ese límite.
+
+### Cuentas desde el panel de Supabase
+
+Aprobar y rechazar cuentas pendientes se hace en la app, en ⋯ → "Cuentas". Lo demás lo hace quien administra el proyecto, en el **SQL Editor** del panel de Supabase. Cada consulta debe devolver una fila; si no devuelve ninguna, el usuario está mal escrito o la cuenta no estaba en el estado esperado, y no cambió nada. Cambia `USUARIO` por el nombre de usuario de la cuenta.
+
+**Activar al primer entrenador de un proyecto nuevo.** Toda cuenta nueva queda pendiente, también la primera, y todavía no hay nadie que pueda aprobarla desde "Cuentas":
+
+1. Abre la app y crea tu cuenta en "Crear cuenta". Si el proyecto pide confirmar el correo, confírmalo.
+2. Comprueba que la única cuenta es la tuya:
+
+   ```sql
+   select p.usuario, p.nombre_completo, p.estado, u.email, p.creado_en
+   from public.perfiles p join auth.users u on u.id = p.id
+   order by p.creado_en;
+   ```
+
+   Si aparece otra que no conoces, no la actives: bórrala en **Authentication → Users**.
+3. Actívala:
+
+   ```sql
+   update public.perfiles set estado = 'activo', rol = 'entrenador'
+   where lower(usuario) = lower('USUARIO') and estado = 'pendiente'
+   returning usuario, rol, estado;
+   ```
+
+4. Entra en la app. Desde ahí, las demás cuentas se aprueban en ⋯ → "Cuentas".
+
+**Bloquear a un entrenador activo** (por ejemplo, cuando deja el club):
+
+```sql
+update public.perfiles set estado = 'bloqueado'
+where lower(usuario) = lower('USUARIO') and estado = 'activo'
+returning usuario, estado;
+```
+
+Desde ese momento la base no le entrega ni le acepta nada y no puede volver a entrar. Lo que ya estaba guardado en sus dispositivos (las alineaciones de la pizarra) sigue allí: un dispositivo sin señal abre la pizarra con lo guardado hasta que vuelve a tener señal, y entonces muestra "Cuenta bloqueada". Si se lleva una tablet del club, recupérala o cierra la sesión en ella.
+
+**Deshacer un rechazo** (la cuenta vuelve a pendiente y se aprueba después desde "Cuentas"):
+
+```sql
+update public.perfiles set estado = 'pendiente'
+where lower(usuario) = lower('USUARIO') and estado = 'bloqueado'
+returning usuario, estado;
+```
+
+**Borrar una cuenta del todo**: en **Authentication → Users**, la cuenta → "Delete user". No se puede deshacer; las alineaciones que creó se quedan.
 
 ### Respaldo mensual de la base de datos
 

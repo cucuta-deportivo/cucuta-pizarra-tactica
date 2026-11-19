@@ -45,6 +45,7 @@ const PantallaPlantilla = diferido(() => import('./components/plantilla/Pantalla
 const ModalComparacion = diferido(() => import('./components/ui/ModalComparacion').then((m) => m.ModalComparacion));
 // Este no está siempre montado: su trozo se pide la primera vez que se abre.
 const PanelActividad = diferido(() => import('./components/auth/PanelActividad').then((m) => m.PanelActividad));
+const PanelCuentas = diferido(() => import('./components/auth/PanelCuentas').then((m) => m.PanelCuentas));
 
 function EscudoClub() {
   return (
@@ -252,10 +253,12 @@ const ETIQUETAS_ORIENTACION: Record<OrientacionForzada, string> = {
 
 function SeccionCuenta({
   onAbrirActividad,
+  onAbrirCuentas,
   onCerrar,
   onPedirConfirmacion,
 }: {
   onAbrirActividad: () => void;
+  onAbrirCuentas: () => void;
   onCerrar: () => void;
   /** Se pregunta antes de cerrar: si hay alineaciones sin subir, o si es en todos los dispositivos (S1.13). */
   onPedirConfirmacion: (cierre: { sinSubir: number; enTodos: boolean }) => void;
@@ -296,6 +299,16 @@ function SeccionCuenta({
       >
         🕓 Actividad de la cuenta
       </ItemMenu>
+      {perfil.rol === 'entrenador' && perfil.estado === 'activo' && (
+        <ItemMenu
+          onClick={() => {
+            onAbrirCuentas();
+            onCerrar();
+          }}
+        >
+          👥 Cuentas
+        </ItemMenu>
+      )}
       <ItemMenu onClick={() => void manejarCerrarSesion(false)}>🚪 Cerrar sesión</ItemMenu>
       <ItemMenu onClick={() => void manejarCerrarSesion(true)}>🔒 Cerrar sesión en todos los dispositivos</ItemMenu>
     </div>
@@ -308,6 +321,7 @@ function MenuOpciones({
   onAbrirComparacion,
   onAbrirCancha,
   onAbrirActividad,
+  onAbrirCuentas,
   onAbrirExportar,
   onCrearJugada,
   onGrabarJugada,
@@ -319,6 +333,7 @@ function MenuOpciones({
   onAbrirComparacion: () => void;
   onAbrirCancha: () => void;
   onAbrirActividad: () => void;
+  onAbrirCuentas: () => void;
   onAbrirExportar: () => void;
   onCrearJugada: () => void;
   onGrabarJugada: () => void;
@@ -458,7 +473,12 @@ function MenuOpciones({
                 ))}
               </div>
             </div>
-            <SeccionCuenta onAbrirActividad={onAbrirActividad} onCerrar={cerrar} onPedirConfirmacion={setCierre} />
+            <SeccionCuenta
+              onAbrirActividad={onAbrirActividad}
+              onAbrirCuentas={onAbrirCuentas}
+              onCerrar={cerrar}
+              onPedirConfirmacion={setCierre}
+            />
           </div>
         )}
       </Dropdown>
@@ -541,6 +561,7 @@ export default function App() {
   const [modalRivalAbierto, setModalRivalAbierto] = useState(false);
   const [modalCanchaAbierto, setModalCanchaAbierto] = useState(false);
   const [panelActividadAbierto, setPanelActividadAbierto] = useState(false);
+  const [panelCuentasAbierto, setPanelCuentasAbierto] = useState(false);
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false);
   // Alineaciones de antes de la sincronización por subir; `null` cuando no hay o se dejó para más tarde.
   const [porMigrar, setPorMigrar] = useState<PorMigrar | null>(null);
@@ -637,6 +658,7 @@ export default function App() {
               onAbrirComparacion={() => setModalComparacionAbierto(true)}
               onAbrirCancha={() => setModalCanchaAbierto(true)}
               onAbrirActividad={() => setPanelActividadAbierto(true)}
+              onAbrirCuentas={() => setPanelCuentasAbierto(true)}
               onAbrirExportar={() => setModalExportarAbierto(true)}
               onCrearJugada={iniciarSecuencia}
               onGrabarJugada={() => {
@@ -734,6 +756,11 @@ export default function App() {
       {panelActividadAbierto && (
         <Suspense fallback={null}>
           <PanelActividad onCerrar={() => setPanelActividadAbierto(false)} />
+        </Suspense>
+      )}
+      {panelCuentasAbierto && (
+        <Suspense fallback={null}>
+          <PanelCuentas onCerrar={() => setPanelCuentasAbierto(false)} />
         </Suspense>
       )}
       {porMigrar && (

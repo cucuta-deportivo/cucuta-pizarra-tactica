@@ -3,7 +3,6 @@ import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabaseClient';
 import { Boton } from '../ui/Boton';
 import { MedidorFortaleza, evaluarFortaleza } from './MedidorFortaleza';
-import type { RolUsuario } from '../../types/auth';
 
 interface FormularioRegistroProps {
   onVolver: () => void;
@@ -20,8 +19,6 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
   const [confirmar, setConfirmar] = useState('');
-  const [rol, setRol] = useState<RolUsuario>('entrenador');
-  const [codigoInvitacion, setCodigoInvitacion] = useState('');
   const [aceptaCondiciones, setAceptaCondiciones] = useState(false);
   const [disponibilidad, setDisponibilidad] = useState<DisponibilidadUsuario>('sin-verificar');
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
@@ -69,8 +66,6 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
       password,
       usuario: usuario.trim(),
       nombreCompleto: nombreCompleto.trim(),
-      rol,
-      codigoInvitacion: codigoInvitacion.trim(),
     });
     if (!resultado.ok) setErrorEnvio(resultado.mensaje ?? 'No se pudo completar el registro.');
     else setExito(true);
@@ -85,8 +80,7 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
         {exito ? (
           <div className="flex flex-col gap-3 text-center">
             <p className="rounded-lg bg-emerald-500/15 px-3 py-3 text-sm text-emerald-400">
-              Cuenta creada. Revisa tu correo para verificarla. Si tu código de invitación era válido ya puedes entrar; si no,
-              un entrenador debe aprobarte primero.
+              Cuenta creada. Revisa tu correo para verificarla. Antes de entrar, un entrenador del cuerpo técnico debe aprobarla.
             </p>
             <Boton variante="primario" onClick={onVolver} className="w-full">
               Ir a iniciar sesión
@@ -156,28 +150,7 @@ export function FormularioRegistro({ onVolver }: FormularioRegistroProps) {
               {!contrasenasCoinciden && <span className="text-[11px] text-club-rojo">Las contraseñas no coinciden.</span>}
             </label>
 
-            <label className="text-xs text-club-plata">
-              Rol
-              <select
-                value={rol}
-                onChange={(e) => setRol(e.target.value as RolUsuario)}
-                className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-club-rojo"
-              >
-                <option value="entrenador" className="bg-club-carbon">Entrenador</option>
-                <option value="invitado" className="bg-club-carbon">Invitado</option>
-              </select>
-            </label>
-
-            <label className="text-xs text-club-plata">
-              Código de invitación del club (opcional)
-              <input
-                value={codigoInvitacion}
-                onChange={(e) => setCodigoInvitacion(e.target.value)}
-                placeholder="Déjalo vacío si no tienes uno"
-                className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-club-plata/40 outline-none focus:border-club-rojo"
-              />
-              <span className="text-[11px] text-club-plata/50">Sin código válido, un entrenador deberá aprobar tu cuenta.</span>
-            </label>
+            <p className="text-[11px] text-club-plata/50">Un entrenador del cuerpo técnico debe aprobar tu cuenta antes de que puedas entrar.</p>
 
             <label className="flex min-h-[44px] items-center gap-2 text-xs text-club-plata">
               <input

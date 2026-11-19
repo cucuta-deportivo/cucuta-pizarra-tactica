@@ -127,12 +127,14 @@ export function PanelCuentas({ onCerrar }: PanelCuentasProps) {
                       return (
                         <li key={cuenta.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-white">
+                            {/* Con ancho mínimo: en pantallas estrechas los botones bajan a otra línea. */}
+                            <div className="min-w-[12rem] flex-1">
+                              {/* Sin recortar: para aprobar hay que poder leer el nombre y la fecha completos. */}
+                              <p className="break-words text-sm font-medium text-white">
                                 {cuenta.nombre_completo || `@${cuenta.usuario}`}
                                 {cuenta.id === miId && <span className="ml-1.5 text-xs font-normal text-club-plata/50">(tú)</span>}
                               </p>
-                              <p className="truncate text-xs text-club-plata/60">
+                              <p className="break-words text-xs text-club-plata/60">
                                 @{cuenta.usuario} · se registró el {fechaRegistro(cuenta.creado_en)}
                               </p>
                             </div>

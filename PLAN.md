@@ -121,3 +121,9 @@ Plan aprobado el 2026-11-11 a partir de las láminas: el escudo del club en el �
 **Prueba final (2026-11-11).** Build de producción sin Supabase; a mitad de la prueba se apaga el servidor, así que todo sale del service worker. El manifiesto conserva sus íconos; quedan precargados los 8 PNG (íconos, favicon y escudos) y `/marca/escudo.png` no se publica. Sin red, la barra muestra el escudo y el PNG exportado sale con el escudo, la categoría y la letra de la interfaz. Con IV9 a IV11: carga inicial 213,16 KB gzip (antes de la fase, 213,01); 34 archivos precargados (1595 KiB, antes 29 y 1574); 383 tests; lint sin errores (queda la advertencia de siempre).
 
 La prueba final encontró dos cosas que venían de S1.11 y S1.12 y se arreglaron en IV10 e IV11: sin red, la letra de lo exportado (si nunca se había exportado con red) y la categoría durante los primeros segundos. Queda, sin cambiar: con un wifi sin internet el navegador cree que hay red y la plantilla espera los reintentos de Supabase; y sin red, los jugadores de la plantilla (no las categorías) siguen saliendo de la copia después de esos reintentos.
+
+## Pendientes menores
+
+| Qué | Estado |
+| --- | --- |
+| La ✕ de cerrar de las ventanas mide 36 × 36 px, por debajo de los 44 px para tablet. Está en el `Modal` compartido ([Modal.tsx](src/components/ui/Modal.tsx), `h-9 w-9`), así que afecta a todas las ventanas hechas con él (Cuentas, Alineaciones, Exportar, Zonas, Rival, Cancha, plantilla, confirmaciones…). Visto el 2026-11-19 al probar la pantalla Cuentas | Pendiente |

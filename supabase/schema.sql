@@ -279,8 +279,10 @@ begin
 end;
 $$;
 
--- Aprobar una cuenta "pendiente" (registrada sin código de invitación válido).
--- Solo un entrenador activo puede llamarla.
+-- Pantalla "Cuentas" (aplicado el 2026-11-19). Si otro entrenador ya revisó la cuenta,
+-- las dos avisan con "La cuenta ya no está pendiente.".
+-- Aprobar: solo una cuenta 'pendiente' pasa a 'activo', y siempre como entrenador:
+-- el rol lo decide quien aprueba, no quien se registra. Solo la llama un entrenador activo.
 create or replace function public.aprobar_usuario(p_usuario_id uuid)
 returns void
 language plpgsql
@@ -289,9 +291,32 @@ set search_path = public
 as $$
 begin
   if not public.es_entrenador_activo() then
-    raise exception 'Solo un entrenador puede aprobar cuentas.';
+    raise exception 'Solo un entrenador activo puede aprobar cuentas.' using errcode = '42501';
   end if;
-  update public.perfiles set estado = 'activo' where id = p_usuario_id;
+  update public.perfiles set estado = 'activo', rol = 'entrenador'
+  where id = p_usuario_id and estado = 'pendiente';
+  if not found then
+    raise exception 'La cuenta ya no está pendiente.';
+  end if;
+end;
+$$;
+
+-- Rechazar: la cuenta 'pendiente' pasa a 'bloqueado'. No se borra: se puede deshacer desde el SQL Editor.
+create or replace function public.rechazar_usuario(p_usuario_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.es_entrenador_activo() then
+    raise exception 'Solo un entrenador activo puede rechazar cuentas.' using errcode = '42501';
+  end if;
+  update public.perfiles set estado = 'bloqueado'
+  where id = p_usuario_id and estado = 'pendiente';
+  if not found then
+    raise exception 'La cuenta ya no está pendiente.';
+  end if;
 end;
 $$;
 
@@ -304,7 +329,11 @@ grant execute on function public.usuario_disponible(text) to anon, authenticated
 -- Seg1 (SQL B, 2026-11-11): el navegador ya no consulta bloqueos ni anota intentos.
 revoke execute on function public.verificar_bloqueo_usuario(text) from public, anon, authenticated;
 revoke execute on function public.registrar_intento_login(text, text, text, text, text, text, text, text, uuid) from public, anon, authenticated;
+-- Pantalla "Cuentas": Supabase da EXECUTE a anon en las funciones nuevas, se quita de forma explícita.
+revoke execute on function public.aprobar_usuario(uuid) from public, anon;
+revoke execute on function public.rechazar_usuario(uuid) from public, anon;
 grant execute on function public.aprobar_usuario(uuid) to authenticated;
+grant execute on function public.rechazar_usuario(uuid) to authenticated;
 grant execute on function public.es_entrenador_activo() to authenticated;
 -- Seg1 y Seg2: solo la Edge Function. Supabase da EXECUTE a anon y authenticated en
 -- las funciones nuevas, así que hay que quitárselo de forma explícita.

@@ -24,7 +24,6 @@ interface LineasCampoProps {
   mostrarValla?: boolean;
   ventana?: VentanaRecorte;
   rotado180?: boolean;
-  centroOcupado?: boolean;
 }
 
 const CENTRO_U = ANCHO_CAMPO_M / 2;
@@ -132,7 +131,6 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
     mostrarValla = true,
     ventana = VENTANA_CAMPO_COMPLETO,
     rotado180 = false,
-    centroOcupado = false,
   },
   ref,
 ) {
@@ -336,7 +334,10 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
       {/*
         Sin `transform`: solo se coloca, nunca se gira, así que queda derecho en
         vertical, en horizontal y con «Girar 180°». No recibe toques: el balón
-        empieza encima. La exportación lo incrusta (ver `incrustarImagenes`).
+        empieza encima. No se oculta aunque haya jugadores en el círculo (con un
+        4-3-3 el medio defensivo casi siempre está ahí): ellos se pintan encima y
+        se quita con la casilla de la Cancha. La exportación lo incrusta (ver
+        `incrustarImagenes`).
       */}
       {mostrarEscudo && (
         <image
@@ -347,10 +348,7 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
           height={MONOGRAMA.alto}
           preserveAspectRatio="none"
           pointerEvents="none"
-          style={{
-            opacity: centroOcupado ? 0 : esTactico ? OPACIDAD.monogramaTactico : OPACIDAD.monograma,
-            transition: 'opacity 150ms',
-          }}
+          style={{ opacity: esTactico ? OPACIDAD.monogramaTactico : OPACIDAD.monograma }}
         />
       )}
 

@@ -88,9 +88,11 @@ describe('monograma en el círculo central', () => {
     expect(monograma(container).style.opacity).toBe(opacidad);
   });
 
-  it('se apaga con un jugador en el centro y desaparece si se quita en la Cancha', () => {
-    const ocupado = render(<LineasCampo orientacion="horizontal" centroOcupado />);
-    expect(monograma(ocupado.container).style.opacity).toBe('0');
+  it('solo lo quita la casilla de la Cancha: no se oculta por tener jugadores en el círculo', () => {
+    // Su opacidad solo depende del tema; los jugadores se pintan encima (lo comprueba la prueba en el navegador).
+    const { container } = render(<LineasCampo orientacion="horizontal" />);
+    expect(monograma(container).style.opacity).toBe('0.1');
+    expect(monograma(container).style.transition).toBe('');
     const sinMonograma = render(<LineasCampo orientacion="horizontal" mostrarEscudo={false} />);
     expect(sinMonograma.container.querySelector('image')).toBeNull();
   });

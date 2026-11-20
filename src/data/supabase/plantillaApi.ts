@@ -98,6 +98,23 @@ export async function actualizarJugador(jugadorId: string, datos: DatosJugador):
 }
 
 /**
+ * Traspaso definitivo a otra categoría (F5.1): la MISMA fila cambia de
+ * `categoria_id`, así que el id no cambia y las alineaciones guardadas lo
+ * siguen encontrando. La ruta de la foto no se toca. Se pide la fila de vuelta
+ * porque, si la base no dejara cambiarla, el UPDATE no daría error: solo no
+ * cambiaría nada.
+ */
+export async function traspasarJugador(jugadorId: string, categoriaId: string, datos: DatosJugador): Promise<void> {
+  const { data, error } = await supabase
+    .from('jugadores')
+    .update({ ...aFila(datos), categoria_id: categoriaId, actualizado_en: new Date().toISOString() })
+    .eq('id', jugadorId)
+    .select('id');
+  if (error) throw new Error(traducirError(error.message));
+  if (!data || data.length !== 1) throw new Error('No se pudo traspasar al jugador: la base de datos no aceptó el cambio.');
+}
+
+/**
  * Desactivar, nunca borrar: las alineaciones guardadas referencian al jugador
  * y borrarlo las dejaría rotas.
  */

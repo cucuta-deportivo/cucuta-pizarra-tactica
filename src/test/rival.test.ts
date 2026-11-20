@@ -51,6 +51,7 @@ describe('rival sin mover a nuestros jugadores', () => {
           cancha: canchaVacia(),
           jugadoresPersonalizados: [],
           secuencia: null,
+          jugadaCerrada: null,
         },
         etiquetaPresente: 'Alineación inicial',
         futuro: [],

@@ -57,6 +57,7 @@ import type {
   ModoOrientacion,
   Posicion,
   SecuenciaTactica,
+  TableroTactico,
   TipoDestinoRuta,
   TipoEasing,
   TipoInterpolacionRuta,
@@ -87,6 +88,12 @@ export interface DocumentoTactico {
    * anterior sigue comportándose igual hasta que el entrenador crea una jugada.
    */
   secuencia: SecuenciaTactica | null;
+  /**
+   * La jugada cerrada (F5.4a): guardada aparte para que la pizarra se edite sin
+   * tocar sus fases, y para volver a abrirla desde ⋯. Nunca hay a la vez una
+   * abierta (`secuencia`) y una cerrada.
+   */
+  jugadaCerrada: SecuenciaTactica | null;
 }
 
 function balonInicial(): Balon {
@@ -108,6 +115,19 @@ function documentoVacio(formacionId: string): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
+    jugadaCerrada: null,
+  };
+}
+
+/** Lo que hay ahora en el campo, para guardarlo aparte mientras la jugada está abierta (F5.4a). */
+function tableroDesdeDocumento(doc: DocumentoTactico): TableroTactico {
+  return {
+    titulares: doc.titulares,
+    jugadoresRival: doc.rival?.jugadores ?? [],
+    balones: doc.balones,
+    objetos: doc.objetos,
+    trazos: doc.trazos,
+    celdasPintadas: doc.cuadricula.celdasPintadas,
   };
 }
 
@@ -136,8 +156,8 @@ function frameDesdeDocumento(
   };
 }
 
-/** Vuelca un frame sobre el documento vivo, dejando intacto todo lo que no se anima. */
-function aplicarFrameADocumento(doc: DocumentoTactico, frame: FrameTactico): void {
+/** Vuelca un frame (o la pizarra guardada) sobre el documento vivo, dejando intacto todo lo que no se anima. */
+function aplicarFrameADocumento(doc: DocumentoTactico, frame: TableroTactico): void {
   doc.titulares = frame.titulares;
   doc.balones = frame.balones;
   doc.objetos = frame.objetos;
@@ -196,6 +216,7 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
     cancha: alineacion.cancha ?? canchaVacia(),
     jugadoresPersonalizados: alineacion.jugadoresPersonalizados ?? [],
     secuencia: alineacion.secuencia ?? null,
+    jugadaCerrada: alineacion.jugadaCerrada ?? null,
   };
 }
 
@@ -283,6 +304,7 @@ export function alineacionDesdeDocumento(
     cancha: doc.cancha,
     jugadoresPersonalizados: doc.jugadoresPersonalizados,
     secuencia: doc.secuencia,
+    jugadaCerrada: doc.jugadaCerrada,
     creadaEn: base.creadaEn,
     modificadaEn,
   };
@@ -398,7 +420,12 @@ interface AlineacionState {
 
   // Jugadas animadas (secuencia de frames)
   iniciarSecuencia: () => void;
+  /** Borra la jugada, abierta o cerrada; si estaba abierta, el campo vuelve a la pizarra. */
   descartarSecuencia: () => void;
+  /** Guarda la jugada abierta y vuelve a la pizarra (F5.4a). */
+  cerrarJugada: () => void;
+  /** Vuelve a abrir la jugada cerrada, en la fase en la que se dejó. */
+  abrirJugada: () => void;
   agregarFrame: () => void;
   /** Cierra un frame con lo que hay en pantalla sin tocar el activo (modo grabación). */
   grabarFrame: () => void;
@@ -1184,14 +1211,53 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // --- Jugadas animadas ---
     iniciarSecuencia: () =>
       mutar((doc) => {
-        if (doc.secuencia) return;
-        doc.secuencia = { frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })], indiceActivo: 0 };
+        // Una jugada por alineación: con una cerrada, se abre esa (⋯ → Abrir jugada).
+        if (doc.secuencia || doc.jugadaCerrada) return;
+        doc.secuencia = {
+          frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })],
+          indiceActivo: 0,
+          pizarra: tableroDesdeDocumento(doc),
+        };
       }, 'Jugada iniciada'),
 
-    descartarSecuencia: () =>
+    descartarSecuencia: () => {
+      const { secuencia, jugadaCerrada } = get().historial.presente;
+      if (!secuencia && !jugadaCerrada) return;
       mutar((doc) => {
+        if (doc.secuencia?.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
         doc.secuencia = null;
-      }, 'Jugada descartada'),
+        doc.jugadaCerrada = null;
+      }, 'Jugada borrada');
+      avisarConDeshacer('Jugada borrada.');
+    },
+
+    // F5.4a: cerrar ya no borra. Las fases se guardan aparte y el campo vuelve a
+    // la pizarra; así editar la pizarra no toca la jugada, y al reabrirla cada
+    // cosa vuelve a su sitio.
+    cerrarJugada: () => {
+      if (!get().historial.presente.secuencia) return;
+      mutar((doc) => {
+        const secuencia = doc.secuencia;
+        if (!secuencia) return;
+        capturarFrameActivo(doc);
+        const { pizarra, ...jugada } = secuencia;
+        if (pizarra) aplicarFrameADocumento(doc, pizarra);
+        doc.jugadaCerrada = jugada;
+        doc.secuencia = null;
+      }, 'Jugada cerrada');
+      useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
+    },
+
+    abrirJugada: () =>
+      mutar((doc) => {
+        const jugada = doc.jugadaCerrada;
+        if (!jugada || doc.secuencia) return;
+        const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
+        const activo = jugada.frames[indiceActivo];
+        doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
+        doc.jugadaCerrada = null;
+        if (activo) aplicarFrameADocumento(doc, activo);
+      }, 'Jugada abierta'),
 
     agregarFrame: () =>
       mutar((doc) => {

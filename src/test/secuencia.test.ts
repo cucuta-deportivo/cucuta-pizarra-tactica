@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { usePlantillaStore } from '../store/plantillaStore';
+import { useUiStore } from '../store/uiStore';
 import { obtenerFormacion } from '../data/formaciones';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 
@@ -83,6 +84,104 @@ describe('secuencia táctica: frames', () => {
     expect(doc().secuencia).toBeNull();
     // El tablero conserva a los jugadores: descartar la animación no vacía el campo.
     expect(doc().titulares).toHaveLength(1);
+  });
+
+  // --- F5.4a: cerrar guarda la jugada; borrar es aparte ---
+
+  it('cerrar guarda la jugada y vuelve a la pizarra; abrirla vuelve a la fase en que se dejó', () => {
+    const inicial = { ...posicionDe(jugadorId)! };
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().moverJugador(jugadorId, 80, 20);
+
+    estado().cerrarJugada();
+    expect(doc().secuencia).toBeNull();
+    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+    expect(doc().jugadaCerrada!.indiceActivo).toBe(1);
+    // Lo movido en la fase 2 quedó en ella aunque no se cambió de fase antes de cerrar.
+    expect(doc().jugadaCerrada!.frames[1]!.titulares[0]).toMatchObject({ x: 80, y: 20 });
+    expect(posicionDe(jugadorId)).toMatchObject({ x: inicial.x, y: inicial.y });
+
+    // Editar la pizarra no toca la jugada cerrada.
+    const fases = doc().jugadaCerrada!.frames;
+    estado().moverJugador(jugadorId, 10, 10);
+    expect(doc().jugadaCerrada!.frames).toBe(fases);
+
+    estado().abrirJugada();
+    expect(doc().jugadaCerrada).toBeNull();
+    expect(doc().secuencia!.indiceActivo).toBe(1);
+    expect(posicionDe(jugadorId)).toMatchObject({ x: 80, y: 20 });
+
+    // Y al volver a cerrarla, la pizarra es la que se editó entre medias.
+    estado().cerrarJugada();
+    expect(posicionDe(jugadorId)).toMatchObject({ x: 10, y: 10 });
+  });
+
+  it('cerrar y abrir se deshacen como cualquier otro paso', () => {
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().cerrarJugada();
+    estado().deshacer();
+    expect(doc().secuencia!.frames).toHaveLength(2);
+    expect(doc().jugadaCerrada).toBeNull();
+  });
+
+  it('una jugada de antes, sin la pizarra guardada, se cierra dejando el campo en la fase que se veía', () => {
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().moverJugador(jugadorId, 80, 20);
+    // Así guardaban la jugada las versiones anteriores: sin `pizarra`.
+    useAlineacionStore.setState((s) => {
+      const { pizarra: _pizarra, ...sinPizarra } = s.historial.presente.secuencia!;
+      return { historial: { ...s.historial, presente: { ...s.historial.presente, secuencia: sinPizarra } } };
+    });
+
+    estado().cerrarJugada();
+    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+    expect(posicionDe(jugadorId)).toMatchObject({ x: 80, y: 20 });
+  });
+
+  it('con una jugada cerrada no se crea otra, y borrarla no mueve la pizarra y se puede deshacer', () => {
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().cerrarJugada();
+    estado().moverJugador(jugadorId, 10, 10);
+
+    estado().iniciarSecuencia();
+    expect(doc().secuencia).toBeNull();
+
+    useUiStore.setState({ toasts: [] });
+    estado().descartarSecuencia();
+    expect(doc().jugadaCerrada).toBeNull();
+    expect(posicionDe(jugadorId)).toMatchObject({ x: 10, y: 10 });
+
+    useUiStore.getState().toasts.find((t) => t.accion?.etiqueta === 'Deshacer')!.accion!.ejecutar();
+    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+  });
+
+  it('borrar la jugada abierta devuelve el campo a la pizarra de antes de la jugada', () => {
+    const inicial = { ...posicionDe(jugadorId)! };
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().moverJugador(jugadorId, 80, 20);
+    estado().descartarSecuencia();
+    expect(doc().secuencia).toBeNull();
+    expect(posicionDe(jugadorId)).toMatchObject({ x: inicial.x, y: inicial.y });
+  });
+
+  it('la jugada cerrada se guarda con la alineación y vuelve al abrirla', async () => {
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().renombrarSecuencia('Salida ante presión');
+    estado().cerrarJugada();
+    const id = estado().id;
+    await estado().guardarAhora();
+
+    estado().nuevaAlineacion();
+    await estado().cargarAlineacion(id);
+    expect(doc().secuencia).toBeNull();
+    expect(doc().jugadaCerrada).toMatchObject({ nombre: 'Salida ante presión' });
+    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
   });
 });
 

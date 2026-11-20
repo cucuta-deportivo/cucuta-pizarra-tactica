@@ -236,6 +236,9 @@ export interface FrameTactico {
   trayectorias?: TrayectoriaMovimiento[];
 }
 
+/** Lo que se ve en el campo y se anima: la pizarra fuera de una jugada o una de sus fases. */
+export type TableroTactico = Pick<FrameTactico, 'titulares' | 'jugadoresRival' | 'balones' | 'objetos' | 'trazos' | 'celdasPintadas'>;
+
 /** Curva de movimiento de las transiciones. Ver `CURVAS_EASING` en utils/interpolacion. */
 export type TipoEasing = 'lineal' | 'entrada' | 'salida' | 'entrada-salida';
 
@@ -297,6 +300,13 @@ export interface SecuenciaTactica {
   indiceActivo: number;
   /** Curva de toda la jugada. Opcional: si falta, 'entrada-salida'. */
   easing?: TipoEasing;
+  /**
+   * Mientras la jugada está abierta, la pizarra tal como estaba fuera de ella
+   * (F5.4a): al cerrar o borrar la jugada, el campo vuelve a esto. Opcional: las
+   * jugadas de antes no lo tienen y al cerrarlas el campo se queda en la fase
+   * que se veía, como antes.
+   */
+  pizarra?: TableroTactico;
 }
 
 export interface Alineacion {
@@ -323,6 +333,8 @@ export interface Alineacion {
   fichas?: FichaJugador[];
   /** `null` mientras el tablero sea una pizarra fija: solo existe al crear una jugada. */
   secuencia?: SecuenciaTactica | null;
+  /** La jugada cerrada con «Cerrar jugada» (F5.4a), guardada para volver a abrirla. Las guardadas antes no la tienen. */
+  jugadaCerrada?: SecuenciaTactica | null;
 }
 
 export type Orientacion = 'vertical' | 'horizontal';

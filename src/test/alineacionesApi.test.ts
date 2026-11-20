@@ -49,6 +49,7 @@ function alineacion(cambios: Partial<Alineacion> = {}): Alineacion {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [{ ...PLANTILLA_PRUEBA[0]!, id: 'personalizado-1', categoriaId: '', fotoUrl: 'https://enlace-firmado.example/x' }],
     secuencia: null,
+    jugadaCerrada: null,
     categoriaId: 'sub20',
     fichas: [ficha],
     ...cambios,

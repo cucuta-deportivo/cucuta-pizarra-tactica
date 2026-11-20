@@ -60,6 +60,7 @@ describe('cambio de formación sin mover a los jugadores', () => {
           cancha: canchaVacia(),
           jugadoresPersonalizados: [],
           secuencia: null,
+          jugadaCerrada: null,
         },
         etiquetaPresente: 'Alineación inicial',
         futuro: [],

@@ -30,7 +30,7 @@ export function TimelineTactica() {
   const duplicarFrame = useAlineacionStore((s) => s.duplicarFrame);
   const eliminarFrame = useAlineacionStore((s) => s.eliminarFrame);
   const renombrarFrame = useAlineacionStore((s) => s.renombrarFrame);
-  const descartarSecuencia = useAlineacionStore((s) => s.descartarSecuencia);
+  const cerrarJugada = useAlineacionStore((s) => s.cerrarJugada);
   const setDuracionFrame = useAlineacionStore((s) => s.setDuracionFrame);
   const setEasingSecuencia = useAlineacionStore((s) => s.setEasingSecuencia);
   const moverFrame = useAlineacionStore((s) => s.moverFrame);
@@ -49,6 +49,7 @@ export function TimelineTactica() {
   const mostrarTrayectorias = useReproduccionStore((s) => s.mostrarTrayectorias);
   const alternarTrayectorias = useReproduccionStore((s) => s.alternarTrayectorias);
   const pausar = useReproduccionStore((s) => s.pausar);
+  const detener = useReproduccionStore((s) => s.detener);
   const setPrevisualizando = useReproduccionStore((s) => s.setPrevisualizando);
   const setTiempoMs = useReproduccionStore((s) => s.setTiempoMs);
   const modoTrayectoriaActivo = usePizarraCampoStore((s) => s.modoTrayectoriaActivo);
@@ -204,7 +205,19 @@ export function TimelineTactica() {
           ))}
         </select>
 
-        <Boton tamano="sm" variante="fantasma" onClick={descartarSecuencia} title="Cerrar la jugada y volver a la pizarra">
+        {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
+        <Boton
+          tamano="sm"
+          variante="fantasma"
+          onClick={() => {
+            // Sin jugada en pantalla no queda nada que reproducir, grabar ni recorrer.
+            detener();
+            detenerGrabacion();
+            desactivarModoTrayectoria();
+            cerrarJugada();
+          }}
+          title="Guardar la jugada y volver a la pizarra. Se vuelve a abrir desde ⋯"
+        >
           Cerrar jugada
         </Boton>
       </div>

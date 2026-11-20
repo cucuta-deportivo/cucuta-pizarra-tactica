@@ -43,6 +43,7 @@ function documento(cambios: Partial<DocumentoTactico> = {}): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
+    jugadaCerrada: null,
     ...cambios,
   };
 }

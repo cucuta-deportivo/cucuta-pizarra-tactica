@@ -8,16 +8,17 @@ import { canchaVacia, cuadriculaVacia, ubicarZonaEnLado } from '../utils/anexoA'
 import type { JugadorEnCampo } from '../types';
 
 /**
- * Activar, ocultar o cambiar el modo del rival nunca mueve a nuestros
- * jugadores: ni a los que tienen zona ni a los arrastrados a mano, aunque
- * estén en la mitad del rival.
+ * F5.3 (cambia el paso 7b): con los dos equipos a la vista, el nuestro se
+ * acomoda solo en su mitad (y/2, a todos, x igual) si alguien está en campo
+ * rival; al dejar de verse, se extiende (y×2) solo si fue la app quien lo
+ * acomodó. Siempre con aviso y Deshacer, en un paso aparte del rival.
  */
 const estado = () => useAlineacionStore.getState().historial.presente;
 const ACOMODAR = 'Acomodar mi equipo en mi mitad';
 const EXTENDER = 'Extender mi equipo por todo el campo';
 const aviso = (etiqueta: string) => useUiStore.getState().toasts.find((t) => t.accion?.etiqueta === etiqueta);
 
-describe('rival sin mover a nuestros jugadores', () => {
+describe('rival y nuestro equipo (F5.3)', () => {
   let titularesIniciales: JugadorEnCampo[];
 
   beforeEach(() => {
@@ -61,25 +62,36 @@ describe('rival sin mover a nuestros jugadores', () => {
     useUiStore.setState({ toasts: [] });
   });
 
-  it('activar el rival (modo Ambos) no mueve a nadie', () => {
+  const acomodados = () => titularesIniciales.map((t) => ({ ...t, y: t.y / 2 }));
+
+  it('activar el rival con alguien en campo rival acomoda solo a todos (y/2, x igual) y avisa con Deshacer', () => {
     useAlineacionStore.getState().activarRival('4-4-2');
     expect(estado().rival?.modoVista).toBe('ambos');
-    expect(estado().titulares).toEqual(titularesIniciales);
+    expect(estado().titulares).toEqual(acomodados());
+    expect(estado().rival?.nuestroEquipoAcomodado).toBe(true);
+    expect(aviso('Deshacer')).toBeDefined();
+    expect(aviso(ACOMODAR)).toBeUndefined();
   });
 
-  it('ocultar, cambiar de modo y desactivar el rival tampoco mueve a nadie', () => {
-    const { activarRival, actualizarRival, desactivarRival } = useAlineacionStore.getState();
+  it('el Deshacer del aviso devuelve las posiciones exactas y el rival sigue activo', () => {
+    useAlineacionStore.getState().activarRival('4-4-2');
+    aviso('Deshacer')!.accion!.ejecutar();
+    expect(estado().titulares).toEqual(titularesIniciales);
+    expect(estado().rival).toMatchObject({ formacionId: '4-4-2', visible: true, modoVista: 'ambos' });
+  });
+
+  it('ocultar el rival extiende al equipo (y×2) exacto, con aviso; mostrarlo lo vuelve a acomodar', () => {
+    const { activarRival, actualizarRival } = useAlineacionStore.getState();
     activarRival('4-4-2');
+    useUiStore.setState({ toasts: [] });
+
     actualizarRival({ visible: false });
     expect(estado().titulares).toEqual(titularesIniciales);
-    actualizarRival({ visible: true, modoVista: 'solo_nosotros' });
-    expect(estado().titulares).toEqual(titularesIniciales);
-    actualizarRival({ modoVista: 'solo_rival' });
-    expect(estado().titulares).toEqual(titularesIniciales);
-    actualizarRival({ modoVista: 'ambos' });
-    expect(estado().titulares).toEqual(titularesIniciales);
-    desactivarRival();
-    expect(estado().titulares).toEqual(titularesIniciales);
+    expect(estado().rival?.nuestroEquipoAcomodado).toBeUndefined();
+    expect(aviso('Deshacer')).toBeDefined();
+
+    actualizarRival({ visible: true });
+    expect(estado().titulares).toEqual(acomodados());
   });
 
   it('los jugadores rivales siguen recogiéndose en su mitad según el modo', () => {
@@ -97,89 +109,103 @@ describe('rival sin mover a nuestros jugadores', () => {
     expect(estado().rival!.jugadores[0]).toMatchObject({ x: enAmbos.x, y: enAmbos.y });
   });
 
-  // --- Paso 7b: recolocar a los nuestros solo cuando el entrenador lo pide ---
-
-  it('al activar el rival con jugadores en campo rival se ofrece acomodar; al tocarlo, y/2 sin tocar x', () => {
-    useAlineacionStore.getState().activarRival('4-4-2');
-    expect(estado().titulares).toEqual(titularesIniciales);
-
-    aviso(ACOMODAR)!.accion!.ejecutar();
-    expect(estado().titulares).toEqual(titularesIniciales.map((t) => ({ ...t, y: t.y / 2 })));
-    expect(aviso('Deshacer')).toBeDefined();
-  });
-
-  it('el Deshacer del aviso devuelve las posiciones exactas', () => {
-    useAlineacionStore.getState().activarRival('4-4-2');
-    aviso(ACOMODAR)!.accion!.ejecutar();
-    aviso('Deshacer')!.accion!.ejecutar();
-    expect(estado().titulares).toEqual(titularesIniciales);
-  });
-
   it('acomodar no mueve a los rivales', () => {
-    const { activarRival, asignarJugadorRivalAZona, acomodarEnMiMitad } = useAlineacionStore.getState();
+    const { activarRival, asignarJugadorRivalAZona, acomodarEnMiMitad, deshacer } = useAlineacionStore.getState();
     activarRival('4-4-2');
+    deshacer(); // los nuestros vuelven a campo rival; el rival sigue activo
     asignarJugadorRivalAZona('DC-9', 30, 60, 'DC', 9);
     const rivales = estado().rival!.jugadores;
     acomodarEnMiMitad();
+    expect(estado().titulares).toEqual(acomodados());
     expect(estado().rival!.jugadores).toEqual(rivales);
   });
 
-  it('con todo el equipo en su mitad no se ofrece acomodar, y acomodar no hace nada', () => {
-    const enMiMitad = titularesIniciales.map((t) => ({ ...t, y: Math.min(t.y, 40) }));
-    useAlineacionStore.setState((s) => ({ historial: { ...s.historial, presente: { ...s.historial.presente, titulares: enMiMitad } } }));
-    useAlineacionStore.getState().activarRival('4-4-2');
-    expect(aviso(ACOMODAR)).toBeUndefined();
-
-    const pasos = useAlineacionStore.getState().historial.pasado.length;
-    useAlineacionStore.getState().acomodarEnMiMitad();
-    expect(useAlineacionStore.getState().historial.pasado).toHaveLength(pasos);
-  });
-
-  it('al ocultar el rival con el equipo en su mitad se ofrece extender (y×2), que deshace el acomodo exacto', () => {
-    const { activarRival, acomodarEnMiMitad, actualizarRival } = useAlineacionStore.getState();
-    activarRival('4-4-2');
-    acomodarEnMiMitad();
-    useUiStore.setState({ toasts: [] });
-
-    actualizarRival({ visible: false });
-    expect(estado().titulares).toEqual(titularesIniciales.map((t) => ({ ...t, y: t.y / 2 })));
-    aviso(EXTENDER)!.accion!.ejecutar();
-    expect(estado().titulares).toEqual(titularesIniciales);
-    expect(aviso('Deshacer')).toBeDefined();
-  });
-
-  it('extender se ofrece al desactivar el rival o pasar a Solo nosotros, pero no al pasar a Solo rival', () => {
+  it('se extiende al desactivar el rival o pasar a Solo nosotros; en Solo rival se queda acomodado', () => {
     const preparar = () => {
-      const { activarRival, acomodarEnMiMitad } = useAlineacionStore.getState();
       useAlineacionStore.setState((s) => ({
         historial: { ...s.historial, presente: { ...s.historial.presente, rival: null, titulares: titularesIniciales } },
       }));
-      activarRival('4-4-2');
-      acomodarEnMiMitad();
-      useUiStore.setState({ toasts: [] });
+      useAlineacionStore.getState().activarRival('4-4-2');
     };
 
     preparar();
     useAlineacionStore.getState().desactivarRival();
-    expect(aviso(EXTENDER)).toBeDefined();
+    expect(estado().titulares).toEqual(titularesIniciales);
 
     preparar();
     useAlineacionStore.getState().actualizarRival({ modoVista: 'solo_nosotros' });
-    expect(aviso(EXTENDER)).toBeDefined();
+    expect(estado().titulares).toEqual(titularesIniciales);
 
     preparar();
     useAlineacionStore.getState().actualizarRival({ modoVista: 'solo_rival' });
-    expect(aviso(EXTENDER)).toBeUndefined();
+    expect(estado().titulares).toEqual(acomodados());
+    // De vuelta a Ambos no se acomoda otra vez (ya lo está), y en Solo nosotros se extiende.
+    useAlineacionStore.getState().actualizarRival({ modoVista: 'ambos' });
+    expect(estado().titulares).toEqual(acomodados());
+    useAlineacionStore.getState().actualizarRival({ modoVista: 'solo_nosotros' });
+    expect(estado().titulares).toEqual(titularesIniciales);
   });
 
-  it('extender no hace nada si alguien está en campo rival, y renombrar al rival no ofrece nada', () => {
-    const { activarRival, actualizarRival, extenderPorTodoElCampo } = useAlineacionStore.getState();
+  it('con todo el equipo en su mitad no se mueve a nadie, y al quitar el rival no se estira: se ofrece', () => {
+    const enMiMitad = titularesIniciales.map((t) => ({ ...t, y: Math.min(t.y, 40) }));
+    useAlineacionStore.setState((s) => ({ historial: { ...s.historial, presente: { ...s.historial.presente, titulares: enMiMitad } } }));
+    useAlineacionStore.getState().activarRival('4-4-2');
+    expect(estado().titulares).toEqual(enMiMitad);
+    expect(useUiStore.getState().toasts).toHaveLength(0);
+
+    const pasos = useAlineacionStore.getState().historial.pasado.length;
+    useAlineacionStore.getState().acomodarEnMiMitad();
+    expect(useAlineacionStore.getState().historial.pasado).toHaveLength(pasos);
+
+    // Un bloque colocado a propósito en su campo no se estira solo.
+    useAlineacionStore.getState().desactivarRival();
+    expect(estado().titulares).toEqual(enMiMitad);
+    expect(aviso(EXTENDER)).toBeDefined();
+  });
+
+  it('una alineación de antes, acomodada a mano y sin la marca, no se extiende sola: se ofrece', () => {
+    useAlineacionStore.setState((s) => ({
+      historial: {
+        ...s.historial,
+        presente: {
+          ...s.historial.presente,
+          titulares: acomodados(),
+          rival: { nombre: 'Rival', formacionId: '4-4-2', paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' },
+        },
+      },
+    }));
+    useAlineacionStore.getState().actualizarRival({ visible: false });
+    expect(estado().titulares).toEqual(acomodados());
+
+    aviso(EXTENDER)!.accion!.ejecutar();
+    expect(estado().titulares).toEqual(titularesIniciales);
+  });
+
+  it('si alguien volvió a campo rival, al ocultar no se extiende; renombrar al rival no mueve ni avisa', () => {
+    const { activarRival, actualizarRival, moverJugador, extenderPorTodoElCampo } = useAlineacionStore.getState();
     activarRival('4-4-2');
     useUiStore.setState({ toasts: [] });
     actualizarRival({ nombre: 'Rival de prueba', paleta: 'azul' });
     expect(useUiStore.getState().toasts).toHaveLength(0);
+    expect(estado().titulares).toEqual(acomodados());
 
+    // y×2 lo sacaría del campo.
+    moverJugador('test-09', 58.3, 70);
+    const conUnoEnCampoRival = estado().titulares;
+    actualizarRival({ visible: false });
+    expect(estado().titulares).toEqual(conUnoEnCampoRival);
     extenderPorTodoElCampo();
+    expect(estado().titulares).toEqual(conUnoEnCampoRival);
+  });
+
+  it('con una jugada abierta no se mueve a nadie solo: se ofrece acomodar, como antes', () => {
+    useAlineacionStore.getState().iniciarSecuencia();
+    useAlineacionStore.getState().activarRival('4-4-2');
     expect(estado().titulares).toEqual(titularesIniciales);
+
+    aviso(ACOMODAR)!.accion!.ejecutar();
+    expect(estado().titulares).toEqual(acomodados());
+    // Solo se movió la fase activa: no cuenta como acomodado para extenderlo solo.
+    expect(estado().rival?.nuestroEquipoAcomodado).toBeUndefined();
   });
 });

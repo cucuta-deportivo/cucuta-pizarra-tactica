@@ -13,6 +13,7 @@ Aplicación web de pizarra táctica para el cuerpo técnico de las categorías f
 ## Reglas del producto (no romper)
 - El campo es un SVG que ocupa al menos el 70 % del viewport, medido por el lado que lo limita (el alto o el ancho, según cuál tope primero), no por área.
 - Al elegir una formación se muestran zonas fantasma. **Nunca** se colocan jugadores automáticamente.
+- Al activar el rival, nuestro equipo se acomoda solo en su mitad y, al quitarlo, se extiende por todo el campo, siempre con un aviso y Deshacer.
 - El arrastre es libre, sin imantación a la cuadrícula.
 - Capa de dibujo vectorial (flechas, líneas, zonas) con deshacer y rehacer.
 - Varias alineaciones guardadas, con autoguardado.

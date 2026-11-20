@@ -246,9 +246,8 @@ export function esAlineacionVaciaSinTocar(alineacion: Alineacion): boolean {
  * equipos en pantalla se recogen en su mitad, y solos vuelven a desplegarse por
  * todo el campo. Se parte de la zona de origen de cada uno (no de su posición
  * actual) para que alternar de modo sea siempre reversible; quien no tiene zona
- * solo se recorta a su mitad. Los nuestros NO se tocan: activar, ocultar o
- * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
- * nuestras zonas fantasma, en Campo).
+ * solo se recorta a su mitad. Los nuestros no se tocan aquí: de ellos se
+ * encarga `recolocarNuestroEquipo` (F5.3), en un paso aparte con su aviso.
  */
 /**
  * La zona fantasma sobre la que se soltó a un jugador, si puede ocuparla: es
@@ -510,9 +509,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     marcarPendiente();
   }
 
-  // Paso 7b: cambiar qué equipos se ven nunca mueve a los nuestros; si hace
-  // falta, se OFRECE recolocarlos con un toque. Solo lo llaman las acciones del
-  // rival, así que deshacer o cargar otra alineación no lo dispara.
+  // Cuando no se mueve a nadie solo (jugada abierta, o un equipo que la app no
+  // acomodó), se OFRECE recolocarlos con un toque, como en el paso 7b.
   function ofrecerRecolocar(antes: DocumentoTactico): void {
     const ahora = get().historial.presente;
     const { mostrarToast } = useUiStore.getState();
@@ -528,6 +526,34 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         mensaje: 'Tu equipo está recogido en tu mitad.',
         accion: { etiqueta: 'Extender mi equipo por todo el campo', ejecutar: () => get().extenderPorTodoElCampo() },
       });
+    }
+  }
+
+  // F5.3 (cambia el paso 7b): con los dos equipos a la vista, el nuestro se
+  // acomoda solo en su mitad (y/2) si alguien estaba en campo rival; al dejar de
+  // verse, se extiende (y×2) solo si fue la app quien lo acomodó, para no estirar
+  // un bloque que el entrenador colocó a propósito en su campo. Va en un paso
+  // aparte del cambio del rival, con aviso y Deshacer: deshacer devuelve a los
+  // nuestros y el rival sigue como quedó. Con una jugada abierta no se mueve a
+  // nadie solo (sus fases recorren todo el campo): se ofrece, como antes. Solo lo
+  // llaman las acciones del rival, así que deshacer o cargar otra alineación no
+  // lo dispara.
+  function recolocarNuestroEquipo(antes: DocumentoTactico): void {
+    const ahora = get().historial.presente;
+    const acomodadoAntes = Boolean(antes.rival?.nuestroEquipoAcomodado);
+    if (ahora.secuencia) {
+      ofrecerRecolocar(antes);
+    } else if (acomodadoAntes && seVeSoloNuestroEquipo(ahora.rival) && equipoEnSuMitad(ahora.titulares)) {
+      get().extenderPorTodoElCampo();
+    } else if (
+      !seVenAmbosEquipos(antes.rival) &&
+      seVenAmbosEquipos(ahora.rival) &&
+      !ahora.rival?.nuestroEquipoAcomodado &&
+      hayJugadoresEnCampoRival(ahora.titulares)
+    ) {
+      get().acomodarEnMiMitad();
+    } else if (!acomodadoAntes) {
+      ofrecerRecolocar(antes);
     }
   }
 
@@ -1110,7 +1136,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' };
         recolocarPorModo(doc);
       }, 'Equipo rival activado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     desactivarRival: () => {
@@ -1119,7 +1145,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.rival = null;
         doc.marcajes = [];
       }, 'Equipo rival desactivado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     actualizarRival: (cambios) => {
@@ -1132,7 +1158,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // paleta no debe mover a nadie del campo.
         if (cambiaReparto) recolocarPorModo(doc);
       }, 'Rival actualizado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     // Misma regla que las zonas fantasma en "Ambos" (y/2, ancho intacto): quien
@@ -1142,6 +1168,9 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       if (!hayJugadoresEnCampoRival(get().historial.presente.titulares)) return;
       mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y / 2;
+        // Se recuerda (F5.3) para extenderlo solo al dejar de ver al rival. Con una
+        // jugada abierta solo se mueve su fase activa, así que no cuenta.
+        if (doc.rival && !doc.secuencia) doc.rival.nuestroEquipoAcomodado = true;
       }, 'Equipo acomodado en su mitad');
       avisarConDeshacer('Equipo acomodado en tu mitad.');
     },
@@ -1150,6 +1179,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       if (!equipoEnSuMitad(get().historial.presente.titulares)) return;
       mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y * 2;
+        if (doc.rival) delete doc.rival.nuestroEquipoAcomodado;
       }, 'Equipo extendido por todo el campo');
       avisarConDeshacer('Equipo extendido por todo el campo.');
     },

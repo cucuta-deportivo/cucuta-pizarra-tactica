@@ -183,6 +183,12 @@ export interface EquipoRival {
   jugadores: JugadorRival[];
   visible: boolean;
   modoVista: ModoVistaEquipos;
+  /**
+   * Nuestro equipo se recogió en su mitad al ver los dos equipos (F5.3): al
+   * dejar de verse el rival se extiende solo, y solo entonces. Opcional: sin
+   * ella (alineaciones de antes) no se extiende solo, se ofrece.
+   */
+  nuestroEquipoAcomodado?: boolean;
 }
 
 export interface Marcaje {

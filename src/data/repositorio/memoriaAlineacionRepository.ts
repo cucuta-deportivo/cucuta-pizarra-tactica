@@ -2,6 +2,7 @@ import type { Alineacion } from '../../types';
 import {
   marcarEliminadaPorSubir,
   marcarPorSubir,
+  sePuedeSobrescribir,
   sigueEnLaRevision,
   type AlineacionRepository,
   type CopiaLocal,
@@ -38,6 +39,7 @@ export class MemoriaAlineacionRepository implements AlineacionRepository {
   async guardar(alineacion: Alineacion, revisionBase?: number): Promise<ResultadoGuardado> {
     const previo = this.registros.get(alineacion.id);
     if (!sigueEnLaRevision(previo, revisionBase)) return { guardada: false };
+    if (!sePuedeSobrescribir(this.almacen.get(alineacion.id))) return { guardada: false };
     const marca = marcarPorSubir(previo, alineacion.id);
     this.almacen.set(alineacion.id, alineacion);
     this.registros.set(alineacion.id, marca);

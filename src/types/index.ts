@@ -317,6 +317,11 @@ export interface SecuenciaTactica {
 
 export interface Alineacion {
   id: string;
+  /**
+   * Versión del formato con que se guardó (ver `FORMATO_ALINEACION` en
+   * utils/formatoAlineacion). Las guardadas antes de existir no la tienen: son la 1.
+   */
+  formato?: number;
   nombre: string;
   formacionId: string;
   titulares: JugadorEnCampo[];

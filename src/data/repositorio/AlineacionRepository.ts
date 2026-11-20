@@ -1,4 +1,5 @@
 import type { Alineacion } from '../../types';
+import { esDeUnaVersionMasNueva } from '../../utils/formatoAlineacion';
 
 export interface ResumenAlineacion {
   id: string;
@@ -85,6 +86,15 @@ export interface Escritura {
   id: string;
   alineacion?: Alineacion | null;
   marca?: RegistroSincronizacion | null;
+}
+
+/**
+ * Nunca se sobrescribe una alineación guardada con una versión más nueva de la
+ * app: esta perdería lo que no conoce. La pizarra ya no deja editarla; esto es
+ * la última barrera, por si algún camino llegara a guardar igualmente.
+ */
+export function sePuedeSobrescribir(guardada: Alineacion | undefined): boolean {
+  return !guardada || !esDeUnaVersionMasNueva(guardada);
 }
 
 /** ¿Sigue la copia local en la revisión de la que parte quien guarda? Sin `revisionBase`, no se comprueba. */

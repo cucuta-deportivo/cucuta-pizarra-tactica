@@ -66,6 +66,9 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
     if (abierto) setIncluirCapas(TODAS_LAS_CAPAS);
   }, [abierto]);
 
+  // De una versión más nueva de la app (solo lectura): tal como se leyó, sin perder lo que esta no conoce.
+  const alineacionSoloLectura = useAlineacionStore((s) => s.alineacionSoloLectura);
+
   function construirAlineacion() {
     return alineacionDesdeDocumento({ id, nombre, creadaEn, categoriaId, fichas }, documento, modificadaEn);
   }
@@ -112,7 +115,7 @@ export function ModalExportar({ abierto, onCerrar, obtenerElementos }: ModalExpo
   }
 
   function exportarJson(): void {
-    exportarAlineacionAJson(construirAlineacion());
+    exportarAlineacionAJson(alineacionSoloLectura ?? construirAlineacion());
     mostrarToast({ tipo: 'exito', mensaje: 'Respaldo JSON descargado.' });
   }
 

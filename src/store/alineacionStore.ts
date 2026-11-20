@@ -44,6 +44,7 @@ import {
 } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
+import { AVISO_ACTUALIZAR_APP, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -303,6 +304,8 @@ export function alineacionDesdeDocumento(
 ): Alineacion {
   return {
     id: base.id,
+    // Se guarda con el formato de esta app: una versión anterior no la sobrescribirá.
+    formato: FORMATO_ALINEACION,
     nombre: base.nombre,
     categoriaId: base.categoriaId ?? null,
     fichas: base.fichas ?? [],
@@ -359,6 +362,13 @@ interface AlineacionState {
   listado: ResumenAlineacion[];
   estadoGuardado: EstadoGuardado;
   cargando: boolean;
+  /**
+   * La alineación abierta tal como se leyó, si se guardó con una versión más
+   * nueva de la app: entonces se muestra en solo lectura y nunca se guarda
+   * (perdería lo que esta versión no conoce). `null` en cualquier otro caso. El
+   * JSON exportado sale de aquí, entero.
+   */
+  alineacionSoloLectura: Alineacion | null;
 
   inicializar: () => Promise<void>;
   refrescarListado: () => Promise<void>;
@@ -498,9 +508,13 @@ let revisionAbierta = 0;
 let sinGuardar = false;
 /** Los guardados van de uno en uno: cada uno parte de la revisión que dejó el anterior. */
 let colaDeGuardado: Promise<void> = Promise.resolve();
+/** Cuándo se avisó por última vez de que la abierta es de solo lectura, para no repetir el aviso en cada toque. */
+let ultimoAvisoSoloLectura = 0;
 
 export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function marcarPendiente(): void {
+    // De solo lectura: nada que guardar, nunca (se perdería lo que esta versión no conoce).
+    if (get().alineacionSoloLectura) return;
     sinGuardar = true;
     set({ estadoGuardado: 'pendiente' });
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
@@ -521,10 +535,31 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (nuevas !== fichas) set({ fichas: nuevas });
   }
 
-  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string): void {
+  function avisarSoloLectura(): void {
+    const ahora = Date.now();
+    if (ahora - ultimoAvisoSoloLectura < 4000) return;
+    ultimoAvisoSoloLectura = ahora;
+    useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: AVISO_ACTUALIZAR_APP });
+  }
+
+  /**
+   * Aplica un cambio al documento y lo deja por guardar. Devuelve `false` si no
+   * se aplicó porque la abierta es de solo lectura (formato más nuevo): quien
+   * avisa de lo hecho no debe avisar entonces. `soloVer` es para lo que solo
+   * cambia lo que se mira (ir a otra fase de la jugada): se permite, pero
+   * tampoco se guarda.
+   */
+  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string, { soloVer = false } = {}): boolean {
+    const soloLectura = get().alineacionSoloLectura !== null;
+    if (soloLectura && !soloVer) {
+      avisarSoloLectura();
+      return false;
+    }
     set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
+    if (soloLectura) return true;
     capturarFichas();
     marcarPendiente();
+    return true;
   }
 
   // Cuando no se mueve a nadie solo (jugada abierta, o un equipo que la app no
@@ -589,6 +624,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
     revisionAbierta = revision;
     sinGuardar = false;
+    const soloLectura = esDeUnaVersionMasNueva(alineacion);
     set({
       id: alineacion.id,
       nombre: alineacion.nombre,
@@ -598,7 +634,16 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       fichas: alineacion.fichas ?? [],
       historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), etiqueta),
       estadoGuardado: 'guardado',
+      alineacionSoloLectura: soloLectura ? alineacion : null,
     });
+    if (soloLectura) {
+      ultimoAvisoSoloLectura = Date.now();
+      useUiStore.getState().mostrarToast({
+        tipo: 'info',
+        fijo: true,
+        mensaje: `«${alineacion.nombre}» se guardó con una versión más nueva de la app y se muestra en solo lectura. Actualiza la app para editarla.`,
+      });
+    }
   }
 
   /**
@@ -628,6 +673,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
   }
 
   async function guardarUnaVez(): Promise<void> {
+    if (get().alineacionSoloLectura) return;
     capturarFichas();
     const estado = get();
     sinGuardar = false;
@@ -664,6 +710,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     listado: [],
     estadoGuardado: 'guardado',
     cargando: true,
+    alineacionSoloLectura: null,
 
     inicializar: async () => {
       set({ cargando: true });
@@ -691,6 +738,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         fichas: [],
         historial: crearHistorial(documentoVacio(FORMACIONES[0]!.id), 'Alineación inicial'),
         estadoGuardado: 'pendiente',
+        alineacionSoloLectura: null,
       });
       marcarPendiente();
     },
@@ -707,11 +755,20 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     renombrar: (nombre) => {
+      if (get().alineacionSoloLectura) {
+        avisarSoloLectura();
+        return;
+      }
       set({ nombre });
       marcarPendiente();
     },
 
     duplicarActual: async () => {
+      // Duplicarla aquí la copiaría sin lo que esta versión no conoce.
+      if (get().alineacionSoloLectura) {
+        avisarSoloLectura();
+        return;
+      }
       const estado = get();
       const ahora = new Date().toISOString();
       const copia = alineacionDesdeDocumento(
@@ -748,6 +805,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         categoriaId: alineacion.categoriaId ?? null,
         fichas: alineacion.fichas ?? [],
         historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación importada'),
+        // Un JSON de formato más nuevo no llega aquí: la importación lo rechaza antes.
+        alineacionSoloLectura: null,
       });
       marcarPendiente();
     },
@@ -1186,22 +1245,22 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // la forma que el entrenador ajustó a mano. Extender (y×2) la deshace exacta.
     acomodarEnMiMitad: () => {
       if (!hayJugadoresEnCampoRival(get().historial.presente.titulares)) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y / 2;
         // Se recuerda (F5.3) para extenderlo solo al dejar de ver al rival. Con una
         // jugada abierta solo se mueve su fase activa, así que no cuenta.
         if (doc.rival && !doc.secuencia) doc.rival.nuestroEquipoAcomodado = true;
       }, 'Equipo acomodado en su mitad');
-      avisarConDeshacer('Equipo acomodado en tu mitad.');
+      if (hecho) avisarConDeshacer('Equipo acomodado en tu mitad.');
     },
 
     extenderPorTodoElCampo: () => {
       if (!equipoEnSuMitad(get().historial.presente.titulares)) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y * 2;
         if (doc.rival) delete doc.rival.nuestroEquipoAcomodado;
       }, 'Equipo extendido por todo el campo');
-      avisarConDeshacer('Equipo extendido por todo el campo.');
+      if (hecho) avisarConDeshacer('Equipo extendido por todo el campo.');
     },
 
     seleccionarFormacionRival: (formacionId) => {
@@ -1295,12 +1354,12 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     descartarSecuencia: () => {
       const { secuencia, jugadaCerrada } = get().historial.presente;
       if (!secuencia && !jugadaCerrada) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         if (doc.secuencia?.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
         doc.secuencia = null;
         doc.jugadaCerrada = null;
       }, 'Jugada borrada');
-      avisarConDeshacer('Jugada borrada.');
+      if (hecho) avisarConDeshacer('Jugada borrada.');
     },
 
     // F5.4a: cerrar ya no borra. Las fases se guardan aparte y el campo vuelve a
@@ -1308,7 +1367,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // cosa vuelve a su sitio.
     cerrarJugada: () => {
       if (!get().historial.presente.secuencia) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         capturarFrameActivo(doc);
@@ -1317,7 +1376,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.jugadaCerrada = jugada;
         doc.secuencia = null;
       }, 'Jugada cerrada');
-      useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
+      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
     },
 
     abrirJugada: () =>
@@ -1393,7 +1452,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         if (indice === secuencia.indiceActivo) return;
         secuencia.indiceActivo = indice;
         aplicarFrameADocumento(doc, destino);
-      }, `Frame ${indice + 1}`),
+        // Ir a otra fase es mirar, no editar: también vale en solo lectura (y ahí no se guarda).
+      }, `Frame ${indice + 1}`, { soloVer: true }),
 
     setDuracionFrame: (indice, duracionMs) =>
       mutar((doc) => {

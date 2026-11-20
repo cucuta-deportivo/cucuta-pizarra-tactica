@@ -122,16 +122,19 @@ Plan aprobado el 2026-11-11 a partir de las láminas: el escudo del club en el �
 
 La prueba final encontró dos cosas que venían de S1.11 y S1.12 y se arreglaron en IV10 e IV11: sin red, la letra de lo exportado (si nunca se había exportado con red) y la categoría durante los primeros segundos. Queda, sin cambiar: con un wifi sin internet el navegador cree que hay red y la plantilla espera los reintentos de Supabase; y sin red, los jugadores de la plantilla (no las categorías) siguen saliendo de la copia después de esos reintentos.
 
-## Fase 5 · Pedidos del cuerpo técnico (reunión 18 nov 2026)
+## Fase 5 · Pedidos del cuerpo técnico (reunión 18 nov 2026; rama `pedidos-cuerpo-tecnico`, un commit por paso)
 
-Antes de programar cada pedido: plan, archivos y preguntas al cuerpo técnico.
+Respuestas del cuerpo técnico (19 nov): el traspaso es definitivo (el jugador sube de categoría y deja la anterior); la numeración clásica es solo para el rival, nuestro equipo usa los dorsales reales de la plantilla; de las jugadas quieren una biblioteca del club, para guardar las que se crean y reutilizarlas en otras alineaciones. Varias jugadas dentro de una alineación y el vídeo no se piden por ahora.
+
+Orden de trabajo: F5.4a y F5.3; F5.2 (antes, la tabla posición → número); F5.1 (antes, una consulta de solo lectura que confirme que la política de `jugadores` deja cambiar `categoria_id`); F5.4c, solo el plan.
 
 | Paso | Qué | Estado |
 | --- | --- | --- |
-| F5.1 | Traspasar a un jugador de otra categoría | Pendiente |
-| F5.2 | Que los rivales salgan numerados automáticamente del 1 al 11 | Pendiente |
+| F5.1 | Traspaso definitivo de un jugador a otra categoría. Se cambia la categoría en la misma fila (mismo id: las alineaciones guardadas lo siguen encontrando). La ventana pide el dorsal por si choca en la nueva categoría. La foto no se mueve: la ruta `categoria/id.webp` se queda como está y una foto nueva reutiliza la ruta que ya tiene | Pendiente |
+| F5.2 | Rivales numerados del 1 al 11 con la numeración clásica por posición. Solo el rival: nuestro equipo usa los dorsales reales de la plantilla | Pendiente |
 | F5.3 | Que al activar el rival mi equipo se acomode solo en su mitad, y al quitarlo se extienda por todo el campo, con aviso y Deshacer. Cambia la decisión de los pasos 7 y 7b (ahí nadie se movía solo y se ofrecía la acción con un toque) | Pendiente |
-| F5.4 | Una opción para guardar las jugadas animadas | Pendiente |
+| F5.4a | «Cerrar jugada» ya no la borra: la guarda y vuelve a la pizarra. Se vuelve a abrir desde ⋯, y borrarla es una opción aparte, con confirmación | Pendiente |
+| F5.4c | Biblioteca de jugadas del club: guardar las jugadas que se crean y reutilizarlas en otras alineaciones. Primero el plan: cómo se adapta a otros jugadores, qué guarda, tabla en Supabase, sin señal y jugadas prediseñadas | Pendiente |
 
 ## Pendientes menores
 

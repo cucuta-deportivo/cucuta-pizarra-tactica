@@ -80,9 +80,10 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
               </button>
             ))}
           </div>
-          {rival.jugadores.length > 0 && (
-            <p className="mt-1.5 text-[11px] text-club-plata/50">Cambiar de formación vacía a los jugadores rivales ya colocados.</p>
-          )}
+          <p className="mt-1.5 text-[11px] text-club-plata/50">
+            Al cambiar de formación, los 11 rivales se vuelven a colocar y numerar; los dorsales y apellidos cambiados a mano se pierden
+            (se puede deshacer).
+          </p>
         </div>
 
         <div>

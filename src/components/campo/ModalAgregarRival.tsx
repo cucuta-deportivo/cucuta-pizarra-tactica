@@ -6,20 +6,33 @@ import type { Posicion } from '../../types';
 interface ModalAgregarRivalProps {
   abierto: boolean;
   posicion: Posicion | null;
+  /** Lo que sale escrito al abrir (F5.2): el número clásico de la zona al añadir, o lo que ya tiene al cambiarlo. */
+  dorsalInicial?: number | null;
+  apellidoInicial?: string;
+  /** Cambiar el dorsal o el apellido de un rival ya colocado, en vez de añadir uno. */
+  editando?: boolean;
   onCerrar: () => void;
   onAgregar: (dorsal: number, apellido: string) => void;
 }
 
-export function ModalAgregarRival({ abierto, posicion, onCerrar, onAgregar }: ModalAgregarRivalProps) {
+export function ModalAgregarRival({
+  abierto,
+  posicion,
+  dorsalInicial = null,
+  apellidoInicial = '',
+  editando = false,
+  onCerrar,
+  onAgregar,
+}: ModalAgregarRivalProps) {
   const [dorsal, setDorsal] = useState('');
   const [apellido, setApellido] = useState('');
 
   useEffect(() => {
     if (abierto) {
-      setDorsal('');
-      setApellido('');
+      setDorsal(dorsalInicial === null ? '' : String(dorsalInicial));
+      setApellido(apellidoInicial);
     }
-  }, [abierto]);
+  }, [abierto, dorsalInicial, apellidoInicial]);
 
   function confirmar(): void {
     const numero = Number(dorsal);
@@ -32,7 +45,9 @@ export function ModalAgregarRival({ abierto, posicion, onCerrar, onAgregar }: Mo
     <Modal abierto={abierto} onCerrar={onCerrar} titulo={`Jugador rival${posicion ? ` (${posicion})` : ''}`} ancho="sm">
       <div className="flex flex-col gap-3">
         <p className="text-xs text-club-plata/60">
-          No hace falta plantilla completa: con el dorsal basta. El apellido es opcional.
+          {editando
+            ? 'Pon el dorsal real del rival si lo conoces. El apellido es opcional.'
+            : 'No hace falta plantilla completa: con el dorsal basta. El apellido es opcional.'}
         </p>
         <label className="text-xs text-club-plata">
           Dorsal *
@@ -63,7 +78,7 @@ export function ModalAgregarRival({ abierto, posicion, onCerrar, onAgregar }: Mo
             Cancelar
           </Boton>
           <Boton variante="primario" onClick={confirmar} disabled={!dorsal}>
-            Añadir
+            {editando ? 'Guardar' : 'Añadir'}
           </Boton>
         </div>
       </div>

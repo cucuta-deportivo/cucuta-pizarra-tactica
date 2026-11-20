@@ -17,7 +17,7 @@ import { alineacionRepository, type ResumenAlineacion } from '../data/repositori
 import { programarSincronizacion } from '../data/sincronizacion';
 import type { CambioBajado } from '../data/sincronizacion/bajarCambios';
 import { copiaPorConflicto } from '../utils/copias';
-import { obtenerFormacion, FORMACIONES } from '../data/formaciones';
+import { numeroRivalDeZona, obtenerFormacion, FORMACIONES } from '../data/formaciones';
 import {
   actualizarHistorial,
   crearHistorial,
@@ -263,6 +263,22 @@ function zonaQueOcupa(doc: DocumentoTactico, jugadorId: string, zonaId: string |
   return esSuPosicion ? zona : undefined;
 }
 
+/**
+ * Los 11 del rival en las zonas de su formación, con la numeración clásica
+ * (F5.2). Las coordenadas son las de la formación: `recolocarPorModo` los pone
+ * en su lado y, con los dos equipos a la vista, en su mitad.
+ */
+function rivalesNumerados(formacionId: string): JugadorRival[] {
+  return (obtenerFormacion(formacionId)?.zonas ?? []).map((zona, indice) => ({
+    id: generarId(),
+    dorsal: numeroRivalDeZona(formacionId, zona.id) ?? indice + 1,
+    posicion: zona.posicion,
+    x: zona.x,
+    y: zona.y,
+    zonaOrigenId: zona.id,
+  }));
+}
+
 function recolocarPorModo(doc: DocumentoTactico): void {
   const enAmbos = Boolean(doc.rival?.visible) && doc.rival?.modoVista === 'ambos';
 
@@ -410,6 +426,8 @@ interface AlineacionState {
   extenderPorTodoElCampo: () => void;
   asignarJugadorRivalAZona: (zonaId: string, x: number, y: number, posicion: Posicion, dorsal: number, apellido?: string) => void;
   moverJugadorRival: (id: string, x: number, y: number) => void;
+  /** Cambia el dorsal y el apellido de un rival ya colocado (F5.2); apellido vacío lo quita. */
+  actualizarJugadorRival: (id: string, dorsal: number, apellido: string) => void;
   eliminarJugadorRival: (id: string) => void;
   agregarMarcaje: (jugadorPropioId: string, jugadorRivalId: string) => void;
   eliminarMarcaje: (id: string) => void;
@@ -1133,7 +1151,9 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     activarRival: (formacionId) => {
       const antes = get().historial.presente;
       mutar((doc) => {
-        doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' };
+        // F5.2: el rival sale entero, colocado y numerado; nuestro equipo nunca se coloca solo.
+        const jugadores = rivalesNumerados(formacionId);
+        doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores, visible: true, modoVista: 'ambos' };
         recolocarPorModo(doc);
       }, 'Equipo rival activado');
       recolocarNuestroEquipo(antes);
@@ -1190,10 +1210,32 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         if (!doc.rival) return;
         doc.rival.formacionId = formacionId;
-        doc.rival.jugadores = [];
+        // Se vuelven a colocar y numerar según la nueva formación (F5.2). Los
+        // marcajes apuntaban a los rivales de antes, así que se quitan.
+        doc.rival.jugadores = rivalesNumerados(formacionId);
         doc.marcajes = [];
+        recolocarPorModo(doc);
       }, `Formación rival cambiada a ${formacion.nombre}`);
     },
+
+    actualizarJugadorRival: (id, dorsal, apellido) =>
+      mutar((doc) => {
+        // El dorsal y el apellido son del jugador, no de una fase: se cambian en
+        // la pizarra y en todas las fases de la jugada, abierta o cerrada.
+        const listas = [
+          doc.rival?.jugadores,
+          ...(doc.secuencia?.frames ?? []).map((f) => f.jugadoresRival),
+          doc.secuencia?.pizarra?.jugadoresRival,
+          ...(doc.jugadaCerrada?.frames ?? []).map((f) => f.jugadoresRival),
+        ];
+        for (const lista of listas) {
+          const jugador = lista?.find((j) => j.id === id);
+          if (!jugador) continue;
+          jugador.dorsal = dorsal;
+          if (apellido) jugador.apellido = apellido;
+          else delete jugador.apellido;
+        }
+      }, `Rival #${dorsal} cambiado`),
 
     asignarJugadorRivalAZona: (zonaId, x, y, posicion, dorsal, apellido) =>
       mutar((doc) => {

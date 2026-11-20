@@ -95,18 +95,20 @@ describe('rival y nuestro equipo (F5.3)', () => {
   });
 
   it('los jugadores rivales siguen recogiéndose en su mitad según el modo', () => {
-    const { activarRival, asignarJugadorRivalAZona, actualizarRival } = useAlineacionStore.getState();
+    const { activarRival, actualizarRival } = useAlineacionStore.getState();
     activarRival('4-4-2');
     const zona = obtenerFormacion('4-4-2')!.zonas.find((z) => z.id === 'DC-9')!;
     const enAmbos = ubicarZonaEnLado(zona, { espejo: true, mediaCancha: true });
-    asignarJugadorRivalAZona(zona.id, enAmbos.x, enAmbos.y, 'DC', 9);
+    // Desde F5.2 el rival sale entero: se sigue al que ocupa la zona DC-9.
+    const delantero = () => estado().rival!.jugadores.find((j) => j.zonaOrigenId === 'DC-9');
+    expect(delantero()).toMatchObject({ x: enAmbos.x, y: enAmbos.y });
 
     actualizarRival({ modoVista: 'solo_rival' });
     const solo = ubicarZonaEnLado(zona, { espejo: true, mediaCancha: false });
-    expect(estado().rival!.jugadores[0]).toMatchObject({ x: solo.x, y: solo.y });
+    expect(delantero()).toMatchObject({ x: solo.x, y: solo.y });
 
     actualizarRival({ modoVista: 'ambos' });
-    expect(estado().rival!.jugadores[0]).toMatchObject({ x: enAmbos.x, y: enAmbos.y });
+    expect(delantero()).toMatchObject({ x: enAmbos.x, y: enAmbos.y });
   });
 
   it('acomodar no mueve a los rivales', () => {

@@ -36,5 +36,6 @@ Aplicación web de pizarra táctica para el cuerpo técnico de las categorías f
 2. Cambios pequeños, un archivo o una función a la vez.
 3. Después de cada cambio visual o de interacción, pruébalo en el navegador (Playwright) y revisa una captura.
 4. Ejecuta `npm run build` y el linter antes de dar algo por terminado.
+   En Windows, lanza los tests desde la ruta con la unidad en mayúscula (`C:\…`; en Git Bash, `cd /C/…`). Con `c:\` en minúscula Vitest se carga dos veces y todos fallan con «Cannot read properties of undefined (reading 'config')»: no es un fallo del código.
 5. No agregues librerías nuevas sin preguntarme.
 6. Mensajes de commit cortos y en español.

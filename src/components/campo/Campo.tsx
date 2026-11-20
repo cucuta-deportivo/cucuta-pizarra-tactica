@@ -34,7 +34,7 @@ import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
 import { useBuscarJugador } from '../../store/plantillaStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { useUiStore } from '../../store/uiStore';
-import { obtenerFormacion } from '../../data/formaciones';
+import { numeroRivalDeZona, obtenerFormacion } from '../../data/formaciones';
 import type { ColorObjeto, Orientacion, Posicion, PuntoNormalizado, TipoObjeto, ZonaFormacion } from '../../types';
 import { ANCHO_CAMPO_M, COLORES_OBJETO, LARGO_CAMPO_M, PAUSA_GRABACION_MS, RADIO_ZONA_PX } from '../../utils/constantes';
 import { posicionEfectivaBalon } from '../../utils/balon';
@@ -289,6 +289,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   const asignarJugadorRivalAZona = useAlineacionStore((s) => s.asignarJugadorRivalAZona);
   const moverJugadorRival = useAlineacionStore((s) => s.moverJugadorRival);
   const eliminarJugadorRival = useAlineacionStore((s) => s.eliminarJugadorRival);
+  const actualizarJugadorRival = useAlineacionStore((s) => s.actualizarJugadorRival);
   const agregarMarcaje = useAlineacionStore((s) => s.agregarMarcaje);
   const eliminarMarcaje = useAlineacionStore((s) => s.eliminarMarcaje);
 
@@ -364,6 +365,8 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   const [zonaRivalActiva, setZonaRivalActiva] = useState<ZonaFormacion | null>(null);
   const [menuBalon, setMenuBalon] = useState<{ balonId: string; x: number; y: number } | null>(null);
   const [menuRival, setMenuRival] = useState<{ jugadorRivalId: string; x: number; y: number } | null>(null);
+  // F5.2: el rival al que se le está cambiando el dorsal o el apellido.
+  const [rivalEditandoId, setRivalEditandoId] = useState<string | null>(null);
   const objetoSeleccionadoId = usePizarraCampoStore((s) => s.objetoSeleccionadoId);
   const setObjetoSeleccionadoId = usePizarraCampoStore((s) => s.setObjetoSeleccionadoId);
   const [marcandoDesdeId, setMarcandoDesdeId] = useState<string | null>(null);
@@ -455,6 +458,7 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   const rivalVisible =
     !enAnimacion && Boolean(documento.rival?.visible) && documento.rival?.modoVista !== 'solo_nosotros';
   const propioVisible = !enAnimacion && documento.rival?.modoVista !== 'solo_rival';
+  const rivalEditando = rivalEditandoId ? documento.rival?.jugadores.find((j) => j.id === rivalEditandoId) : undefined;
   const interaccionBloqueada = modoDibujoActivo || modoObjetoActivo || enAnimacion;
 
   // --- Modo grabación ---
@@ -960,7 +964,10 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
               x={menuRival.x}
               y={menuRival.y}
               onCerrar={() => setMenuRival(null)}
-              acciones={[{ etiqueta: 'Quitar del campo', onSeleccionar: () => eliminarJugadorRival(menuRival.jugadorRivalId), peligro: true }]}
+              acciones={[
+                { etiqueta: 'Cambiar dorsal o apellido', onSeleccionar: () => setRivalEditandoId(menuRival.jugadorRivalId) },
+                { etiqueta: 'Quitar del campo', onSeleccionar: () => eliminarJugadorRival(menuRival.jugadorRivalId), peligro: true },
+              ]}
             />
           )}
 
@@ -1009,6 +1016,8 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
           <ModalAgregarRival
             abierto={zonaRivalActiva !== null}
             posicion={zonaRivalActiva?.posicion ?? null}
+            // F5.2: al volver a llenar una zona, sale escrito su número clásico.
+            dorsalInicial={zonaRivalActiva && documento.rival ? numeroRivalDeZona(documento.rival.formacionId, zonaRivalActiva.id) : null}
             onCerrar={() => setZonaRivalActiva(null)}
             onAgregar={(dorsal, apellido) => {
               if (zonaRivalActiva) {
@@ -1021,6 +1030,18 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
                   apellido,
                 );
               }
+            }}
+          />
+
+          <ModalAgregarRival
+            abierto={rivalEditando !== undefined}
+            editando
+            posicion={rivalEditando?.posicion ?? null}
+            dorsalInicial={rivalEditando?.dorsal ?? null}
+            apellidoInicial={rivalEditando?.apellido ?? ''}
+            onCerrar={() => setRivalEditandoId(null)}
+            onAgregar={(dorsal, apellido) => {
+              if (rivalEditandoId) actualizarJugadorRival(rivalEditandoId, dorsal, apellido);
             }}
           />
 

@@ -17,7 +17,7 @@ import { alineacionRepository, type ResumenAlineacion } from '../data/repositori
 import { programarSincronizacion } from '../data/sincronizacion';
 import type { CambioBajado } from '../data/sincronizacion/bajarCambios';
 import { copiaPorConflicto } from '../utils/copias';
-import { obtenerFormacion, FORMACIONES } from '../data/formaciones';
+import { numeroRivalDeZona, obtenerFormacion, FORMACIONES } from '../data/formaciones';
 import {
   actualizarHistorial,
   crearHistorial,
@@ -44,6 +44,7 @@ import {
 } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
+import { AVISO_ACTUALIZAR_APP, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -57,6 +58,7 @@ import type {
   ModoOrientacion,
   Posicion,
   SecuenciaTactica,
+  TableroTactico,
   TipoDestinoRuta,
   TipoEasing,
   TipoInterpolacionRuta,
@@ -87,6 +89,12 @@ export interface DocumentoTactico {
    * anterior sigue comportándose igual hasta que el entrenador crea una jugada.
    */
   secuencia: SecuenciaTactica | null;
+  /**
+   * La jugada cerrada (F5.4a): guardada aparte para que la pizarra se edite sin
+   * tocar sus fases, y para volver a abrirla desde ⋯. Nunca hay a la vez una
+   * abierta (`secuencia`) y una cerrada.
+   */
+  jugadaCerrada: SecuenciaTactica | null;
 }
 
 function balonInicial(): Balon {
@@ -108,6 +116,19 @@ function documentoVacio(formacionId: string): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
+    jugadaCerrada: null,
+  };
+}
+
+/** Lo que hay ahora en el campo, para guardarlo aparte mientras la jugada está abierta (F5.4a). */
+function tableroDesdeDocumento(doc: DocumentoTactico): TableroTactico {
+  return {
+    titulares: doc.titulares,
+    jugadoresRival: doc.rival?.jugadores ?? [],
+    balones: doc.balones,
+    objetos: doc.objetos,
+    trazos: doc.trazos,
+    celdasPintadas: doc.cuadricula.celdasPintadas,
   };
 }
 
@@ -136,8 +157,8 @@ function frameDesdeDocumento(
   };
 }
 
-/** Vuelca un frame sobre el documento vivo, dejando intacto todo lo que no se anima. */
-function aplicarFrameADocumento(doc: DocumentoTactico, frame: FrameTactico): void {
+/** Vuelca un frame (o la pizarra guardada) sobre el documento vivo, dejando intacto todo lo que no se anima. */
+function aplicarFrameADocumento(doc: DocumentoTactico, frame: TableroTactico): void {
   doc.titulares = frame.titulares;
   doc.balones = frame.balones;
   doc.objetos = frame.objetos;
@@ -196,6 +217,7 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
     cancha: alineacion.cancha ?? canchaVacia(),
     jugadoresPersonalizados: alineacion.jugadoresPersonalizados ?? [],
     secuencia: alineacion.secuencia ?? null,
+    jugadaCerrada: alineacion.jugadaCerrada ?? null,
   };
 }
 
@@ -225,9 +247,8 @@ export function esAlineacionVaciaSinTocar(alineacion: Alineacion): boolean {
  * equipos en pantalla se recogen en su mitad, y solos vuelven a desplegarse por
  * todo el campo. Se parte de la zona de origen de cada uno (no de su posición
  * actual) para que alternar de modo sea siempre reversible; quien no tiene zona
- * solo se recorta a su mitad. Los nuestros NO se tocan: activar, ocultar o
- * cambiar el modo del rival nunca mueve a nuestros jugadores (solo se comprimen
- * nuestras zonas fantasma, en Campo).
+ * solo se recorta a su mitad. Los nuestros no se tocan aquí: de ellos se
+ * encarga `recolocarNuestroEquipo` (F5.3), en un paso aparte con su aviso.
  */
 /**
  * La zona fantasma sobre la que se soltó a un jugador, si puede ocuparla: es
@@ -241,6 +262,22 @@ function zonaQueOcupa(doc: DocumentoTactico, jugadorId: string, zonaId: string |
   const jugador = usePlantillaStore.getState().obtenerPorId(jugadorId);
   const esSuPosicion = jugador?.posicionNatural === zona.posicion || Boolean(jugador?.posicionesSecundarias.includes(zona.posicion));
   return esSuPosicion ? zona : undefined;
+}
+
+/**
+ * Los 11 del rival en las zonas de su formación, con la numeración clásica
+ * (F5.2). Las coordenadas son las de la formación: `recolocarPorModo` los pone
+ * en su lado y, con los dos equipos a la vista, en su mitad.
+ */
+function rivalesNumerados(formacionId: string): JugadorRival[] {
+  return (obtenerFormacion(formacionId)?.zonas ?? []).map((zona, indice) => ({
+    id: generarId(),
+    dorsal: numeroRivalDeZona(formacionId, zona.id) ?? indice + 1,
+    posicion: zona.posicion,
+    x: zona.x,
+    y: zona.y,
+    zonaOrigenId: zona.id,
+  }));
 }
 
 function recolocarPorModo(doc: DocumentoTactico): void {
@@ -267,6 +304,8 @@ export function alineacionDesdeDocumento(
 ): Alineacion {
   return {
     id: base.id,
+    // Se guarda con el formato de esta app: una versión anterior no la sobrescribirá.
+    formato: FORMATO_ALINEACION,
     nombre: base.nombre,
     categoriaId: base.categoriaId ?? null,
     fichas: base.fichas ?? [],
@@ -283,6 +322,7 @@ export function alineacionDesdeDocumento(
     cancha: doc.cancha,
     jugadoresPersonalizados: doc.jugadoresPersonalizados,
     secuencia: doc.secuencia,
+    jugadaCerrada: doc.jugadaCerrada,
     creadaEn: base.creadaEn,
     modificadaEn,
   };
@@ -322,6 +362,13 @@ interface AlineacionState {
   listado: ResumenAlineacion[];
   estadoGuardado: EstadoGuardado;
   cargando: boolean;
+  /**
+   * La alineación abierta tal como se leyó, si se guardó con una versión más
+   * nueva de la app: entonces se muestra en solo lectura y nunca se guarda
+   * (perdería lo que esta versión no conoce). `null` en cualquier otro caso. El
+   * JSON exportado sale de aquí, entero.
+   */
+  alineacionSoloLectura: Alineacion | null;
 
   inicializar: () => Promise<void>;
   refrescarListado: () => Promise<void>;
@@ -389,6 +436,8 @@ interface AlineacionState {
   extenderPorTodoElCampo: () => void;
   asignarJugadorRivalAZona: (zonaId: string, x: number, y: number, posicion: Posicion, dorsal: number, apellido?: string) => void;
   moverJugadorRival: (id: string, x: number, y: number) => void;
+  /** Cambia el dorsal y el apellido de un rival ya colocado (F5.2); apellido vacío lo quita. */
+  actualizarJugadorRival: (id: string, dorsal: number, apellido: string) => void;
   eliminarJugadorRival: (id: string) => void;
   agregarMarcaje: (jugadorPropioId: string, jugadorRivalId: string) => void;
   eliminarMarcaje: (id: string) => void;
@@ -398,7 +447,12 @@ interface AlineacionState {
 
   // Jugadas animadas (secuencia de frames)
   iniciarSecuencia: () => void;
+  /** Borra la jugada, abierta o cerrada; si estaba abierta, el campo vuelve a la pizarra. */
   descartarSecuencia: () => void;
+  /** Guarda la jugada abierta y vuelve a la pizarra (F5.4a). */
+  cerrarJugada: () => void;
+  /** Vuelve a abrir la jugada cerrada, en la fase en la que se dejó. */
+  abrirJugada: () => void;
   agregarFrame: () => void;
   /** Cierra un frame con lo que hay en pantalla sin tocar el activo (modo grabación). */
   grabarFrame: () => void;
@@ -454,9 +508,13 @@ let revisionAbierta = 0;
 let sinGuardar = false;
 /** Los guardados van de uno en uno: cada uno parte de la revisión que dejó el anterior. */
 let colaDeGuardado: Promise<void> = Promise.resolve();
+/** Cuándo se avisó por última vez de que la abierta es de solo lectura, para no repetir el aviso en cada toque. */
+let ultimoAvisoSoloLectura = 0;
 
 export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function marcarPendiente(): void {
+    // De solo lectura: nada que guardar, nunca (se perdería lo que esta versión no conoce).
+    if (get().alineacionSoloLectura) return;
     sinGuardar = true;
     set({ estadoGuardado: 'pendiente' });
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
@@ -477,15 +535,35 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (nuevas !== fichas) set({ fichas: nuevas });
   }
 
-  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string): void {
-    set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
-    capturarFichas();
-    marcarPendiente();
+  function avisarSoloLectura(): void {
+    const ahora = Date.now();
+    if (ahora - ultimoAvisoSoloLectura < 4000) return;
+    ultimoAvisoSoloLectura = ahora;
+    useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: AVISO_ACTUALIZAR_APP });
   }
 
-  // Paso 7b: cambiar qué equipos se ven nunca mueve a los nuestros; si hace
-  // falta, se OFRECE recolocarlos con un toque. Solo lo llaman las acciones del
-  // rival, así que deshacer o cargar otra alineación no lo dispara.
+  /**
+   * Aplica un cambio al documento y lo deja por guardar. Devuelve `false` si no
+   * se aplicó porque la abierta es de solo lectura (formato más nuevo): quien
+   * avisa de lo hecho no debe avisar entonces. `soloVer` es para lo que solo
+   * cambia lo que se mira (ir a otra fase de la jugada): se permite, pero
+   * tampoco se guarda.
+   */
+  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string, { soloVer = false } = {}): boolean {
+    const soloLectura = get().alineacionSoloLectura !== null;
+    if (soloLectura && !soloVer) {
+      avisarSoloLectura();
+      return false;
+    }
+    set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
+    if (soloLectura) return true;
+    capturarFichas();
+    marcarPendiente();
+    return true;
+  }
+
+  // Cuando no se mueve a nadie solo (jugada abierta, o un equipo que la app no
+  // acomodó), se OFRECE recolocarlos con un toque, como en el paso 7b.
   function ofrecerRecolocar(antes: DocumentoTactico): void {
     const ahora = get().historial.presente;
     const { mostrarToast } = useUiStore.getState();
@@ -504,6 +582,34 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     }
   }
 
+  // F5.3 (cambia el paso 7b): con los dos equipos a la vista, el nuestro se
+  // acomoda solo en su mitad (y/2) si alguien estaba en campo rival; al dejar de
+  // verse, se extiende (y×2) solo si fue la app quien lo acomodó, para no estirar
+  // un bloque que el entrenador colocó a propósito en su campo. Va en un paso
+  // aparte del cambio del rival, con aviso y Deshacer: deshacer devuelve a los
+  // nuestros y el rival sigue como quedó. Con una jugada abierta no se mueve a
+  // nadie solo (sus fases recorren todo el campo): se ofrece, como antes. Solo lo
+  // llaman las acciones del rival, así que deshacer o cargar otra alineación no
+  // lo dispara.
+  function recolocarNuestroEquipo(antes: DocumentoTactico): void {
+    const ahora = get().historial.presente;
+    const acomodadoAntes = Boolean(antes.rival?.nuestroEquipoAcomodado);
+    if (ahora.secuencia) {
+      ofrecerRecolocar(antes);
+    } else if (acomodadoAntes && seVeSoloNuestroEquipo(ahora.rival) && equipoEnSuMitad(ahora.titulares)) {
+      get().extenderPorTodoElCampo();
+    } else if (
+      !seVenAmbosEquipos(antes.rival) &&
+      seVenAmbosEquipos(ahora.rival) &&
+      !ahora.rival?.nuestroEquipoAcomodado &&
+      hayJugadoresEnCampoRival(ahora.titulares)
+    ) {
+      get().acomodarEnMiMitad();
+    } else if (!acomodadoAntes) {
+      ofrecerRecolocar(antes);
+    }
+  }
+
   function avisarConDeshacer(mensaje: string): void {
     useUiStore.getState().mostrarToast({ tipo: 'info', mensaje, accion: { etiqueta: 'Deshacer', ejecutar: () => get().deshacer() } });
   }
@@ -518,6 +624,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
     revisionAbierta = revision;
     sinGuardar = false;
+    const soloLectura = esDeUnaVersionMasNueva(alineacion);
     set({
       id: alineacion.id,
       nombre: alineacion.nombre,
@@ -527,7 +634,16 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       fichas: alineacion.fichas ?? [],
       historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), etiqueta),
       estadoGuardado: 'guardado',
+      alineacionSoloLectura: soloLectura ? alineacion : null,
     });
+    if (soloLectura) {
+      ultimoAvisoSoloLectura = Date.now();
+      useUiStore.getState().mostrarToast({
+        tipo: 'info',
+        fijo: true,
+        mensaje: `«${alineacion.nombre}» se guardó con una versión más nueva de la app y se muestra en solo lectura. Actualiza la app para editarla.`,
+      });
+    }
   }
 
   /**
@@ -557,6 +673,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
   }
 
   async function guardarUnaVez(): Promise<void> {
+    if (get().alineacionSoloLectura) return;
     capturarFichas();
     const estado = get();
     sinGuardar = false;
@@ -593,6 +710,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     listado: [],
     estadoGuardado: 'guardado',
     cargando: true,
+    alineacionSoloLectura: null,
 
     inicializar: async () => {
       set({ cargando: true });
@@ -620,6 +738,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         fichas: [],
         historial: crearHistorial(documentoVacio(FORMACIONES[0]!.id), 'Alineación inicial'),
         estadoGuardado: 'pendiente',
+        alineacionSoloLectura: null,
       });
       marcarPendiente();
     },
@@ -636,11 +755,20 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     renombrar: (nombre) => {
+      if (get().alineacionSoloLectura) {
+        avisarSoloLectura();
+        return;
+      }
       set({ nombre });
       marcarPendiente();
     },
 
     duplicarActual: async () => {
+      // Duplicarla aquí la copiaría sin lo que esta versión no conoce.
+      if (get().alineacionSoloLectura) {
+        avisarSoloLectura();
+        return;
+      }
       const estado = get();
       const ahora = new Date().toISOString();
       const copia = alineacionDesdeDocumento(
@@ -677,6 +805,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         categoriaId: alineacion.categoriaId ?? null,
         fichas: alineacion.fichas ?? [],
         historial: reiniciarHistorial(documentoDesdeAlineacion(alineacion), 'Alineación importada'),
+        // Un JSON de formato más nuevo no llega aquí: la importación lo rechaza antes.
+        alineacionSoloLectura: null,
       });
       marcarPendiente();
     },
@@ -1080,10 +1210,12 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     activarRival: (formacionId) => {
       const antes = get().historial.presente;
       mutar((doc) => {
-        doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores: [], visible: true, modoVista: 'ambos' };
+        // F5.2: el rival sale entero, colocado y numerado; nuestro equipo nunca se coloca solo.
+        const jugadores = rivalesNumerados(formacionId);
+        doc.rival = { nombre: 'Rival', formacionId, paleta: 'blanco', jugadores, visible: true, modoVista: 'ambos' };
         recolocarPorModo(doc);
       }, 'Equipo rival activado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     desactivarRival: () => {
@@ -1092,7 +1224,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.rival = null;
         doc.marcajes = [];
       }, 'Equipo rival desactivado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     actualizarRival: (cambios) => {
@@ -1105,7 +1237,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // paleta no debe mover a nadie del campo.
         if (cambiaReparto) recolocarPorModo(doc);
       }, 'Rival actualizado');
-      ofrecerRecolocar(antes);
+      recolocarNuestroEquipo(antes);
     },
 
     // Misma regla que las zonas fantasma en "Ambos" (y/2, ancho intacto): quien
@@ -1113,18 +1245,22 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // la forma que el entrenador ajustó a mano. Extender (y×2) la deshace exacta.
     acomodarEnMiMitad: () => {
       if (!hayJugadoresEnCampoRival(get().historial.presente.titulares)) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y / 2;
+        // Se recuerda (F5.3) para extenderlo solo al dejar de ver al rival. Con una
+        // jugada abierta solo se mueve su fase activa, así que no cuenta.
+        if (doc.rival && !doc.secuencia) doc.rival.nuestroEquipoAcomodado = true;
       }, 'Equipo acomodado en su mitad');
-      avisarConDeshacer('Equipo acomodado en tu mitad.');
+      if (hecho) avisarConDeshacer('Equipo acomodado en tu mitad.');
     },
 
     extenderPorTodoElCampo: () => {
       if (!equipoEnSuMitad(get().historial.presente.titulares)) return;
-      mutar((doc) => {
+      const hecho = mutar((doc) => {
         for (const titular of doc.titulares) titular.y = titular.y * 2;
+        if (doc.rival) delete doc.rival.nuestroEquipoAcomodado;
       }, 'Equipo extendido por todo el campo');
-      avisarConDeshacer('Equipo extendido por todo el campo.');
+      if (hecho) avisarConDeshacer('Equipo extendido por todo el campo.');
     },
 
     seleccionarFormacionRival: (formacionId) => {
@@ -1133,10 +1269,32 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       mutar((doc) => {
         if (!doc.rival) return;
         doc.rival.formacionId = formacionId;
-        doc.rival.jugadores = [];
+        // Se vuelven a colocar y numerar según la nueva formación (F5.2). Los
+        // marcajes apuntaban a los rivales de antes, así que se quitan.
+        doc.rival.jugadores = rivalesNumerados(formacionId);
         doc.marcajes = [];
+        recolocarPorModo(doc);
       }, `Formación rival cambiada a ${formacion.nombre}`);
     },
+
+    actualizarJugadorRival: (id, dorsal, apellido) =>
+      mutar((doc) => {
+        // El dorsal y el apellido son del jugador, no de una fase: se cambian en
+        // la pizarra y en todas las fases de la jugada, abierta o cerrada.
+        const listas = [
+          doc.rival?.jugadores,
+          ...(doc.secuencia?.frames ?? []).map((f) => f.jugadoresRival),
+          doc.secuencia?.pizarra?.jugadoresRival,
+          ...(doc.jugadaCerrada?.frames ?? []).map((f) => f.jugadoresRival),
+        ];
+        for (const lista of listas) {
+          const jugador = lista?.find((j) => j.id === id);
+          if (!jugador) continue;
+          jugador.dorsal = dorsal;
+          if (apellido) jugador.apellido = apellido;
+          else delete jugador.apellido;
+        }
+      }, `Rival #${dorsal} cambiado`),
 
     asignarJugadorRivalAZona: (zonaId, x, y, posicion, dorsal, apellido) =>
       mutar((doc) => {
@@ -1184,14 +1342,53 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // --- Jugadas animadas ---
     iniciarSecuencia: () =>
       mutar((doc) => {
-        if (doc.secuencia) return;
-        doc.secuencia = { frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })], indiceActivo: 0 };
+        // Una jugada por alineación: con una cerrada, se abre esa (⋯ → Abrir jugada).
+        if (doc.secuencia || doc.jugadaCerrada) return;
+        doc.secuencia = {
+          frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })],
+          indiceActivo: 0,
+          pizarra: tableroDesdeDocumento(doc),
+        };
       }, 'Jugada iniciada'),
 
-    descartarSecuencia: () =>
-      mutar((doc) => {
+    descartarSecuencia: () => {
+      const { secuencia, jugadaCerrada } = get().historial.presente;
+      if (!secuencia && !jugadaCerrada) return;
+      const hecho = mutar((doc) => {
+        if (doc.secuencia?.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
         doc.secuencia = null;
-      }, 'Jugada descartada'),
+        doc.jugadaCerrada = null;
+      }, 'Jugada borrada');
+      if (hecho) avisarConDeshacer('Jugada borrada.');
+    },
+
+    // F5.4a: cerrar ya no borra. Las fases se guardan aparte y el campo vuelve a
+    // la pizarra; así editar la pizarra no toca la jugada, y al reabrirla cada
+    // cosa vuelve a su sitio.
+    cerrarJugada: () => {
+      if (!get().historial.presente.secuencia) return;
+      const hecho = mutar((doc) => {
+        const secuencia = doc.secuencia;
+        if (!secuencia) return;
+        capturarFrameActivo(doc);
+        const { pizarra, ...jugada } = secuencia;
+        if (pizarra) aplicarFrameADocumento(doc, pizarra);
+        doc.jugadaCerrada = jugada;
+        doc.secuencia = null;
+      }, 'Jugada cerrada');
+      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
+    },
+
+    abrirJugada: () =>
+      mutar((doc) => {
+        const jugada = doc.jugadaCerrada;
+        if (!jugada || doc.secuencia) return;
+        const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
+        const activo = jugada.frames[indiceActivo];
+        doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
+        doc.jugadaCerrada = null;
+        if (activo) aplicarFrameADocumento(doc, activo);
+      }, 'Jugada abierta'),
 
     agregarFrame: () =>
       mutar((doc) => {
@@ -1255,7 +1452,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         if (indice === secuencia.indiceActivo) return;
         secuencia.indiceActivo = indice;
         aplicarFrameADocumento(doc, destino);
-      }, `Frame ${indice + 1}`),
+        // Ir a otra fase es mirar, no editar: también vale en solo lectura (y ahí no se guarda).
+      }, `Frame ${indice + 1}`, { soloVer: true }),
 
     setDuracionFrame: (indice, duracionMs) =>
       mutar((doc) => {

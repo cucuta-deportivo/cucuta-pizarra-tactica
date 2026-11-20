@@ -78,6 +78,7 @@ function prepararDocumento(formacionId: string, titulares: JugadorEnCampo[], ban
         cancha: canchaVacia(),
         jugadoresPersonalizados: [],
         secuencia: null,
+        jugadaCerrada: null,
       },
       etiquetaPresente: 'Alineación inicial',
       futuro: [],

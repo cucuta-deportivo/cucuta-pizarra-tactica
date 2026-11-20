@@ -29,6 +29,7 @@ function documentoVacio(): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
+    jugadaCerrada: null,
   };
 }
 

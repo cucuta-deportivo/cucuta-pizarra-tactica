@@ -5,6 +5,7 @@ import { posicionEfectivaBalon } from './balon';
 import { COLORES_OBJETO, DIAMETRO_BALON_PX, PALETA_RIVAL } from './constantes';
 import { porcentajeAPixeles } from './coordenadas';
 import { cargarFuentesBarlow } from './fuentes';
+import { esDeUnaVersionMasNueva } from './formatoAlineacion';
 import { obtenerIniciales } from './jugador';
 
 const ESCALA_EXPORTACION = 2;
@@ -739,6 +740,9 @@ export function exportarRespaldoAJson(respaldo: Respaldo): void {
 /** Lo que trae un archivo de "Importar JSON": una alineación, o un respaldo con varias (S1.8). */
 export type ArchivoDeAlineaciones = { tipo: 'una'; alineacion: Alineacion } | { tipo: 'respaldo'; alineaciones: Alineacion[] };
 
+/** Importarla en esta versión la guardaría sin lo que esta no conoce: se pide actualizar la app. */
+const AVISO_ARCHIVO_MAS_NUEVO = 'El archivo es de una versión más nueva de la app. Actualiza la app para importarlo.';
+
 export function leerArchivoDeAlineaciones(texto: string): ArchivoDeAlineaciones {
   const valor = leerJson(texto);
   const registro = valor as Partial<Respaldo> | null;
@@ -747,10 +751,12 @@ export function leerArchivoDeAlineaciones(texto: string): ArchivoDeAlineaciones 
     if (!Array.isArray(registro.alineaciones) || !registro.alineaciones.every(esAlineacionValida)) {
       throw new Error('El respaldo tiene alineaciones con un formato que no se reconoce.');
     }
+    if (registro.alineaciones.some(esDeUnaVersionMasNueva)) throw new Error(AVISO_ARCHIVO_MAS_NUEVO);
     return { tipo: 'respaldo', alineaciones: registro.alineaciones };
   }
   if (!esAlineacionValida(valor)) {
     throw new Error('El archivo no tiene el formato esperado de una alineación.');
   }
+  if (esDeUnaVersionMasNueva(valor)) throw new Error(AVISO_ARCHIVO_MAS_NUEVO);
   return { tipo: 'una', alineacion: valor };
 }

@@ -2,6 +2,7 @@ import type { Alineacion } from '../../types';
 import {
   marcarEliminadaPorSubir,
   marcarPorSubir,
+  sePuedeSobrescribir,
   sigueEnLaRevision,
   type AlineacionRepository,
   type CopiaLocal,
@@ -35,6 +36,7 @@ export class DexieAlineacionRepository implements AlineacionRepository {
     return db.transaction('rw', db.alineaciones, db.sincronizacion, async (): Promise<ResultadoGuardado> => {
       const previo = await db.sincronizacion.get(alineacion.id);
       if (!sigueEnLaRevision(previo, revisionBase)) return { guardada: false };
+      if (!sePuedeSobrescribir(await db.alineaciones.get(alineacion.id))) return { guardada: false };
       const marca = marcarPorSubir(previo, alineacion.id);
       await db.alineaciones.put(alineacion);
       await db.sincronizacion.put(marca);

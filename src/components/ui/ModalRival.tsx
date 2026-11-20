@@ -80,9 +80,10 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
               </button>
             ))}
           </div>
-          {rival.jugadores.length > 0 && (
-            <p className="mt-1.5 text-[11px] text-club-plata/50">Cambiar de formación vacía a los jugadores rivales ya colocados.</p>
-          )}
+          <p className="mt-1.5 text-[11px] text-club-plata/50">
+            Al cambiar de formación, los 11 rivales se vuelven a colocar y numerar; los dorsales y apellidos cambiados a mano se pierden
+            (se puede deshacer).
+          </p>
         </div>
 
         <div>
@@ -124,7 +125,8 @@ export function ModalRival({ abierto, onCerrar }: ModalRivalProps) {
           </div>
         </div>
 
-        {/* Recolocar a los nuestros nunca es automático (paso 7b): se ofrece aquí mientras haga falta. */}
+        {/* Al activar el rival los nuestros se acomodan solos (F5.3); esto queda para quien
+            se quede en campo rival después (o con una jugada abierta, donde no se mueve a nadie solo). */}
         {seVenAmbosEquipos(rival) && hayJugadoresEnCampoRival(titulares) && (
           <Boton
             variante="secundario"

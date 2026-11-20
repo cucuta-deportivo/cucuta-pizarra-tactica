@@ -183,6 +183,12 @@ export interface EquipoRival {
   jugadores: JugadorRival[];
   visible: boolean;
   modoVista: ModoVistaEquipos;
+  /**
+   * Nuestro equipo se recogió en su mitad al ver los dos equipos (F5.3): al
+   * dejar de verse el rival se extiende solo, y solo entonces. Opcional: sin
+   * ella (alineaciones de antes) no se extiende solo, se ofrece.
+   */
+  nuestroEquipoAcomodado?: boolean;
 }
 
 export interface Marcaje {
@@ -235,6 +241,9 @@ export interface FrameTactico {
    */
   trayectorias?: TrayectoriaMovimiento[];
 }
+
+/** Lo que se ve en el campo y se anima: la pizarra fuera de una jugada o una de sus fases. */
+export type TableroTactico = Pick<FrameTactico, 'titulares' | 'jugadoresRival' | 'balones' | 'objetos' | 'trazos' | 'celdasPintadas'>;
 
 /** Curva de movimiento de las transiciones. Ver `CURVAS_EASING` en utils/interpolacion. */
 export type TipoEasing = 'lineal' | 'entrada' | 'salida' | 'entrada-salida';
@@ -297,10 +306,22 @@ export interface SecuenciaTactica {
   indiceActivo: number;
   /** Curva de toda la jugada. Opcional: si falta, 'entrada-salida'. */
   easing?: TipoEasing;
+  /**
+   * Mientras la jugada está abierta, la pizarra tal como estaba fuera de ella
+   * (F5.4a): al cerrar o borrar la jugada, el campo vuelve a esto. Opcional: las
+   * jugadas de antes no lo tienen y al cerrarlas el campo se queda en la fase
+   * que se veía, como antes.
+   */
+  pizarra?: TableroTactico;
 }
 
 export interface Alineacion {
   id: string;
+  /**
+   * Versión del formato con que se guardó (ver `FORMATO_ALINEACION` en
+   * utils/formatoAlineacion). Las guardadas antes de existir no la tienen: son la 1.
+   */
+  formato?: number;
   nombre: string;
   formacionId: string;
   titulares: JugadorEnCampo[];
@@ -323,6 +344,8 @@ export interface Alineacion {
   fichas?: FichaJugador[];
   /** `null` mientras el tablero sea una pizarra fija: solo existe al crear una jugada. */
   secuencia?: SecuenciaTactica | null;
+  /** La jugada cerrada con «Cerrar jugada» (F5.4a), guardada para volver a abrirla. Las guardadas antes no la tienen. */
+  jugadaCerrada?: SecuenciaTactica | null;
 }
 
 export type Orientacion = 'vertical' | 'horizontal';

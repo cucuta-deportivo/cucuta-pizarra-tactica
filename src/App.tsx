@@ -325,8 +325,11 @@ function MenuOpciones({
   onAbrirExportar,
   onCrearJugada,
   onGrabarJugada,
+  onAbrirJugada,
+  onBorrarJugada,
   onVaciarCampo,
   hayJugada,
+  hayJugadaCerrada,
 }: {
   onAbrirAlineaciones: () => void;
   onAbrirGestionPlantilla: () => void;
@@ -337,8 +340,11 @@ function MenuOpciones({
   onAbrirExportar: () => void;
   onCrearJugada: () => void;
   onGrabarJugada: () => void;
+  onAbrirJugada: () => void;
+  onBorrarJugada: () => void;
   onVaciarCampo: () => void;
   hayJugada: boolean;
+  hayJugadaCerrada: boolean;
 }) {
   const pantallaCompleta = useUiStore((s) => s.pantallaCompleta);
   const setPantallaCompleta = useUiStore((s) => s.setPantallaCompleta);
@@ -409,7 +415,7 @@ function MenuOpciones({
             >
               🏟️ Cancha
             </ItemMenu>
-            {!hayJugada && (
+            {!hayJugada && !hayJugadaCerrada && (
               <>
                 <ItemMenu
                   onClick={() => {
@@ -428,6 +434,27 @@ function MenuOpciones({
                   ⏺ Grabar jugada
                 </ItemMenu>
               </>
+            )}
+            {/* F5.4a: una jugada por alineación; la cerrada se reabre aquí y borrar es aparte, con confirmación. */}
+            {hayJugadaCerrada && (
+              <ItemMenu
+                onClick={() => {
+                  onAbrirJugada();
+                  cerrar();
+                }}
+              >
+                🎬 Abrir jugada
+              </ItemMenu>
+            )}
+            {(hayJugada || hayJugadaCerrada) && (
+              <ItemMenu
+                onClick={() => {
+                  onBorrarJugada();
+                  cerrar();
+                }}
+              >
+                🗑 Borrar jugada
+              </ItemMenu>
             )}
             {titularesEnCampo > 0 && (
               <ItemMenu
@@ -533,7 +560,10 @@ export default function App() {
   const sincronizarFichas = usePlantillaStore((s) => s.sincronizarFichas);
   const fichas = useAlineacionStore((s) => s.fichas);
   const hayJugada = useAlineacionStore((s) => s.historial.presente.secuencia !== null);
+  const hayJugadaCerrada = useAlineacionStore((s) => s.historial.presente.jugadaCerrada !== null);
   const iniciarSecuencia = useAlineacionStore((s) => s.iniciarSecuencia);
+  const abrirJugada = useAlineacionStore((s) => s.abrirJugada);
+  const descartarSecuencia = useAlineacionStore((s) => s.descartarSecuencia);
   const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
 
   const modoObjetoActivo = usePizarraCampoStore((s) => s.modoObjetoActivo);
@@ -563,6 +593,7 @@ export default function App() {
   const [panelActividadAbierto, setPanelActividadAbierto] = useState(false);
   const [panelCuentasAbierto, setPanelCuentasAbierto] = useState(false);
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false);
+  const [confirmandoBorrarJugada, setConfirmandoBorrarJugada] = useState(false);
   // Alineaciones de antes de la sincronización por subir; `null` cuando no hay o se dejó para más tarde.
   const [porMigrar, setPorMigrar] = useState<PorMigrar | null>(null);
   const vaciarCampo = useAlineacionStore((s) => s.vaciarCampo);
@@ -667,8 +698,11 @@ export default function App() {
                 iniciarSecuencia();
                 iniciarGrabacion();
               }}
+              onAbrirJugada={abrirJugada}
+              onBorrarJugada={() => setConfirmandoBorrarJugada(true)}
               onVaciarCampo={() => setConfirmandoVaciar(true)}
               hayJugada={hayJugada}
+              hayJugadaCerrada={hayJugadaCerrada}
             />
           </div>
         </header>
@@ -790,6 +824,30 @@ export default function App() {
             }}
           >
             Vaciar
+          </Boton>
+        </div>
+      </Modal>
+      <Modal abierto={confirmandoBorrarJugada} onCerrar={() => setConfirmandoBorrarJugada(false)} titulo="Borrar jugada" ancho="sm">
+        <p className="text-sm text-club-plata">
+          Se borrará la jugada con todas sus fases, también en los demás dispositivos. Si está abierta, el campo vuelve a la
+          pizarra. Puedes deshacerlo.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Boton variante="fantasma" onClick={() => setConfirmandoBorrarJugada(false)}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="peligro"
+            onClick={() => {
+              // Sin jugada no queda nada que reproducir, grabar ni recorrer.
+              useReproduccionStore.getState().detener();
+              useReproduccionStore.getState().detenerGrabacion();
+              usePizarraCampoStore.getState().desactivarModoTrayectoria();
+              descartarSecuencia();
+              setConfirmandoBorrarJugada(false);
+            }}
+          >
+            Borrar
           </Boton>
         </div>
       </Modal>

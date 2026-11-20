@@ -41,6 +41,8 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
   const jugadores = usePlantillaStore((s) => s.jugadores);
   const crearJugador = usePlantillaStore((s) => s.crearJugador);
   const actualizarJugador = usePlantillaStore((s) => s.actualizarJugador);
+  const traspasarJugador = usePlantillaStore((s) => s.traspasarJugador);
+  const categorias = usePlantillaStore((s) => s.categorias);
   const establecerFoto = usePlantillaStore((s) => s.establecerFoto);
   const quitarFoto = usePlantillaStore((s) => s.quitarFoto);
   const errorStore = usePlantillaStore((s) => s.error);
@@ -54,6 +56,8 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
   const [fotoPendiente, setFotoPendiente] = useState<FotoProcesada | null>(null);
   const [quitarLaFoto, setQuitarLaFoto] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  // F5.1: la categoría del jugador; elegir otra es un traspaso definitivo.
+  const [categoria, setCategoria] = useState('');
 
   useEffect(() => {
     if (!abierto) return;
@@ -65,7 +69,12 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
     setSecundaria(jugador?.posicionesSecundarias[0] ?? SIN_SECUNDARIA);
     setFotoPendiente(null);
     setQuitarLaFoto(false);
+    setCategoria(jugador?.categoriaId ?? '');
   }, [abierto, jugador, limpiarError]);
+
+  const categoriaActual = jugador ? categorias.find((c) => c.id === jugador.categoriaId) : undefined;
+  const categoriaDestino = categorias.find((c) => c.id === categoria);
+  const traspasando = Boolean(categoriaActual && categoriaDestino && categoriaDestino.id !== categoriaActual.id);
 
   const apellidoLimpio = apellido.trim();
   const dorsalLimpio = dorsal.trim();
@@ -77,8 +86,9 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
     numero !== null && (!Number.isInteger(numero) || numero < 1 || numero > 99)
       ? 'El dorsal debe ser un número entre 1 y 99.'
       : // El índice único de la base de datos es la última palabra, pero avisar
-        // aquí evita un viaje al servidor para algo que ya se sabe.
-        numero !== null && jugadores.some((j) => j.id !== jugador?.id && j.dorsal === numero)
+        // aquí evita un viaje al servidor para algo que ya se sabe. En un traspaso
+        // no: la lista cargada es la de esta categoría y el dorsal cuenta en la otra.
+        !traspasando && numero !== null && jugadores.some((j) => j.id !== jugador?.id && j.dorsal === numero)
         ? 'Ese dorsal ya lo lleva otro jugador activo de la categoría.'
         : undefined;
 
@@ -92,6 +102,8 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
   async function guardar(): Promise<void> {
     if (hayErrores || guardando) return;
     setGuardando(true);
+    // Un error de un intento anterior (un dorsal ocupado) no debe frenar este.
+    limpiarError();
     const datos: DatosJugador = {
       nombre: nombre.trim(),
       apellido: apellidoLimpio,
@@ -100,12 +112,20 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
       posicionSecundaria: secundaria === SIN_SECUNDARIA ? null : (secundaria as Posicion),
     };
 
-    const destino = jugador ? ((await actualizarJugador(jugador.id, datos)) ? jugador : null) : await crearJugador(datos);
+    async function aplicarFoto(jugadorId: string): Promise<void> {
+      if (fotoPendiente) await establecerFoto(jugadorId, fotoPendiente.blob);
+      else if (quitarLaFoto) await quitarFoto(jugadorId);
+    }
 
-    if (destino) {
+    let destino: Jugador | null;
+    if (jugador && traspasando) {
+      // La foto antes del traspaso: después el jugador ya no está en la plantilla cargada.
+      await aplicarFoto(jugador.id);
+      destino = !usePlantillaStore.getState().error && (await traspasarJugador(jugador.id, categoria, datos)) ? jugador : null;
+    } else {
+      destino = jugador ? ((await actualizarJugador(jugador.id, datos)) ? jugador : null) : await crearJugador(datos);
       // La foto va después de tener el id: la ruta del bucket se nombra con él.
-      if (fotoPendiente) await establecerFoto(destino.id, fotoPendiente.blob);
-      else if (quitarLaFoto) await quitarFoto(destino.id);
+      if (destino) await aplicarFoto(destino.id);
     }
     setGuardando(false);
     if (destino && !usePlantillaStore.getState().error) onCerrar();
@@ -178,6 +198,28 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
           </Campo>
         </div>
 
+        {/* F5.1: traspaso definitivo. Solo al editar a uno de la plantilla, y solo si hay otra categoría. */}
+        {categoriaActual && categorias.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <Campo etiqueta="Categoría">
+              <select className={CLASE_CONTROL} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-club-carbon">
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            {traspasando && (
+              <p role="status" className="rounded-lg border border-amber-400/40 px-3 py-2 text-xs" style={{ color: COLOR.texto.principal }}>
+                Traspaso definitivo: al guardar, {apellidoLimpio || 'el jugador'} pasa a {categoriaDestino!.nombre} y deja de estar en{' '}
+                {categoriaActual.nombre}. Las alineaciones guardadas lo siguen mostrando y su foto no cambia. Si su dorsal ya lo lleva
+                alguien en {categoriaDestino!.nombre}, cámbialo o déjalo vacío.
+              </p>
+            )}
+          </div>
+        )}
+
         {errorStore && (
           <p role="alert" className="text-xs" style={{ color: COLOR.marca.rojo }}>
             {errorStore}
@@ -189,7 +231,7 @@ export function FormularioJugador({ abierto, jugador, onCerrar }: FormularioJuga
             Cancelar
           </Boton>
           <Boton variante="primario" disabled={hayErrores || guardando} onClick={() => void guardar()}>
-            {guardando ? 'Guardando…' : jugador ? 'Guardar cambios' : 'Agregar jugador'}
+            {guardando ? 'Guardando…' : traspasando ? 'Traspasar y guardar' : jugador ? 'Guardar cambios' : 'Agregar jugador'}
           </Boton>
         </div>
       </div>

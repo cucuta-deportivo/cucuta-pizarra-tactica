@@ -41,6 +41,7 @@ describe('flujo: formación → asignación → arrastre → guardado → recarg
           cancha: canchaVacia(),
           jugadoresPersonalizados: [],
           secuencia: null,
+          jugadaCerrada: null,
         },
         etiquetaPresente: 'Alineación inicial',
         futuro: [],

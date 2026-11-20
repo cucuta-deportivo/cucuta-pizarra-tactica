@@ -14,6 +14,7 @@ import {
   listarJugadores,
   rutaFoto,
   subirFoto,
+  traspasarJugador as apiTraspasar,
   type DatosJugador,
   type EnlaceFirmado,
 } from '../data/supabase/plantillaApi';
@@ -66,6 +67,8 @@ interface PlantillaState {
 
   crearJugador: (datos: DatosJugador) => Promise<Jugador | null>;
   actualizarJugador: (jugadorId: string, datos: DatosJugador) => Promise<boolean>;
+  /** Traspaso definitivo a otra categoría (F5.1): sale de la plantilla cargada. */
+  traspasarJugador: (jugadorId: string, categoriaId: string, datos: DatosJugador) => Promise<boolean>;
   desactivarJugador: (jugadorId: string) => Promise<void>;
   establecerFoto: (jugadorId: string, blob: Blob) => Promise<void>;
   quitarFoto: (jugadorId: string) => Promise<void>;
@@ -208,6 +211,29 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
     }
   },
 
+  traspasarJugador: async (jugadorId, categoriaId, datos) => {
+    const { jugadores: anteriores, categoriaActiva, categorias, personalizados } = get();
+    // Sale de la lista en cuanto se pide; si la base no lo acepta, vuelve.
+    set({ jugadores: anteriores.filter((j) => j.id !== jugadorId), error: null });
+    try {
+      await apiTraspasar(jugadorId, categoriaId, datos);
+    } catch (fallo) {
+      const mensaje = mensajeDe(fallo);
+      const destino = categorias.find((c) => c.id === categoriaId)?.nombre ?? 'esa categoría';
+      set({
+        jugadores: anteriores,
+        // El dorsal choca con uno de la categoría a la que va, no con los de esta.
+        error: mensaje.includes('dorsal ya lo lleva')
+          ? `Ese dorsal ya lo lleva otro jugador activo de ${destino}. Cambia el dorsal o déjalo vacío.`
+          : mensaje,
+      });
+      return false;
+    }
+    // La copia de esta categoría en el dispositivo (S1.12) tampoco debe tenerlo ya.
+    if (categoriaActiva) guardarJugadores(categoriaActiva, sinPersonalizados(get().jugadores, personalizados));
+    return true;
+  },
+
   desactivarJugador: async (jugadorId) => {
     const anteriores = get().jugadores;
     set({ jugadores: anteriores.filter((j) => j.id !== jugadorId), error: null });
@@ -221,7 +247,10 @@ export const usePlantillaStore = create<PlantillaState>((set, get) => ({
   establecerFoto: async (jugadorId, blob) => {
     const jugador = get().jugadores.find((j) => j.id === jugadorId);
     if (!jugador) return;
-    const ruta = rutaFoto(jugador.categoriaId, jugadorId);
+    // La ruta que ya tiene, si tiene (F5.1): tras un traspaso su carpeta es la
+    // categoría de antes, y una ruta nueva dejaría la foto vieja suelta en el
+    // bucket. Así, además, las alineaciones guardadas ven la foto nueva.
+    const ruta = jugador.fotoPath ?? rutaFoto(jugador.categoriaId, jugadorId);
     try {
       await subirFoto(ruta, blob);
       await guardarRutaFoto(jugadorId, ruta);

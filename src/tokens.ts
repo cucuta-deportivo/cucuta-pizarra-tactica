@@ -64,6 +64,10 @@ export const OPACIDAD = {
   marcaPunto: 0.55,
   /** Círculo que simula la sombra de las fichas. */
   sombraFicha: 0.28,
+  /** Monograma del círculo central sobre el césped (temas Estadio, Neutro y Entrenamiento). */
+  monograma: 0.1,
+  /** En el tema Táctico, de fondo casi negro, el blanco resalta más: con menos opacidad se ve parecido. */
+  monogramaTactico: 0.08,
 } as const;
 
 /**

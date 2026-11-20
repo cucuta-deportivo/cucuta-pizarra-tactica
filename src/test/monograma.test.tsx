@@ -150,6 +150,17 @@ describe('casilla del monograma en la ventana Cancha', () => {
     expect(useAlineacionStore.getState().historial.presente.cancha.mostrarEscudo).toBe(false);
   });
 
+  it('cada casilla tiene una zona táctil de 44 px de alto (toda su fila)', () => {
+    render(<ModalCancha abierto onCerrar={() => {}} />);
+    const casillas = screen.getAllByRole('checkbox');
+    expect(casillas.map((c) => c.closest('label')?.textContent?.trim())).toEqual([
+      'Monograma en el círculo central',
+      'Vallas perimetrales',
+      'Girar 180° (perspectiva rival)',
+    ]);
+    for (const casilla of casillas) expect(casilla.closest('label')).toHaveClass('min-h-[44px]');
+  });
+
   it('las vallas siguen siendo solo del tema Estadio', () => {
     useAlineacionStore.getState().actualizarCancha({ tema: 'neutro' });
     render(<ModalCancha abierto onCerrar={() => {}} />);

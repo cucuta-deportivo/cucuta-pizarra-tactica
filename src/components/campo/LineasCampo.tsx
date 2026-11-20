@@ -66,6 +66,12 @@ function mapear(p: PuntoCampo, orientacion: Orientacion, rotado180: boolean): { 
   return orientacion === 'vertical' ? { x: pr.u, y: pr.v } : { x: pr.v, y: pr.u };
 }
 
+/** Un `<circle>` se coloca con cx/cy: con x/y (lo que da `mapear`) se queda en la esquina (0, 0). */
+function centroDeCirculo(p: PuntoCampo, orientacion: Orientacion, rotado180: boolean): { cx: number; cy: number } {
+  const { x, y } = mapear(p, orientacion, rotado180);
+  return { cx: x, cy: y };
+}
+
 /**
  * Equivalente a `mapear` para rectángulos: un rect definido en (u0,v0,du,dv)
  * debe intercambiar sus ejes igual que los puntos al pasar a horizontal, o
@@ -329,7 +335,7 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
       <path d={aRuta(geometria.perimetro, orientacion, rotado180, true)} {...trazo} />
       <path d={aRuta(geometria.medioCampo, orientacion, rotado180)} {...trazo} />
       <path d={aRuta(geometria.circuloCentral, orientacion, rotado180, true)} {...trazo} />
-      <circle {...mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
+      <circle {...centroDeCirculo({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
 
       {/*
         Sin `transform`: solo se coloca, nunca se gira, así que queda derecho en
@@ -357,7 +363,7 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
           <path d={aRuta(extremo.areaGrande, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.areaChica, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.arco, orientacion, rotado180)} {...trazo} />
-          <circle {...mapear(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
+          <circle {...centroDeCirculo(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
         </g>
       ))}
 

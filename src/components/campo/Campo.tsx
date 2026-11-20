@@ -424,11 +424,6 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
     [formacionRival, documento.rival, enModoAmbos],
   );
 
-  const centroOcupado = useMemo(() => {
-    const cerca = (p: { x: number; y: number }) => Math.abs(p.x - 50) < 14 && Math.abs(p.y - 50) < 10;
-    return documento.titulares.some(cerca) || (documento.rival?.jugadores.some(cerca) ?? false);
-  }, [documento.titulares, documento.rival]);
-
   // Durante la reproducción manda `CapaReproduccion`: las fichas interactivas se
   // ocultan para que no se puedan arrastrar por accidente ni se dupliquen en pantalla.
   const reproduciendo = useReproduccionStore((s) => s.reproduciendo);
@@ -755,7 +750,6 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
               mostrarValla={documento.cancha.mostrarValla}
               ventana={ventana}
               rotado180={documento.cancha.rotado180}
-              centroOcupado={centroOcupado}
             />
 
             <CapaCuadricula

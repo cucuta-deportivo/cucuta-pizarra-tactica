@@ -24,7 +24,6 @@ interface LineasCampoProps {
   mostrarValla?: boolean;
   ventana?: VentanaRecorte;
   rotado180?: boolean;
-  centroOcupado?: boolean;
 }
 
 const CENTRO_U = ANCHO_CAMPO_M / 2;
@@ -38,6 +37,26 @@ const RADIO_CENTRAL = 9.15;
 const RADIO_ARCO_PENAL = 9.15;
 const RADIO_ESQUINA = 1.2;
 
+/**
+ * Monograma del club en el círculo central (public/escudos/monograma.png,
+ * 379 × 384, sacado de marca/logo-arco-blanco.png, 566 × 574).
+ *
+ * Se centra por el cruce de sus barras, no por su caja: así la barra horizontal
+ * cae sobre la línea de medio campo en vertical y la vertical en horizontal.
+ * El cruce, medido en el original, está en (234,98; 348,50).
+ *
+ * Alto: 78 % del diámetro del círculo. Con el cruce en el centro, la punta de
+ * la estrella queda a 0,608 × el alto; al 80 % quedaba a menos de 1 px de la
+ * línea en un móvil y se juntaban. Al 78 % hay 2 px en el móvil y 4 en la tablet.
+ */
+const MONOGRAMA = {
+  ruta: '/escudos/monograma.png',
+  proporcion: 379 / 384,
+  cruceX: 234.98 / 566,
+  cruceY: 348.5 / 574,
+  alto: 2 * RADIO_CENTRAL * 0.78,
+} as const;
+
 function aplicarRotacion(p: PuntoCampo, rotado180: boolean): PuntoCampo {
   return rotado180 ? { u: p.u, v: LARGO_CAMPO_M - p.v } : p;
 }
@@ -45,6 +64,12 @@ function aplicarRotacion(p: PuntoCampo, rotado180: boolean): PuntoCampo {
 function mapear(p: PuntoCampo, orientacion: Orientacion, rotado180: boolean): { x: number; y: number } {
   const pr = aplicarRotacion(p, rotado180);
   return orientacion === 'vertical' ? { x: pr.u, y: pr.v } : { x: pr.v, y: pr.u };
+}
+
+/** Un `<circle>` se coloca con cx/cy: con x/y (lo que da `mapear`) se queda en la esquina (0, 0). */
+function centroDeCirculo(p: PuntoCampo, orientacion: Orientacion, rotado180: boolean): { cx: number; cy: number } {
+  const { x, y } = mapear(p, orientacion, rotado180);
+  return { cx: x, cy: y };
 }
 
 /**
@@ -112,7 +137,6 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
     mostrarValla = true,
     ventana = VENTANA_CAMPO_COMPLETO,
     rotado180 = false,
-    centroOcupado = false,
   },
   ref,
 ) {
@@ -311,18 +335,27 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
       <path d={aRuta(geometria.perimetro, orientacion, rotado180, true)} {...trazo} />
       <path d={aRuta(geometria.medioCampo, orientacion, rotado180)} {...trazo} />
       <path d={aRuta(geometria.circuloCentral, orientacion, rotado180, true)} {...trazo} />
-      <circle {...mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
+      <circle {...centroDeCirculo({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
 
+      {/*
+        Sin `transform`: solo se coloca, nunca se gira, así que queda derecho en
+        vertical, en horizontal y con «Girar 180°». No recibe toques: el balón
+        empieza encima. No se oculta aunque haya jugadores en el círculo (con un
+        4-3-3 el medio defensivo casi siempre está ahí): ellos se pintan encima y
+        se quita con la casilla de la Cancha. La exportación lo incrusta (ver
+        `incrustarImagenes`).
+      */}
       {mostrarEscudo && (
-        <g
-          style={{ opacity: centroOcupado ? 0 : tema === 'tactico' ? 0.14 : 0.1, transition: 'opacity 150ms' }}
-          transform={`translate(${mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).x}, ${mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).y})`}
-        >
-          <circle r={RADIO_CENTRAL * 0.8} fill="none" stroke={COLOR.campo.linea} strokeWidth={0.35} />
-          <text x={0} y={0} textAnchor="middle" dominantBaseline="central" fontSize={RADIO_CENTRAL * 0.9} fontWeight={900} fill={COLOR.campo.linea}>
-            C
-          </text>
-        </g>
+        <image
+          href={MONOGRAMA.ruta}
+          x={mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).x - MONOGRAMA.cruceX * MONOGRAMA.alto * MONOGRAMA.proporcion}
+          y={mapear({ u: CENTRO_U, v: CENTRO_V }, orientacion, rotado180).y - MONOGRAMA.cruceY * MONOGRAMA.alto}
+          width={MONOGRAMA.alto * MONOGRAMA.proporcion}
+          height={MONOGRAMA.alto}
+          preserveAspectRatio="none"
+          pointerEvents="none"
+          style={{ opacity: esTactico ? OPACIDAD.monogramaTactico : OPACIDAD.monograma }}
+        />
       )}
 
       {[geometria.inicio, geometria.fin].map((extremo, i) => (
@@ -330,7 +363,7 @@ export const LineasCampo = forwardRef<SVGSVGElement, LineasCampoProps>(function 
           <path d={aRuta(extremo.areaGrande, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.areaChica, orientacion, rotado180, true)} {...trazo} />
           <path d={aRuta(extremo.arco, orientacion, rotado180)} {...trazo} />
-          <circle {...mapear(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
+          <circle {...centroDeCirculo(extremo.puntoPenal, orientacion, rotado180)} r={puntoRadio} fill={COLOR.campo.marcaPunto} fillOpacity={OPACIDAD.marcaPunto} />
         </g>
       ))}
 

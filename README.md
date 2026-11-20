@@ -140,9 +140,9 @@ Desde ese momento la base no le entrega ni le acepta nada y no puede volver a en
 **Deshacer un rechazo** (la cuenta vuelve a pendiente y se aprueba después desde "Cuentas"):
 
 ```sql
-update public.perfiles set estado = 'pendiente'
-where lower(usuario) = lower('USUARIO') and estado = 'bloqueado'
-returning usuario, estado;
+   update public.perfiles set estado = 'pendiente'
+   where lower(usuario) = lower('USUARIO') and estado = 'bloqueado'
+   returning usuario, estado;
 ```
 
 **Borrar una cuenta del todo**: en **Authentication → Users**, la cuenta → "Delete user". No se puede deshacer; las alineaciones que creó se quedan.

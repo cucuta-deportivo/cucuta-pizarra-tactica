@@ -59,30 +59,30 @@ export function ModalCancha({ abierto, onCerrar }: ModalCanchaProps) {
           </div>
         </div>
 
+        {/* El monograma se pinta en todos los temas, así que su casilla también va en todos. */}
+        <label className="flex min-h-[44px] items-center justify-between text-sm text-club-plata">
+          Monograma en el círculo central
+          <input
+            type="checkbox"
+            checked={cancha.mostrarEscudo}
+            onChange={(e) => actualizarCancha({ mostrarEscudo: e.target.checked })}
+            className="h-4 w-4 accent-club-rojo"
+          />
+        </label>
+
         {cancha.tema === 'estadio' && (
-          <>
-            <label className="flex items-center justify-between text-sm text-club-plata">
-              Escudo en el círculo central
-              <input
-                type="checkbox"
-                checked={cancha.mostrarEscudo}
-                onChange={(e) => actualizarCancha({ mostrarEscudo: e.target.checked })}
-                className="h-4 w-4 accent-club-rojo"
-              />
-            </label>
-            <label className="flex items-center justify-between text-sm text-club-plata">
-              Vallas perimetrales
-              <input
-                type="checkbox"
-                checked={cancha.mostrarValla}
-                onChange={(e) => actualizarCancha({ mostrarValla: e.target.checked })}
-                className="h-4 w-4 accent-club-rojo"
-              />
-            </label>
-          </>
+          <label className="flex min-h-[44px] items-center justify-between text-sm text-club-plata">
+            Vallas perimetrales
+            <input
+              type="checkbox"
+              checked={cancha.mostrarValla}
+              onChange={(e) => actualizarCancha({ mostrarValla: e.target.checked })}
+              className="h-4 w-4 accent-club-rojo"
+            />
+          </label>
         )}
 
-        <label className="flex items-center justify-between text-sm text-club-plata">
+        <label className="flex min-h-[44px] items-center justify-between text-sm text-club-plata">
           Girar 180° (perspectiva rival)
           <input
             type="checkbox"

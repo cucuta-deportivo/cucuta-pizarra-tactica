@@ -128,8 +128,42 @@ function cargarFoto(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function svgAImagen(svg: SVGSVGElement): Promise<HTMLImageElement> {
-  const cadena = new XMLSerializer().serializeToString(svg);
+function blobADataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(String(lector.result));
+    lector.onerror = () => reject(lector.error);
+    lector.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Un SVG dibujado como imagen no carga archivos de fuera: el monograma del
+ * círculo central saldría vacío. Se exporta una copia con cada `<image>`
+ * incrustada como data URL (sin señal la sirve el service worker). La que no
+ * cargue se quita de la copia y la exportación sigue sin ella. El SVG de la
+ * pantalla no se toca.
+ */
+export async function incrustarImagenes(svg: SVGSVGElement): Promise<SVGSVGElement> {
+  const copia = svg.cloneNode(true) as SVGSVGElement;
+  await Promise.all(
+    Array.from(copia.querySelectorAll('image')).map(async (imagen) => {
+      const ruta = imagen.getAttribute('href');
+      if (!ruta || ruta.startsWith('data:')) return;
+      try {
+        const respuesta = await fetch(ruta);
+        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+        imagen.setAttribute('href', await blobADataUrl(await respuesta.blob()));
+      } catch {
+        imagen.remove();
+      }
+    }),
+  );
+  return copia;
+}
+
+async function svgAImagen(svg: SVGSVGElement): Promise<HTMLImageElement> {
+  const cadena = new XMLSerializer().serializeToString(await incrustarImagenes(svg));
   const blob = new Blob([cadena], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {

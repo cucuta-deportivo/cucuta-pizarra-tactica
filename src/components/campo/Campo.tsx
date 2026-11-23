@@ -69,6 +69,7 @@ import { TarjetaRivalDraggable, type DatosArrastreRival } from './TarjetaRivalDr
 import { CapaMarcajes } from './CapaMarcajes';
 import { ModalAgregarRival } from './ModalAgregarRival';
 import { ModalElegirRivalParaMarcar } from './ModalElegirRivalParaMarcar';
+import { useFrameEnReproduccion } from '../../hooks/useFrameEnReproduccion';
 
 export interface ElementosExportacion {
   svg: SVGSVGElement;
@@ -431,12 +432,8 @@ export const Campo = forwardRef<CampoHandle>(function Campo(_props, ref) {
   // reproducir: lo que se ve es un cálculo, no un estado que se pueda editar.
   const previsualizando = useReproduccionStore((s) => s.previsualizando);
   const enAnimacion = reproduciendo || previsualizando;
-  // Dibujos y celdas pintadas viven en cada fase, así que durante la animación
-  // hay que mostrar los de la fase que se ve, no los de la que se edita. Se
-  // dirige con el índice de fase (cambia una vez por tramo) y no con el reloj,
-  // que cambiaría 60 veces por segundo y re-renderizaría todo el campo.
-  const indiceEnReproduccion = useReproduccionStore((s) => s.indiceFrame);
-  const frameMostrado = enAnimacion ? documento.secuencia?.frames[indiceEnReproduccion] : undefined;
+  // Los dibujos que se ven al animar son los de la fase que se está viendo.
+  const frameMostrado = useFrameEnReproduccion();
 
   // --- Herramienta "Movimiento" (trayectorias por nodos) ---
   const modoTrayectoriaActivo = usePizarraCampoStore((s) => s.modoTrayectoriaActivo);

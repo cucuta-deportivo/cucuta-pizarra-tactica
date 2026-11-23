@@ -51,6 +51,7 @@ export function TimelineTactica() {
   const pausar = useReproduccionStore((s) => s.pausar);
   const detener = useReproduccionStore((s) => s.detener);
   const setPrevisualizando = useReproduccionStore((s) => s.setPrevisualizando);
+  const previsualizando = useReproduccionStore((s) => s.previsualizando);
   const setTiempoMs = useReproduccionStore((s) => s.setTiempoMs);
   const modoTrayectoriaActivo = usePizarraCampoStore((s) => s.modoTrayectoriaActivo);
   const activarModoTrayectoria = usePizarraCampoStore((s) => s.activarModoTrayectoria);
@@ -69,8 +70,12 @@ export function TimelineTactica() {
   const [nombreJugada, setNombreJugada] = useState('');
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
 
-  // Mientras se reproduce manda el índice de reproducción; editando, el del documento.
-  const indiceActivo = reproduciendo ? indiceEnReproduccion : (secuencia?.indiceActivo ?? 0);
+  // Reproduciendo o con la barra de tiempo arrastrada (previsualizando) manda la fase que se VE, la del reloj;
+  // editando, la del documento. Antes, con la barra, la pestaña y el nombre eran los de la fase activa del
+  // documento y no los de la que había en pantalla, y mover o borrar actuaba sobre una fase que no se veía.
+  // Mientras solo se mira, la edición de fases queda desactivada: lo que hay en pantalla no es la fase que se edita.
+  const soloMirando = reproduciendo || previsualizando;
+  const indiceActivo = soloMirando ? indiceEnReproduccion : (secuencia?.indiceActivo ?? 0);
   const frameActivo = secuencia?.frames[indiceActivo];
   const enElUltimoFrame = indiceActivo >= (secuencia?.frames.length ?? 1) - 1;
 
@@ -117,11 +122,17 @@ export function TimelineTactica() {
     activarModoTrayectoria();
   }
 
-  /** Lo que dicen los botones de reordenar al pasar el ratón: qué fase mueven y que eso cambia el orden. */
-  function textoMoverFase(hacia: 'antes' | 'despues'): string {
-    const nombreFase = frameActivo?.nombre ? ` («${frameActivo.nombre}»)` : '';
-    const posicion = hacia === 'antes' ? 'antes' : 'después';
-    return `Mover la fase ${indiceActivo + 1}${nombreFase} una posición ${posicion}. Cambia el orden de la jugada; para ver otra fase, toca su pestaña o usa ⏮ ⏭`;
+  /**
+   * Tocar la pestaña de una fase va a ella para editarla: sale de la reproducción y
+   * de la barra arrastrada, como ⏮ ⏭. Antes se quedaba en la previsualización y el
+   * campo seguía mostrando el instante de la barra.
+   */
+  function irAFase(indice: number): void {
+    pausar();
+    setPrevisualizando(false);
+    setTiempoMs(tiempoHastaFrame(secuencia!.frames, indice));
+    setIndiceFrame(indice);
+    irAFrame(indice);
   }
 
   /** Cómo llamar al elemento cuyo recorrido se está dibujando, para la ayuda. */
@@ -160,7 +171,7 @@ export function TimelineTactica() {
 
         <input
           value={nombre}
-          disabled={reproduciendo}
+          disabled={soloMirando}
           onChange={(e) => setNombre(e.target.value)}
           onBlur={() => renombrarFrame(indiceActivo, nombre)}
           onKeyDown={(e) => {
@@ -182,7 +193,7 @@ export function TimelineTactica() {
             <input
               type="number"
               value={(duracionDeFrame(frameActivo) / 1000).toFixed(1)}
-              disabled={reproduciendo}
+              disabled={soloMirando}
               min={DURACION_MINIMA_MS / 1000}
               max={DURACION_MAXIMA_MS / 1000}
               step={0.1}
@@ -239,10 +250,7 @@ export function TimelineTactica() {
               <button
                 key={frame.id}
                 type="button"
-                onClick={() => {
-                  setIndiceFrame(indice);
-                  irAFrame(indice);
-                }}
+                onClick={() => irAFase(indice)}
                 aria-current={activo}
                 aria-label={`Frame ${indice + 1}${frame.nombre ? `: ${frame.nombre}` : ''}`}
                 className={`flex h-11 min-w-[64px] shrink-0 flex-col items-center justify-center rounded-lg border px-2.5 transition-colors duration-rapido ${
@@ -310,24 +318,24 @@ export function TimelineTactica() {
           {/* Reordenar. Botones y no arrastre: la fila ya tiene scroll horizontal
               y arrastrar dentro de algo que también se desplaza es un desastre con el dedo.
               Con ◀ ▶ parecían de navegar y cambiaban el orden sin querer: el icono es la
-              pestaña de la fase con una flecha, y el texto dice qué fase se mueve. */}
+              pestaña de la fase con una flecha, y el texto avisa de que cambia el orden. */}
           <Boton
             tamano="icono"
             variante="secundario"
-            disabled={indiceActivo === 0 || reproduciendo}
+            disabled={indiceActivo === 0 || soloMirando}
             onClick={() => moverFrame(indiceActivo, indiceActivo - 1)}
-            aria-label={`Mover la fase ${indiceActivo + 1} una posición antes`}
-            title={textoMoverFase('antes')}
+            aria-label={`Mover la fase ${indiceActivo + 1} a la izquierda`}
+            title="Mover esta fase a la izquierda. Cambia el orden de la jugada."
           >
             <IconoMoverFase hacia="antes" />
           </Boton>
           <Boton
             tamano="icono"
             variante="secundario"
-            disabled={enElUltimoFrame || reproduciendo}
+            disabled={enElUltimoFrame || soloMirando}
             onClick={() => moverFrame(indiceActivo, indiceActivo + 1)}
-            aria-label={`Mover la fase ${indiceActivo + 1} una posición después`}
-            title={textoMoverFase('despues')}
+            aria-label={`Mover la fase ${indiceActivo + 1} a la derecha`}
+            title="Mover esta fase a la derecha. Cambia el orden de la jugada."
           >
             <IconoMoverFase hacia="despues" />
           </Boton>
@@ -335,6 +343,7 @@ export function TimelineTactica() {
           <Boton
             tamano="sm"
             variante="secundario"
+            disabled={soloMirando}
             onClick={agregarFrame}
             title="Insertar una fase justo después de la actual, copiando el estado"
           >
@@ -343,7 +352,7 @@ export function TimelineTactica() {
           <Boton
             tamano="icono"
             variante="secundario"
-            disabled={enElUltimoFrame}
+            disabled={enElUltimoFrame || soloMirando}
             onClick={agregarFrameAlFinal}
             aria-label="Añadir una fase al final"
             title={enElUltimoFrame ? 'Ya estás en la última fase: usa ＋ Fase' : 'Añadir una fase al final de la jugada'}
@@ -353,6 +362,7 @@ export function TimelineTactica() {
           <Boton
             tamano="icono"
             variante="secundario"
+            disabled={soloMirando}
             onClick={() => duplicarFrame(indiceActivo)}
             aria-label="Duplicar este frame"
             title="Duplicar esta fase"
@@ -365,7 +375,7 @@ export function TimelineTactica() {
           <Boton
             tamano={confirmandoBorrado ? 'sm' : 'icono'}
             variante="peligro"
-            disabled={secuencia.frames.length <= 1}
+            disabled={secuencia.frames.length <= 1 || soloMirando}
             onClick={() => {
               if (!confirmandoBorrado) {
                 setConfirmandoBorrado(true);

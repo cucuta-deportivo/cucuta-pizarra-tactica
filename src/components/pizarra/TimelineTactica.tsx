@@ -117,6 +117,13 @@ export function TimelineTactica() {
     activarModoTrayectoria();
   }
 
+  /** Lo que dicen los botones de reordenar al pasar el ratón: qué fase mueven y que eso cambia el orden. */
+  function textoMoverFase(hacia: 'antes' | 'despues'): string {
+    const nombreFase = frameActivo?.nombre ? ` («${frameActivo.nombre}»)` : '';
+    const posicion = hacia === 'antes' ? 'antes' : 'después';
+    return `Mover la fase ${indiceActivo + 1}${nombreFase} una posición ${posicion}. Cambia el orden de la jugada; para ver otra fase, toca su pestaña o usa ⏮ ⏭`;
+  }
+
   /** Cómo llamar al elemento cuyo recorrido se está dibujando, para la ayuda. */
   function nombreDelSujeto(): string {
     if (!sujetoTrayectoria) return '';
@@ -301,26 +308,28 @@ export function TimelineTactica() {
           </Boton>
 
           {/* Reordenar. Botones y no arrastre: la fila ya tiene scroll horizontal
-              y arrastrar dentro de algo que también se desplaza es un desastre con el dedo. */}
+              y arrastrar dentro de algo que también se desplaza es un desastre con el dedo.
+              Con ◀ ▶ parecían de navegar y cambiaban el orden sin querer: el icono es la
+              pestaña de la fase con una flecha, y el texto dice qué fase se mueve. */}
           <Boton
             tamano="icono"
             variante="secundario"
             disabled={indiceActivo === 0 || reproduciendo}
             onClick={() => moverFrame(indiceActivo, indiceActivo - 1)}
-            aria-label="Mover la fase hacia atrás"
-            title="Mover esta fase una posición antes"
+            aria-label={`Mover la fase ${indiceActivo + 1} una posición antes`}
+            title={textoMoverFase('antes')}
           >
-            ◀
+            <IconoMoverFase hacia="antes" />
           </Boton>
           <Boton
             tamano="icono"
             variante="secundario"
             disabled={enElUltimoFrame || reproduciendo}
             onClick={() => moverFrame(indiceActivo, indiceActivo + 1)}
-            aria-label="Mover la fase hacia adelante"
-            title="Mover esta fase una posición después"
+            aria-label={`Mover la fase ${indiceActivo + 1} una posición después`}
+            title={textoMoverFase('despues')}
           >
-            ▶
+            <IconoMoverFase hacia="despues" />
           </Boton>
 
           <Boton
@@ -472,5 +481,30 @@ export function TimelineTactica() {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Icono de reordenar: la pestaña de la fase (el rectángulo) con una flecha que
+ * sale de ella hacia donde se mueve. No se parece a ⏮ ⏭ ni a una flecha de
+ * navegar, que es con lo que se confundían los ◀ ▶ de antes.
+ */
+function IconoMoverFase({ hacia }: { hacia: 'antes' | 'despues' }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={hacia === 'despues' ? { transform: 'scaleX(-1)' } : undefined}
+    >
+      <rect x="11" y="5" width="10" height="14" rx="2" />
+      <path d="M8.5 12H2.5M5.5 9l-3 3 3 3" />
+    </svg>
   );
 }

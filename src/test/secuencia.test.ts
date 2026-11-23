@@ -343,3 +343,95 @@ describe('secuencia táctica: reordenar y nombrar', () => {
     expect(doc().secuencia!.nombre).toBeUndefined();
   });
 });
+
+/**
+ * Mirar una jugada no es editarla: abrirla, recorrer sus fases, reproducirla
+ * (que vuelca la fase activa), dejarla terminar, volver al principio y cerrarla
+ * no deja nada por guardar. Cada guardado es una versión nueva que en producción
+ * se sube a Supabase, y dos dispositivos mirando la misma alineación acabarían
+ * con copias por conflicto. Lo editado, en cambio, se sigue guardando.
+ */
+describe('secuencia táctica: mirar no guarda', () => {
+  const estado = () => useAlineacionStore.getState();
+  const doc = () => estado().historial.presente;
+  let jugadorId: string;
+
+  // Una jugada de tres fases, cerrada y guardada, abierta de nuevo desde lo guardado
+  // como haría el entrenador (sin autoguardados pendientes de la preparación).
+  beforeEach(async () => {
+    sembrarPlantilla();
+    estado().nuevaAlineacion();
+    const zona = obtenerFormacion(doc().formacionId)!.zonas[0]!;
+    jugadorId = usePlantillaStore.getState().jugadores[0]!.id;
+    estado().asignarJugador(zona.id, zona.x, zona.y, jugadorId);
+    estado().iniciarSecuencia();
+    estado().agregarFrame();
+    estado().moverJugador(jugadorId, 60, 40);
+    estado().agregarFrame();
+    estado().moverJugador(jugadorId, 70, 70);
+    estado().cerrarJugada();
+    await estado().guardarAhora();
+    await estado().cargarAlineacion(estado().id);
+    expect(estado().estadoGuardado).toBe('guardado');
+  });
+
+  it('abrir, recorrer las fases, reproducir hasta el final, volver al principio y cerrar no deja nada por guardar', () => {
+    estado().abrirJugada();
+    estado().irAFrame(2); // ▶: vuelca la fase activa antes de reproducir
+    estado().irAFrame(2); // fin de la reproducción: se descansa en la última fase
+    estado().irAFrame(0); // ▶ desde el principio, ↻, ⏮ o la pestaña de la fase 1
+    estado().irAFrame(1);
+    expect(estado().estadoGuardado).toBe('guardado');
+    expect(posicion()).toMatchObject({ x: 60, y: 40 });
+
+    estado().cerrarJugada();
+    expect(estado().estadoGuardado).toBe('guardado');
+    expect(doc().jugadaCerrada!.frames[2]!.titulares[0]).toMatchObject({ x: 70, y: 70 });
+  });
+
+  it('tampoco guarda una jugada que llegó con las claves de sus fases en otro orden (de Supabase o de un JSON)', () => {
+    // El jsonb de PostgreSQL no conserva el orden de las claves: así llegan las fases bajadas del servidor.
+    useAlineacionStore.setState((s) => {
+      const cerrada = s.historial.presente.jugadaCerrada!;
+      const reordenada = cerrada.frames.map((fase) => Object.fromEntries(Object.entries(fase).reverse()) as typeof fase);
+      return { historial: { ...s.historial, presente: { ...s.historial.presente, jugadaCerrada: { ...cerrada, frames: reordenada } } } };
+    });
+    estado().abrirJugada();
+    estado().irAFrame(2);
+    estado().irAFrame(0);
+    estado().irAFrame(1);
+    estado().cerrarJugada();
+    expect(estado().estadoGuardado).toBe('guardado');
+  });
+
+  it('abrirla y cerrarla sin tocar nada tampoco guarda', () => {
+    estado().abrirJugada();
+    estado().cerrarJugada();
+    expect(estado().estadoGuardado).toBe('guardado');
+  });
+
+  it('lo editado en una fase sí se guarda al dejarla', async () => {
+    estado().abrirJugada();
+    estado().moverJugador(jugadorId, 20, 20);
+    // El cambio se guarda enseguida, pero la fase todavía no lo tiene: se vuelca al dejarla.
+    await estado().guardarAhora();
+    expect(estado().estadoGuardado).toBe('guardado');
+
+    estado().irAFrame(0);
+    expect(estado().estadoGuardado).toBe('pendiente');
+    expect(doc().secuencia!.frames[2]!.titulares[0]).toMatchObject({ x: 20, y: 20 });
+  });
+
+  it('cerrar una jugada que ya se guardó abierta (porque se editó) sí se guarda', async () => {
+    estado().abrirJugada();
+    estado().moverJugador(jugadorId, 20, 20);
+    estado().irAFrame(0);
+    await estado().guardarAhora();
+    expect(estado().estadoGuardado).toBe('guardado');
+
+    estado().cerrarJugada();
+    expect(estado().estadoGuardado).toBe('pendiente');
+  });
+
+  const posicion = () => doc().titulares.find((t) => t.jugadorId === jugadorId);
+});

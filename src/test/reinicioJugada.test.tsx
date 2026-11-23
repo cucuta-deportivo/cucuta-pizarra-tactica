@@ -20,8 +20,12 @@ import type { Trazo } from '../types';
  * la capa de reproducción (que hace avanzar la jugada y la termina) y la capa de
  * dibujos, con la fase que se ve calculada por el mismo hook que usa `Campo`.
  *
- * jsdom no pinta en canvas: el lienzo es falso y apunta qué dibujos quedan en él
- * (`clearRect` lo vacía y cada dibujo pintado se anota por su id).
+ * jsdom no pinta en canvas: el lienzo es falso y apunta qué dibujos quedan en él.
+ * Cada dibujo pintado se anota por su id, y `clearRect` solo lo vacía si, con la
+ * transformación que tenga puesta, cubre el lienzo ENTERO en píxeles de dispositivo:
+ * un borrado parcial deja los dibujos, como en la pantalla. Se repite con varios
+ * `devicePixelRatio`: con zoom por debajo del 100 % (0,8) se borraba solo una parte
+ * y los dibujos de otras fases se quedaban pegados.
  */
 const { pintados } = vi.hoisted(() => ({ pintados: new Map<unknown, string[]>() }));
 vi.mock('../utils/renderTrazos', async (importarOriginal) => ({
@@ -31,10 +35,32 @@ vi.mock('../utils/renderTrazos', async (importarOriginal) => ({
   },
 }));
 
+// Un contexto por lienzo, como en el navegador: la transformación se conserva entre llamadas.
+const contextos = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>();
 function contextoFalso(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const base: Record<string | symbol, unknown> = { canvas, clearRect: () => pintados.set(canvas, []) };
-  // Cualquier otra llamada (setTransform, beginPath…) no hace nada; las propiedades se guardan.
-  return new Proxy(base, { get: (objeto, clave) => (clave in objeto ? objeto[clave] : () => undefined) }) as unknown as CanvasRenderingContext2D;
+  const existente = contextos.get(canvas);
+  if (existente) return existente;
+  let matriz = [1, 0, 0, 1, 0, 0];
+  const pila: number[][] = [];
+  const base: Record<string | symbol, unknown> = {
+    canvas,
+    setTransform: (...m: number[]) => {
+      matriz = m;
+    },
+    save: () => pila.push([...matriz]),
+    restore: () => {
+      matriz = pila.pop() ?? matriz;
+    },
+    clearRect: (x: number, y: number, ancho: number, alto: number) => {
+      const [a = 1, , , d = 1, e = 0, f = 0] = matriz;
+      const cubreTodo = x * a + e <= 0 && y * d + f <= 0 && (x + ancho) * a + e >= canvas.width && (y + alto) * d + f >= canvas.height;
+      if (cubreTodo) pintados.set(canvas, []);
+    },
+  };
+  // Cualquier otra llamada (beginPath, fill…) no hace nada; las propiedades se guardan.
+  const contexto = new Proxy(base, { get: (objeto, clave) => (clave in objeto ? objeto[clave] : () => undefined) }) as unknown as CanvasRenderingContext2D;
+  contextos.set(canvas, contexto);
+  return contexto;
 }
 
 const ESCALA: EscalaCampo = {
@@ -60,7 +86,8 @@ function Campo() {
 
 const trazo = (id: string): Trazo => ({ id, tipo: 'flecha', puntos: [{ x: 10, y: 10 }, { x: 30, y: 30 }], color: '#D4111E', grosor: 2 });
 
-describe('reinicio de la jugada: en la fase 1 solo se ven sus dibujos', () => {
+// 0,8: zoom del navegador al 80 %; 1,25 y 1,5: escala de Windows; 2: tablets y pantallas de alta densidad.
+describe.each([0.8, 1, 1.25, 1.5, 2])('reinicio de la jugada con devicePixelRatio %s: en la fase 1 solo se ven sus dibujos', (dpr) => {
   const estado = () => useAlineacionStore.getState();
   let lienzo: HTMLCanvasElement;
   const enElCampo = () => pintados.get(lienzo) ?? [];
@@ -95,6 +122,7 @@ describe('reinicio de la jugada: en la fase 1 solo se ven sus dibujos', () => {
     useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 0, tiempoMs: 0, velocidad: 1 });
 
     vi.useFakeTimers();
+    vi.stubGlobal('devicePixelRatio', dpr);
     vi.stubGlobal('requestAnimationFrame', (paso: FrameRequestCallback) => setTimeout(() => paso(Date.now()), 16) as unknown as number);
     vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id));
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {

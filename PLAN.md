@@ -147,7 +147,7 @@ Orden de trabajo: F5.4a y F5.3; F5.2 (antes, la tabla posición → número); F5
 - **Las jugadas que creen los entrenadores** se guardan en la biblioteca en Supabase, nunca en el repositorio, que es público.
 - **Por confirmar con el cuerpo técnico:** quién ve y quién edita las jugadas de los entrenadores, y la revisión de las 14 del repertorio.
 
-Orden (24 nov): la barra de la jugada en tablet (rama `barra-jugada-tablet`), luego F5.4b y luego F5.4c.
+Orden (24 nov): la barra de la jugada en tablet (rama `barra-jugada-tablet`), F5.4b, F5.6 y F5.4c. F5.6 va antes que F5.4c para que, cuando el repertorio entre en la app, los balones parados ya se vean bien en horizontal.
 
 - **Adaptación a otros jugadores: por papeles según la posición.** Al guardar, cada jugador nuestro de la jugada pasa a ser un papel (posición de su zona o natural, y un rótulo opcional como «Lanzador»); no se guarda nombre, foto, dorsal ni id del jugador. Al usarla, la ventana «¿Quién hace cada papel?» propone un jugador de la alineación por posición (natural, secundarias, banquillo; con dos, el del mismo lado) y el entrenador lo cambia si quiere. El papel sin nadie sale como ficha genérica (jugador personalizado con el rótulo). Los rivales se copian tal cual.
 - **Qué guarda:** nombre, tipo, descripción, categoría donde se creó (solo para filtrar), las fases como hoy (posiciones, rivales, balón, objetos, dibujos, zonas pintadas, recorridos, duraciones y nombres), la curva, y la formación y paleta del rival.

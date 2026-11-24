@@ -61,10 +61,14 @@ export function TimelineTactica() {
   const frameActivo = secuencia?.frames[indiceActivo];
   const enElUltimoFrame = indiceActivo >= (secuencia?.frames.length ?? 1) - 1;
 
-  // Mantiene a la vista el frame activo cuando la jugada es larga y hay scroll.
+  // Mantiene a la vista la pestaña de la fase que se ve (al tocarla, con ⏮ ⏭ o reproduciendo) cuando
+  // la jugada tiene más fases de las que caben. Se desplaza SOLO la fila: scrollIntoView movía también
+  // los contenedores de fuera y, en una tablet de 1024 px, la interfaz entera se corría a la izquierda.
   useEffect(() => {
-    listaRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
-  }, [indiceActivo]);
+    const lista = listaRef.current;
+    const activa = lista?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (lista && activa) lista.scrollLeft = desplazamientoParaCentrar(lista, activa);
+  }, [indiceActivo, secuencia?.frames.length]);
 
   if (!secuencia) return null;
 
@@ -121,7 +125,7 @@ export function TimelineTactica() {
       <div className="flex items-center gap-2">
         {/* Arriba, las pestañas de las fases a todo lo ancho: en la tablet no cabían junto a los
             mandos. Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
-        <div ref={listaRef} className="barra-scroll flex flex-1 items-center gap-1.5 overflow-x-auto pb-1">
+        <div ref={listaRef} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto pb-1">
           {secuencia.frames.map((frame, indice) => {
             const activo = indice === indiceActivo;
             return (
@@ -316,3 +320,11 @@ export function TimelineTactica() {
   );
 }
 
+
+/** Cuánto desplazar la fila de pestañas para que la pestaña quede en el centro, sin pasarse de los extremos. */
+function desplazamientoParaCentrar(lista: HTMLElement, pestana: HTMLElement): number {
+  const fila = lista.getBoundingClientRect();
+  const caja = pestana.getBoundingClientRect();
+  const desvio = caja.left + caja.width / 2 - (fila.left + fila.width / 2);
+  return Math.max(0, Math.min(lista.scrollWidth - lista.clientWidth, lista.scrollLeft + desvio));
+}

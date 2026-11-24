@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { sembrarPlantilla } from './fixturePlantilla';
 import { TimelineTactica } from '../components/pizarra/TimelineTactica';
 import { useAlineacionStore } from '../store/alineacionStore';
@@ -176,5 +176,69 @@ describe('nombre de la fase junto a «FASE x/y»', () => {
     const fase = screen.getByTitle('Fase actual y tiempo transcurrido');
     expect(fase).toHaveTextContent('Fase 2/3');
     expect(fase.textContent).not.toContain('·');
+  });
+});
+
+/**
+ * Con más fases de las que caben, la fila de pestañas se desplaza sola para que la
+ * pestaña de la fase que se ve quede a la vista. Se desplaza solo la fila: con
+ * scrollIntoView se movía también la página y, a 1024 px, la interfaz entera se
+ * corría a la izquierda.
+ */
+describe('pestañas que se desplazan con la fase', () => {
+  /** jsdom no maqueta: una fila de 300 px con 13 pestañas de 90 px cada 100 px. */
+  function simularFila(lista: HTMLElement): () => number {
+    let desplazado = 0;
+    Object.defineProperty(lista, 'scrollLeft', { configurable: true, get: () => desplazado, set: (v: number) => { desplazado = v; } });
+    Object.defineProperty(lista, 'scrollWidth', { configurable: true, get: () => 1300 });
+    Object.defineProperty(lista, 'clientWidth', { configurable: true, get: () => 300 });
+    const caja = (left: number, width: number) => ({ left, width, right: left + width, top: 0, bottom: 44, height: 44, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+    lista.getBoundingClientRect = () => caja(0, 300);
+    [...lista.querySelectorAll('button')].forEach((b, i) => {
+      b.getBoundingClientRect = () => caja(i * 100 - desplazado, 90);
+    });
+    return () => desplazado;
+  }
+
+  const pestana = (n: number) => screen.getByRole('button', { name: new RegExp(`^Frame ${n}(:|$)`) });
+  const aLaVista = (boton: HTMLElement) => {
+    const r = boton.getBoundingClientRect();
+    return r.left >= 0 && r.right <= 300;
+  };
+
+  beforeEach(() => {
+    sembrarJugada();
+    for (let i = 3; i < 13; i++) estado().agregarFrame();
+    estado().irAFrame(0);
+    useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 0, tiempoMs: 0 });
+  });
+
+  it('tocar la última pestaña la deja a la vista desplazando solo la fila', () => {
+    render(<TimelineTactica />);
+    const desplazado = simularFila(pestana(1).parentElement!);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    fireEvent.click(pestana(13));
+    expect(desplazado()).toBe(1000);
+    expect(aLaVista(pestana(13))).toBe(true);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('volver a la primera fase devuelve la fila al principio', () => {
+    render(<TimelineTactica />);
+    const desplazado = simularFila(pestana(1).parentElement!);
+    fireEvent.click(pestana(13));
+    fireEvent.click(screen.getByRole('button', { name: 'Reiniciar la jugada' }));
+    expect(desplazado()).toBe(0);
+    expect(aLaVista(pestana(1))).toBe(true);
+  });
+
+  it('reproduciendo, la fila sigue a la fase que se ve', () => {
+    render(<TimelineTactica />);
+    const desplazado = simularFila(pestana(1).parentElement!);
+    act(() => useReproduccionStore.setState({ reproduciendo: true, indiceFrame: 7 }));
+    expect(pestana(8)).toHaveAttribute('aria-current', 'true');
+    expect(desplazado()).toBe(595);
+    expect(aLaVista(pestana(8))).toBe(true);
   });
 });

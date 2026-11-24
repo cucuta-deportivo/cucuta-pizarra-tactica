@@ -38,6 +38,8 @@ export function ControlesReproduccion() {
   const tiempoMostrado = enMovimiento ? Math.min(tiempoMs, duracion) : tiempoHastaFrame(frames, indiceEfectivo);
   const enElUltimo = indiceEfectivo >= total - 1;
   const alFinal = tiempoMostrado >= duracion - 1;
+  // El nombre completo de la fase que se VE: en las pestañas no cabe entero.
+  const nombreFase = frames[indiceEfectivo]?.nombre?.trim() ?? '';
 
   /** Deja el tablero en una fase concreta y sale de la previsualización. */
   function saltarA(indice: number): void {
@@ -78,7 +80,8 @@ export function ControlesReproduccion() {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    // Ocupa lo que dejan los botones de la fila: ese sitio es para el nombre de la fase.
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
       <Boton
         tamano="icono"
         variante="secundario"
@@ -141,12 +144,18 @@ export function ControlesReproduccion() {
       />
 
       <span
-        className="shrink-0 select-none font-mono text-[10px] leading-tight text-club-plata/70"
+        className="min-w-0 flex-1 select-none font-mono text-[10px] leading-tight text-club-plata/70"
         aria-live="off"
-        title="Fase actual y tiempo transcurrido"
+        title={nombreFase ? `Fase ${indiceEfectivo + 1} de ${total}: ${nombreFase}` : 'Fase actual y tiempo transcurrido'}
       >
-        <span className="block font-display font-semibold uppercase tracking-wide text-club-plata">
+        <span className="block truncate font-display font-semibold uppercase tracking-wide text-club-plata">
           Fase {indiceEfectivo + 1}/{total}
+          {nombreFase && (
+            <>
+              {' · '}
+              <span className="text-xs normal-case tracking-normal text-white">{nombreFase}</span>
+            </>
+          )}
         </span>
         <span className="block">
           {formatearTiempo(tiempoMostrado)} / {formatearTiempo(duracion)}

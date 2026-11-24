@@ -147,3 +147,34 @@ describe('línea de tiempo con la barra arrastrada', () => {
     expect(within(menu).getByRole('button', { name: 'Mover a la derecha' })).toBeEnabled();
   });
 });
+
+/**
+ * Las pestañas cortan el nombre de la fase («Falta latera…»): el nombre completo
+ * de la fase que se ve va junto a «FASE x/y», donde la fila tiene sitio.
+ */
+describe('nombre de la fase junto a «FASE x/y»', () => {
+  beforeEach(() => {
+    sembrarJugada();
+    estado().irAFrame(1);
+    useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 1, tiempoMs: 0 });
+  });
+
+  it('muestra el nombre completo de la fase que se edita', () => {
+    render(<TimelineTactica />);
+    expect(screen.getByTitle('Fase 2 de 3: Pase')).toHaveTextContent('Fase 2/3 · Pase');
+  });
+
+  it('con la barra de tiempo arrastrada, el de la fase que se ve', () => {
+    useReproduccionStore.setState({ previsualizando: true, tiempoMs: 0 });
+    render(<TimelineTactica />);
+    expect(screen.getByTitle('Fase 1 de 3: Salida')).toHaveTextContent('Fase 1/3 · Salida');
+  });
+
+  it('una fase sin nombre deja solo «Fase x/y»', () => {
+    estado().renombrarFrame(1, '');
+    render(<TimelineTactica />);
+    const fase = screen.getByTitle('Fase actual y tiempo transcurrido');
+    expect(fase).toHaveTextContent('Fase 2/3');
+    expect(fase.textContent).not.toContain('·');
+  });
+});

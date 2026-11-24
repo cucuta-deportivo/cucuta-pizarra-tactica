@@ -10,7 +10,7 @@ import { Modal } from './components/ui/Modal';
 import { IndicadorEstado } from './components/ui/IndicadorEstado';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
-import { useAltoElemento } from './hooks/useAltoElemento';
+import { useAltoElemento } from './hooks/useMedidaElemento';
 import {
   alBajarCambios,
   contarSinSubir,

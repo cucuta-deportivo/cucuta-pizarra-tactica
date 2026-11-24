@@ -11,7 +11,14 @@ import { duracionTotal, formatearTiempo, tiempoHastaFrame, ubicacionEnTiempo } f
  * La barra de progreso no salta de fase en fase: mueve el reloj de la jugada, y
  * de ese instante se derivan la fase y el avance dentro de ella.
  */
-export function ControlesReproduccion() {
+interface Props {
+  /** Para medir el bloque «FASE x/y»: lo que mide es lo que sobra en la fila (ver utils/barraJugada). */
+  refBloqueFase?: (elemento: HTMLSpanElement | null) => void;
+  /** El nombre de la fase junto a «FASE x/y». No hace falta si el campo del nombre ya está en la barra. */
+  nombreJunto?: boolean;
+}
+
+export function ControlesReproduccion({ refBloqueFase, nombreJunto = true }: Props = {}) {
   const secuencia = useAlineacionStore((s) => s.historial.presente.secuencia);
   const irAFrame = useAlineacionStore((s) => s.irAFrame);
 
@@ -39,7 +46,7 @@ export function ControlesReproduccion() {
   const enElUltimo = indiceEfectivo >= total - 1;
   const alFinal = tiempoMostrado >= duracion - 1;
   // El nombre completo de la fase que se VE: en las pestañas no cabe entero.
-  const nombreFase = frames[indiceEfectivo]?.nombre?.trim() ?? '';
+  const nombreFase = nombreJunto ? (frames[indiceEfectivo]?.nombre?.trim() ?? '') : '';
 
   /** Deja el tablero en una fase concreta y sale de la previsualización. */
   function saltarA(indice: number): void {
@@ -144,6 +151,7 @@ export function ControlesReproduccion() {
       />
 
       <span
+        ref={refBloqueFase}
         className="min-w-0 flex-1 select-none font-mono text-[10px] leading-tight text-club-plata/70"
         aria-live="off"
         title={nombreFase ? `Fase ${indiceEfectivo + 1} de ${total}: ${nombreFase}` : 'Fase actual y tiempo transcurrido'}

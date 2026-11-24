@@ -1,33 +1,32 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { Dropdown } from '../ui/Dropdown';
 import { Boton } from '../ui/Boton';
-import {
-  duracionDeFrame,
-  DURACION_MAXIMA_MS,
-  DURACION_MINIMA_MS,
-  EASING_POR_DEFECTO,
-  ETIQUETAS_EASING,
-} from '../../utils/interpolacion';
-import type { TipoEasing } from '../../types';
+import { CampoDiferido, CLASE_CAMPO, soltarFoco } from './CampoDiferido';
+import { SelectorCurva } from './ControlesEdicion';
+import { duracionDeFrame, DURACION_MAXIMA_MS, DURACION_MINIMA_MS, EASING_POR_DEFECTO } from '../../utils/interpolacion';
+import type { ControlEdicion } from '../../utils/barraJugada';
 
 interface Props {
   /** La fase que se ve: la del reloj si se está mirando la jugada, la del documento si se edita. */
   indiceActivo: number;
   /** Reproduciendo o con la barra de tiempo arrastrada: lo que hay en pantalla no es la fase que se edita. */
   soloMirando: boolean;
+  /** Los controles de la fase que no caben en la barra: van aquí. */
+  escondidos: ReadonlySet<ControlEdicion>;
+  /** El nombre y la curva de la jugada no caben en la fila de las pestañas: van aquí. */
+  jugadaEnMenu: boolean;
 }
 
 /**
- * Menú «Editar ▾» de la barra de la jugada. Reúne lo que antes ocupaba la barra
- * (nombre y duración de la fase, nombre y curva de la jugada, y los botones de
- * mover, insertar, añadir, duplicar y borrar) para dejar sitio a las pestañas de
- * las fases en la tablet. Textos completos: en tablet no hay texto emergente.
+ * Menú «Más ▾» de la barra de la jugada: lo que no cabe a la vista, con el texto
+ * completo (en tablet no hay texto emergente), y «Añadir fase al final», que vive
+ * siempre aquí. En una pantalla ancha solo queda eso; en una tablet de 1024, casi
+ * toda la edición.
  */
-export function MenuEditarJugada({ indiceActivo, soloMirando }: Props) {
+export function MenuEditarJugada({ indiceActivo, soloMirando, escondidos, jugadaEnMenu }: Props) {
   const secuencia = useAlineacionStore((s) => s.historial.presente.secuencia);
-  const agregarFrame = useAlineacionStore((s) => s.agregarFrame);
   const agregarFrameAlFinal = useAlineacionStore((s) => s.agregarFrameAlFinal);
   const duplicarFrame = useAlineacionStore((s) => s.duplicarFrame);
   const eliminarFrame = useAlineacionStore((s) => s.eliminarFrame);
@@ -51,6 +50,8 @@ export function MenuEditarJugada({ indiceActivo, soloMirando }: Props) {
   const total = secuencia.frames.length;
   const frameActivo = secuencia.frames[indiceActivo];
   const enElUltimo = indiceActivo >= total - 1;
+  const nombreEnMenu = escondidos.has('nombreFase');
+  const duracionEnMenu = escondidos.has('duracion') && !enElUltimo;
 
   return (
     <Dropdown
@@ -60,13 +61,14 @@ export function MenuEditarJugada({ indiceActivo, soloMirando }: Props) {
         <Boton
           tamano="md"
           variante="secundario"
+          className="shrink-0"
           activo={abierto}
           onClick={alternar}
           aria-haspopup="dialog"
           aria-expanded={abierto}
-          title="Editar la fase y la jugada"
+          title="Lo que no cabe en la barra"
         >
-          Editar <span aria-hidden="true">▾</span>
+          Más <span aria-hidden="true">▾</span>
         </Boton>
       )}
     >
@@ -81,135 +83,140 @@ export function MenuEditarJugada({ indiceActivo, soloMirando }: Props) {
           // desplegable animado, el desenfoque no actúa y las fichas se transparentaban bajo el texto.
           <div
             role="dialog"
-            aria-label="Editar la fase y la jugada"
+            aria-label="Más: fase y jugada"
             style={{ backgroundColor: 'var(--superficie-panel)' }}
             className="barra-scroll max-h-[70dvh] w-[300px] overflow-y-auto overflow-x-hidden rounded-lg border border-white/10 py-1.5 shadow-elevada"
           >
             <TituloSeccion>
               Fase {indiceActivo + 1} de {total}
             </TituloSeccion>
-            <div className="flex gap-2 px-3 pb-2">
-              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-club-plata/70">
-                Nombre de la fase
-                <CampoDiferido
-                  valor={frameActivo?.nombre ?? ''}
-                  alConfirmar={(texto) => renombrarFrame(indiceActivo, texto)}
-                  disabled={soloMirando}
-                  maxLength={30}
-                  placeholder={`Fase ${indiceActivo + 1}`}
-                />
-              </label>
-              {/* La duración es la del tramo que arranca en esta fase: en la última no hay tramo después. */}
-              {!enElUltimo && (
-                <label
-                  className="flex w-20 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70"
-                  title="Lo que tarda esta fase en llegar a la siguiente"
-                >
-                  Dura (s)
-                  <input
-                    type="number"
-                    value={(duracionDeFrame(frameActivo) / 1000).toFixed(1)}
-                    disabled={soloMirando}
-                    min={DURACION_MINIMA_MS / 1000}
-                    max={DURACION_MAXIMA_MS / 1000}
-                    step={0.1}
-                    onChange={(e) => {
-                      const segundos = Number(e.target.value);
-                      if (Number.isFinite(segundos)) setDuracionFrame(indiceActivo, segundos * 1000);
-                    }}
-                    className={CLASE_CAMPO}
-                  />
-                </label>
-              )}
-            </div>
+            {(nombreEnMenu || duracionEnMenu) && (
+              <div className="flex gap-2 px-3 pb-2">
+                {nombreEnMenu && frameActivo && (
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-club-plata/70">
+                    Nombre de la fase
+                    <CampoDiferido
+                      key={frameActivo.id}
+                      valor={frameActivo.nombre ?? ''}
+                      alConfirmar={(texto) => renombrarFrame(indiceActivo, texto)}
+                      disabled={soloMirando}
+                      maxLength={30}
+                      placeholder={`Fase ${indiceActivo + 1}`}
+                      aria-label="Nombre de la fase"
+                      className="w-full"
+                    />
+                  </label>
+                )}
+                {duracionEnMenu && (
+                  <label
+                    className="flex w-20 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70"
+                    title="Lo que tarda esta fase en llegar a la siguiente"
+                  >
+                    Dura (s)
+                    <input
+                      type="number"
+                      value={(duracionDeFrame(frameActivo) / 1000).toFixed(1)}
+                      disabled={soloMirando}
+                      min={DURACION_MINIMA_MS / 1000}
+                      max={DURACION_MAXIMA_MS / 1000}
+                      step={0.1}
+                      onChange={(e) => {
+                        const segundos = Number(e.target.value);
+                        if (Number.isFinite(segundos)) setDuracionFrame(indiceActivo, segundos * 1000);
+                      }}
+                      aria-label="Duración de la fase en segundos"
+                      className={`${CLASE_CAMPO} w-full`}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
 
-            <ItemEditar
-              disabled={indiceActivo === 0 || soloMirando}
-              onClick={() => moverFrame(indiceActivo, indiceActivo - 1)}
-              title="Mover esta fase a la izquierda. Cambia el orden de la jugada."
-            >
-              Mover a la izquierda
-            </ItemEditar>
-            <ItemEditar
-              disabled={enElUltimo || soloMirando}
-              onClick={() => moverFrame(indiceActivo, indiceActivo + 1)}
-              title="Mover esta fase a la derecha. Cambia el orden de la jugada."
-            >
-              Mover a la derecha
-            </ItemEditar>
-            <ItemEditar
-              disabled={soloMirando}
-              onClick={yCerrar(agregarFrame)}
-              title="Insertar una fase justo después de la actual, copiando el estado"
-            >
-              ＋ Insertar fase después
-            </ItemEditar>
+            {escondidos.has('mover') && (
+              <>
+                <ItemEditar
+                  disabled={indiceActivo === 0 || soloMirando}
+                  onClick={() => moverFrame(indiceActivo, indiceActivo - 1)}
+                  title="Mover esta fase a la izquierda. Cambia el orden de la jugada."
+                >
+                  Mover a la izquierda
+                </ItemEditar>
+                <ItemEditar
+                  disabled={enElUltimo || soloMirando}
+                  onClick={() => moverFrame(indiceActivo, indiceActivo + 1)}
+                  title="Mover esta fase a la derecha. Cambia el orden de la jugada."
+                >
+                  Mover a la derecha
+                </ItemEditar>
+              </>
+            )}
             <ItemEditar
               disabled={enElUltimo || soloMirando}
               onClick={yCerrar(agregarFrameAlFinal)}
-              title={enElUltimo ? 'Ya estás en la última fase: usa «Insertar fase después»' : 'Añadir una fase al final de la jugada'}
+              title={enElUltimo ? 'Ya estás en la última fase: usa ＋ Fase' : 'Añadir una fase al final de la jugada'}
             >
               ⇥ Añadir fase al final
             </ItemEditar>
-            <ItemEditar disabled={soloMirando} onClick={yCerrar(() => duplicarFrame(indiceActivo))} title="Duplicar esta fase">
-              ⧉ Duplicar fase
-            </ItemEditar>
+            {escondidos.has('duplicar') && (
+              <ItemEditar disabled={soloMirando} onClick={yCerrar(() => duplicarFrame(indiceActivo))} title="Duplicar esta fase">
+                ⧉ Duplicar fase
+              </ItemEditar>
+            )}
             {/* Borrado en dos toques: el primero pide confirmación, el segundo borra. */}
-            <ItemEditar
-              peligro
-              disabled={total <= 1 || soloMirando}
-              onClick={() => {
-                if (!confirmandoBorrado) {
-                  setConfirmandoBorrado(true);
-                  return;
-                }
-                setConfirmandoBorrado(false);
-                eliminarFrame(indiceActivo);
-                cerrar();
-              }}
-              title={total <= 1 ? 'La jugada necesita al menos una fase' : 'Borrar esta fase'}
-            >
-              {confirmandoBorrado ? `🗑 ¿Borrar la fase ${indiceActivo + 1}? Toca otra vez` : '🗑 Borrar fase'}
-            </ItemEditar>
+            {escondidos.has('borrar') && (
+              <ItemEditar
+                peligro
+                disabled={total <= 1 || soloMirando}
+                onClick={() => {
+                  if (!confirmandoBorrado) {
+                    setConfirmandoBorrado(true);
+                    return;
+                  }
+                  setConfirmandoBorrado(false);
+                  eliminarFrame(indiceActivo);
+                  cerrar();
+                }}
+                title={total <= 1 ? 'La jugada necesita al menos una fase' : 'Borrar esta fase'}
+              >
+                {confirmandoBorrado ? `🗑 ¿Borrar la fase ${indiceActivo + 1}? Toca otra vez` : '🗑 Borrar fase'}
+              </ItemEditar>
+            )}
 
-            <div className="my-1.5 border-t border-white/10" />
-            <TituloSeccion>Jugada</TituloSeccion>
-            <div className="flex gap-2 px-3 pb-1.5">
-              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-club-plata/70">
-                Nombre de la jugada
-                <CampoDiferido
-                  valor={secuencia.nombre ?? ''}
-                  alConfirmar={renombrarSecuencia}
-                  disabled={reproduciendo}
-                  maxLength={60}
-                  placeholder="Nombre de la jugada…"
-                />
-              </label>
-              <label className="flex w-28 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70" title="Cómo arrancan y frenan los jugadores">
-                Curva
-                <select
-                  value={secuencia.easing ?? EASING_POR_DEFECTO}
-                  disabled={reproduciendo}
-                  onChange={(e) => setEasingSecuencia(e.target.value as TipoEasing)}
-                  className={CLASE_CAMPO}
-                >
-                  {(Object.keys(ETIQUETAS_EASING) as TipoEasing[]).map((tipo) => (
-                    <option key={tipo} value={tipo} className="bg-club-carbon">
-                      {ETIQUETAS_EASING[tipo]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {jugadaEnMenu && (
+              <>
+                <div className="my-1.5 border-t border-white/10" />
+                <TituloSeccion>Jugada</TituloSeccion>
+                <div className="flex gap-2 px-3 pb-1.5">
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-club-plata/70">
+                    Nombre de la jugada
+                    <CampoDiferido
+                      valor={secuencia.nombre ?? ''}
+                      alConfirmar={renombrarSecuencia}
+                      disabled={reproduciendo}
+                      maxLength={60}
+                      placeholder="Nombre de la jugada…"
+                      aria-label="Nombre de la jugada"
+                      className="w-full"
+                    />
+                  </label>
+                  <label className="flex w-28 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70">
+                    Curva
+                    <SelectorCurva
+                      valor={secuencia.easing ?? EASING_POR_DEFECTO}
+                      alCambiar={setEasingSecuencia}
+                      disabled={reproduciendo}
+                      className="w-full"
+                    />
+                  </label>
+                </div>
+              </>
+            )}
           </div>
         );
       }}
     </Dropdown>
   );
 }
-
-const CLASE_CAMPO =
-  'h-11 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 text-sm text-white placeholder:text-club-plata/40 outline-none focus:border-club-rojo disabled:opacity-40';
 
 function TituloSeccion({ children }: { children: ReactNode }) {
   return (
@@ -232,66 +239,12 @@ function ItemEditar({
       onClick={(e) => {
         // En el iPad tocar un botón no le quita el foco al campo de texto: se guarda lo escrito
         // ANTES de la acción, o un nombre a medias acabaría en otra fase (tras mover o borrar).
-        if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+        soltarFoco();
         onClick?.(e);
       }}
       {...resto}
     >
       {children}
     </button>
-  );
-}
-
-/**
- * Campo de texto que guarda al salir de él, con Intro o al cerrarse el menú. Lo último
- * importa: tocar fuera cierra el menú y el campo desaparece sin que el navegador avise
- * siempre de que pierde el foco, y lo escrito se perdería.
- */
-function CampoDiferido({
-  valor,
-  alConfirmar,
-  ...resto
-}: { valor: string; alConfirmar: (texto: string) => void } & Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  'value' | 'onChange' | 'onBlur'
->) {
-  const [texto, setTexto] = useState(valor);
-  // Lo escrito y no guardado, y cómo guardarlo con los datos del último render (la fase a la que pertenece).
-  const pendiente = useRef<string | null>(null);
-  const guardarRef = useRef<() => void>(() => {});
-  const guardar = () => {
-    if (pendiente.current !== null && pendiente.current !== valor) alConfirmar(pendiente.current);
-    pendiente.current = null;
-  };
-
-  useEffect(() => {
-    guardarRef.current = guardar;
-  });
-
-  useEffect(() => {
-    setTexto(valor);
-    pendiente.current = null;
-  }, [valor]);
-
-  // Al desmontarse (el menú se cierra) se guarda lo que quedara por guardar.
-  useEffect(() => {
-    const alSalir = guardarRef;
-    return () => alSalir.current();
-  }, []);
-
-  return (
-    <input
-      {...resto}
-      value={texto}
-      onChange={(e) => {
-        setTexto(e.target.value);
-        pendiente.current = e.target.value;
-      }}
-      onBlur={guardar}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-      }}
-      className={CLASE_CAMPO}
-    />
   );
 }

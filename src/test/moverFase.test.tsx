@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { sembrarPlantilla } from './fixturePlantilla';
 import { TimelineTactica } from '../components/pizarra/TimelineTactica';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { useReproduccionStore } from '../store/reproduccionStore';
+import { anchoOcupado } from '../utils/barraJugada';
 
 const estado = () => useAlineacionStore.getState();
 const nombres = () => estado().historial.presente.secuencia!.frames.map((f) => f.nombre);
@@ -22,54 +23,167 @@ function sembrarJugada(): void {
   estado().renombrarFrame(2, 'Remate');
 }
 
-function abrirMenu() {
-  fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
-  return screen.getByRole('dialog', { name: 'Editar la fase y la jugada' });
+/**
+ * jsdom no maqueta. Se simula el sitio de la barra: `espacioFila` es lo que se
+ * reparten el bloque «FASE x/y» y los controles que pueden esconderse; la barra
+ * se mide al montarse con todo a la vista, así que el bloque mide eso menos lo que
+ * ocupan los controles. `pestanas` es el ancho de la fila de pestañas.
+ */
+function simularBarra({ espacioFila, pestanas }: { espacioFila: number; pestanas: number }): void {
+  const caja = (ancho: number) => ({ left: 0, top: 0, right: ancho, bottom: 44, width: ancho, height: 44, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.matches('span[title^="Fase"]')) return caja(espacioFila - anchoOcupado(0));
+    if (this.classList.contains('barra-scroll')) return caja(pestanas);
+    return caja(0);
+  });
+}
+const ANCHA = { espacioFila: 2000, pestanas: 2000 }; // pantalla de escritorio: todo a la vista
+const ESTRECHA = { espacioFila: 180, pestanas: 600 }; // tablet de 1024: solo ＋ Fase
+
+function abrirMas() {
+  fireEvent.click(screen.getByRole('button', { name: 'Más' }));
+  return screen.getByRole('dialog', { name: 'Más: fase y jugada' });
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 /**
- * El menú «Editar ▾» reúne lo que antes ocupaba la barra de la jugada, para dejar
- * sitio a las pestañas en la tablet. En tablet no hay texto emergente: los textos
- * van completos.
+ * En una pantalla ancha la edición de la fase se ve directamente, como en la barra
+ * de antes, y el nombre y la curva de la jugada suben a la fila de las pestañas:
+ * la fila de arriba es la jugada y la de abajo, la fase que se ve.
  */
-describe('menú «Editar ▾» de la jugada', () => {
+describe('barra ancha: la edición de la fase a la vista', () => {
   beforeEach(() => {
     sembrarJugada();
     estado().irAFrame(1);
     useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 1, tiempoMs: 0 });
+    simularBarra(ANCHA);
   });
 
-  it('dice qué fase edita y cada acción con su texto completo, sin ◀ ▶', () => {
+  it('enseña nombre, duración, ＋ Fase, mover, duplicar y borrar, y arriba el nombre y la curva de la jugada', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
-    expect(within(menu).getByText('Fase 2 de 3')).toBeInTheDocument();
-    for (const texto of ['Mover a la izquierda', 'Mover a la derecha', '＋ Insertar fase después', '⇥ Añadir fase al final', '⧉ Duplicar fase', '🗑 Borrar fase']) {
-      expect(within(menu).getByRole('button', { name: texto })).toBeEnabled();
-    }
-    expect(within(menu).getByRole('button', { name: 'Mover a la izquierda' })).toHaveAttribute(
+    expect(screen.getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Pase');
+    expect(screen.getByRole('spinbutton', { name: 'Duración de la fase en segundos' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '＋ Fase' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Mover la fase 2 a la izquierda' })).toHaveAttribute(
       'title',
       'Mover esta fase a la izquierda. Cambia el orden de la jugada.',
     );
-    expect(within(menu).getByRole('button', { name: 'Mover a la derecha' })).toHaveAttribute(
-      'title',
-      'Mover esta fase a la derecha. Cambia el orden de la jugada.',
-    );
-    expect(menu.textContent).not.toMatch(/[◀▶]/);
-    expect(within(menu).getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Pase');
+    expect(screen.getByRole('button', { name: 'Mover la fase 2 a la derecha' })).toHaveTextContent('Mover');
+    expect(screen.getByRole('button', { name: 'Duplicar la fase 2' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Borrar la fase 2' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: 'Nombre de la jugada' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Curva' })).toBeInTheDocument();
   });
 
-  it('mover se lleva la fase activa con ella y deja el menú abierto', () => {
+  it('«Más ▾» solo guarda «Añadir fase al final»', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
+    const menu = abrirMas();
+    expect(within(menu).getAllByRole('button').map((b) => b.textContent)).toEqual(['⇥ Añadir fase al final']);
+    expect(within(menu).queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('con el campo del nombre a la vista, el nombre no se repite junto a «FASE x/y»', () => {
+    render(<TimelineTactica />);
+    const fase = screen.getByTitle('Fase actual y tiempo transcurrido');
+    expect(fase).toHaveTextContent('Fase 2/3');
+    expect(fase.textContent).not.toContain('·');
+  });
+
+  it('los botones de la barra mueven, insertan, duplican y borran (con segundo toque)', () => {
+    render(<TimelineTactica />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mover la fase 2 a la derecha' }));
+    expect(nombres()).toEqual(['Salida', 'Remate', 'Pase']);
+    fireEvent.click(screen.getByRole('button', { name: '＋ Fase' }));
+    expect(nombres()).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: /^Duplicar la fase/ }));
+    expect(nombres()).toHaveLength(5);
+    fireEvent.click(screen.getByRole('button', { name: /^Borrar la fase/ }));
+    expect(nombres()).toHaveLength(5);
+    fireEvent.click(screen.getByRole('button', { name: /^Confirmar: borrar la fase/ }));
+    expect(nombres()).toHaveLength(4);
+  });
+
+  it('un nombre a medias se guarda en su fase antes de moverla (en el iPad el botón no quita el foco)', () => {
+    render(<TimelineTactica />);
+    const campo = screen.getByRole('textbox', { name: 'Nombre de la fase' });
+    campo.focus();
+    fireEvent.change(campo, { target: { value: 'Pase al 7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mover la fase 2 a la derecha' }));
+    expect(nombres()).toEqual(['Salida', 'Remate', 'Pase al 7']);
+  });
+
+  it('un nombre a medias se guarda en su fase al tocar la pestaña de otra', () => {
+    render(<TimelineTactica />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre de la fase' }), { target: { value: 'Pase al 7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Frame 3: Remate' }));
+    expect(nombres()).toEqual(['Salida', 'Pase al 7', 'Remate']);
+    expect(screen.getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Remate');
+  });
+
+  it('en la última fase la duración se queda en su sitio, desactivada', () => {
+    estado().irAFrame(2);
+    useReproduccionStore.setState({ indiceFrame: 2 });
+    render(<TimelineTactica />);
+    expect(screen.getByRole('spinbutton', { name: 'Duración de la fase en segundos' })).toBeDisabled();
+  });
+});
+
+/**
+ * En una tablet de 1024 solo cabe ＋ Fase: lo demás va a «Más ▾», con el texto
+ * completo, y el nombre de la fase se lee junto a «FASE x/y».
+ */
+describe('barra estrecha: ＋ Fase a la vista y lo demás en «Más ▾»', () => {
+  beforeEach(() => {
+    sembrarJugada();
+    estado().irAFrame(1);
+    useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 1, tiempoMs: 0 });
+    simularBarra(ESTRECHA);
+  });
+
+  it('en la barra solo queda ＋ Fase, y Grabar y Movimiento siguen a mano', () => {
+    render(<TimelineTactica />);
+    expect(screen.getByRole('button', { name: '＋ Fase' })).toBeEnabled();
+    expect(screen.queryByRole('textbox', { name: 'Nombre de la fase' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Mover la fase/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Nombre de la jugada' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grabar' })).toHaveTextContent('Grabar');
+    expect(screen.getByRole('button', { name: 'Movimiento' })).toHaveTextContent('Movimiento');
+  });
+
+  it('«Más ▾» dice qué fase edita y lleva todo lo demás con su texto completo', () => {
+    render(<TimelineTactica />);
+    const menu = abrirMas();
+    expect(within(menu).getByText('Fase 2 de 3')).toBeInTheDocument();
+    expect(within(menu).getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Pase');
+    expect(within(menu).getByRole('spinbutton', { name: 'Duración de la fase en segundos' })).toBeEnabled();
+    for (const texto of ['Mover a la izquierda', 'Mover a la derecha', '⇥ Añadir fase al final', '⧉ Duplicar fase', '🗑 Borrar fase']) {
+      expect(within(menu).getByRole('button', { name: texto })).toBeEnabled();
+    }
+    expect(within(menu).getByRole('textbox', { name: 'Nombre de la jugada' })).toBeInTheDocument();
+    expect(within(menu).getByRole('combobox', { name: 'Curva' })).toBeInTheDocument();
+    expect(menu.textContent).not.toMatch(/[◀▶]/);
+  });
+
+  it('el nombre de la fase se lee junto a «FASE x/y»', () => {
+    render(<TimelineTactica />);
+    expect(screen.getByTitle('Fase 2 de 3: Pase')).toHaveTextContent('Fase 2/3 · Pase');
+  });
+
+  it('mover desde el menú se lleva la fase activa con ella y deja el menú abierto', () => {
+    render(<TimelineTactica />);
+    const menu = abrirMas();
     fireEvent.click(within(menu).getByRole('button', { name: 'Mover a la derecha' }));
     expect(nombres()).toEqual(['Salida', 'Remate', 'Pase']);
     expect(estado().historial.presente.secuencia!.indiceActivo).toBe(2);
     expect(within(screen.getByRole('dialog')).getByText('Fase 3 de 3')).toBeInTheDocument();
   });
 
-  it('borrar pide un segundo toque y borra la fase que se ve', () => {
+  it('borrar desde el menú pide un segundo toque y borra la fase que se ve', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
+    const menu = abrirMas();
     fireEvent.click(within(menu).getByRole('button', { name: '🗑 Borrar fase' }));
     expect(nombres()).toHaveLength(3);
     fireEvent.click(within(menu).getByRole('button', { name: '🗑 ¿Borrar la fase 2? Toca otra vez' }));
@@ -77,9 +191,9 @@ describe('menú «Editar ▾» de la jugada', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('el nombre escrito se guarda al cerrar el menú tocando fuera, sin haber salido del campo', () => {
+  it('lo escrito en el menú se guarda al cerrarlo tocando fuera, sin haber salido del campo', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
+    const menu = abrirMas();
     fireEvent.change(within(menu).getByRole('textbox', { name: 'Nombre de la fase' }), { target: { value: 'Pase al 7' } });
     fireEvent.change(within(menu).getByRole('textbox', { name: 'Nombre de la jugada' }), { target: { value: 'Salida por la derecha' } });
     fireEvent.pointerDown(document.body);
@@ -88,9 +202,9 @@ describe('menú «Editar ▾» de la jugada', () => {
     expect(estado().historial.presente.secuencia!.nombre).toBe('Salida por la derecha');
   });
 
-  it('un nombre a medias se guarda en su fase antes de moverla o de borrar (en el iPad el botón no quita el foco)', () => {
+  it('un nombre a medias en el menú se guarda en su fase antes de moverla', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
+    const menu = abrirMas();
     const campo = within(menu).getByRole('textbox', { name: 'Nombre de la fase' });
     campo.focus();
     fireEvent.change(campo, { target: { value: 'Pase al 7' } });
@@ -100,8 +214,7 @@ describe('menú «Editar ▾» de la jugada', () => {
 
   it('la curva de la jugada se cambia desde el menú', () => {
     render(<TimelineTactica />);
-    const menu = abrirMenu();
-    fireEvent.change(within(menu).getByRole('combobox', { name: 'Curva' }), { target: { value: 'lineal' } });
+    fireEvent.change(within(abrirMas()).getByRole('combobox', { name: 'Curva' }), { target: { value: 'lineal' } });
     expect(estado().historial.presente.secuencia!.easing).toBe('lineal');
   });
 });
@@ -120,58 +233,55 @@ describe('línea de tiempo con la barra arrastrada', () => {
   });
 
   it('marca la pestaña y el nombre de la fase que se ve', () => {
+    simularBarra(ESTRECHA);
     render(<TimelineTactica />);
     expect(screen.getByRole('button', { name: 'Frame 1: Salida' })).toHaveAttribute('aria-current', 'true');
-    const menu = abrirMenu();
+    expect(screen.getByTitle('Fase 1 de 3: Salida')).toHaveTextContent('Fase 1/3 · Salida');
+    const menu = abrirMas();
     expect(within(menu).getByText('Fase 1 de 3')).toBeInTheDocument();
     expect(within(menu).getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Salida');
   });
 
-  it('no deja mover, renombrar, insertar, duplicar ni borrar fases', () => {
+  it('no deja mover, renombrar, insertar, duplicar ni borrar fases desde la barra', () => {
+    simularBarra(ANCHA);
     render(<TimelineTactica />);
-    const menu = abrirMenu();
-    expect(within(menu).getByRole('button', { name: 'Mover a la derecha' })).toBeDisabled();
-    expect(within(menu).getByRole('textbox', { name: 'Nombre de la fase' })).toBeDisabled();
-    expect(within(menu).getByRole('button', { name: '＋ Insertar fase después' })).toBeDisabled();
-    expect(within(menu).getByRole('button', { name: '⧉ Duplicar fase' })).toBeDisabled();
-    expect(within(menu).getByRole('button', { name: '🗑 Borrar fase' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Nombre de la fase' })).toBeDisabled();
+    expect(screen.getByRole('spinbutton', { name: 'Duración de la fase en segundos' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '＋ Fase' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Mover la fase 1 a la derecha' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Duplicar la fase 1' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Borrar la fase 1' })).toBeDisabled();
     expect(nombres()).toEqual(['Salida', 'Pase', 'Remate']);
   });
 
+  it('ni desde «Más ▾»', () => {
+    simularBarra(ESTRECHA);
+    render(<TimelineTactica />);
+    const menu = abrirMas();
+    expect(within(menu).getByRole('button', { name: 'Mover a la derecha' })).toBeDisabled();
+    expect(within(menu).getByRole('textbox', { name: 'Nombre de la fase' })).toBeDisabled();
+    expect(within(menu).getByRole('button', { name: '⧉ Duplicar fase' })).toBeDisabled();
+    expect(within(menu).getByRole('button', { name: '🗑 Borrar fase' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '＋ Fase' })).toBeDisabled();
+  });
+
   it('tocar una pestaña sale de la barra y deja esa fase lista para editar', () => {
+    simularBarra(ANCHA);
     render(<TimelineTactica />);
     fireEvent.click(screen.getByRole('button', { name: 'Frame 2: Pase' }));
     expect(useReproduccionStore.getState().previsualizando).toBe(false);
     expect(estado().historial.presente.secuencia!.indiceActivo).toBe(1);
-    const menu = abrirMenu();
-    expect(within(menu).getByRole('button', { name: 'Mover a la derecha' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Mover la fase 2 a la derecha' })).toBeEnabled();
   });
 });
 
-/**
- * Las pestañas cortan el nombre de la fase («Falta latera…»): el nombre completo
- * de la fase que se ve va junto a «FASE x/y», donde la fila tiene sitio.
- */
-describe('nombre de la fase junto a «FASE x/y»', () => {
-  beforeEach(() => {
+describe('una fase sin nombre', () => {
+  it('deja solo «Fase x/y» junto al tiempo', () => {
     sembrarJugada();
     estado().irAFrame(1);
-    useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 1, tiempoMs: 0 });
-  });
-
-  it('muestra el nombre completo de la fase que se edita', () => {
-    render(<TimelineTactica />);
-    expect(screen.getByTitle('Fase 2 de 3: Pase')).toHaveTextContent('Fase 2/3 · Pase');
-  });
-
-  it('con la barra de tiempo arrastrada, el de la fase que se ve', () => {
-    useReproduccionStore.setState({ previsualizando: true, tiempoMs: 0 });
-    render(<TimelineTactica />);
-    expect(screen.getByTitle('Fase 1 de 3: Salida')).toHaveTextContent('Fase 1/3 · Salida');
-  });
-
-  it('una fase sin nombre deja solo «Fase x/y»', () => {
     estado().renombrarFrame(1, '');
+    useReproduccionStore.setState({ reproduciendo: false, previsualizando: false, indiceFrame: 1, tiempoMs: 0 });
+    simularBarra(ESTRECHA);
     render(<TimelineTactica />);
     const fase = screen.getByTitle('Fase actual y tiempo transcurrido');
     expect(fase).toHaveTextContent('Fase 2/3');

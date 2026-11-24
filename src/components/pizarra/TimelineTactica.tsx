@@ -1,11 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
 import { useBuscarJugador } from '../../store/plantillaStore';
 import { ControlesReproduccion } from './ControlesReproduccion';
+import { CamposJugada, ConEtiqueta, EdicionFase } from './ControlesEdicion';
 import { MenuEditarJugada } from './MenuEditarJugada';
 import { Boton } from '../ui/Boton';
+import { useMedidaElemento } from '../../hooks/useMedidaElemento';
+import {
+  ANCHOS_EDICION,
+  ANCHOS_GRABAR,
+  ANCHOS_MOVIMIENTO,
+  elegirNivel,
+  espacioDisponible,
+  jugadaArriba,
+  pasosAplicados,
+  type ControlEdicion,
+} from '../../utils/barraJugada';
 import { duracionDeFrame, DURACION_MINIMA_MS, tiempoHastaFrame } from '../../utils/interpolacion';
 import { duracionDeRuta, trayectoriaDe } from '../../utils/trayectorias';
 import type { ModoOrientacion } from '../../types';
@@ -50,7 +62,37 @@ export function TimelineTactica() {
     ? trayectoriaDe(secuencia?.frames[secuencia.indiceActivo]?.trayectorias, sujetoTrayectoria.tipo, sujetoTrayectoria.id)
     : undefined;
 
-  const listaRef = useRef<HTMLDivElement>(null);
+  const listaRef = useRef<HTMLDivElement | null>(null);
+
+  // Qué cabe (ver utils/barraJugada). Abajo, el bloque «FASE x/y» se lleva lo que sobra: su ancho más lo
+  // que ocupan los controles que pueden esconderse es el espacio a repartir. Arriba, igual con las pestañas.
+  const nivelRef = useRef(0);
+  const arribaRef = useRef(false);
+  const [refBloqueFase, espacioFila] = useMedidaElemento<HTMLSpanElement, number>(
+    (caja) => espacioDisponible(caja.width, nivelRef.current),
+    Number.POSITIVE_INFINITY,
+  );
+  const [refMedidaPestanas, jugadaEnFila] = useMedidaElemento<HTMLDivElement, boolean>(
+    (caja) => jugadaArriba(caja.width, arribaRef.current),
+    false,
+  );
+  const nivel = elegirNivel(espacioFila);
+  useLayoutEffect(() => {
+    nivelRef.current = nivel;
+    arribaRef.current = jugadaEnFila;
+  });
+  const refPestanas = useCallback(
+    (elemento: HTMLDivElement | null) => {
+      listaRef.current = elemento;
+      refMedidaPestanas(elemento);
+    },
+    [refMedidaPestanas],
+  );
+  const aplicados = pasosAplicados(nivel);
+  const todos = Object.keys(ANCHOS_EDICION) as ControlEdicion[];
+  const visibles = new Set(todos.filter((c) => !aplicados.has(c)));
+  const escondidos = new Set(todos.filter((c) => aplicados.has(c)));
+  const compactos = aplicados.has('compactar');
 
   // Reproduciendo o con la barra de tiempo arrastrada (previsualizando) manda la fase que se VE, la del reloj;
   // editando, la del documento. Antes, con la barra, la pestaña y el nombre eran los de la fase activa del
@@ -123,9 +165,9 @@ export function TimelineTactica() {
   return (
     <div className="superficie-vidrio flex flex-col gap-1 border-t border-white/10 px-2 py-1.5 sm:px-4">
       <div className="flex items-center gap-2">
-        {/* Arriba, las pestañas de las fases a todo lo ancho: en la tablet no cabían junto a los
-            mandos. Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
-        <div ref={listaRef} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto">
+        {/* Arriba, la jugada: las pestañas de las fases (en la tablet no cabían junto a los mandos) y, si
+            sobra sitio, el nombre y la curva. Abajo, la fase que se ve. */}
+        <div ref={refPestanas} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto">
           {secuencia.frames.map((frame, indice) => {
             const activo = indice === indiceActivo;
             return (
@@ -148,6 +190,8 @@ export function TimelineTactica() {
           })}
         </div>
 
+        {jugadaEnFila && <CamposJugada />}
+
         {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
         <Boton
           tamano="md"
@@ -167,21 +211,36 @@ export function TimelineTactica() {
       </div>
 
       <div className="flex items-center gap-2">
-        <ControlesReproduccion />
+        <ControlesReproduccion refBloqueFase={refBloqueFase} nombreJunto={!visibles.has('nombreFase')} />
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {/* La edición de la fase que se ve, a la vista mientras quepa; lo demás, en «Más ▾». */}
+        <EdicionFase indiceActivo={indiceActivo} soloMirando={soloMirando} visibles={visibles} />
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Anchos fijos (los de utils/barraJugada) para que el texto de cada momento no mueva la barra.
+              Si falta sitio, icono con la palabra debajo antes de esconder la duración. */}
           <Boton
             tamano="md"
             variante={grabando ? 'peligro' : 'secundario'}
             onClick={grabando ? detenerGrabacion : iniciarGrabacion}
             aria-pressed={grabando}
+            aria-label={grabando ? 'Grabando' : 'Grabar'}
+            style={{ width: compactos ? ANCHOS_GRABAR.compacto : ANCHOS_GRABAR.normal, ...(compactos ? { paddingLeft: 4, paddingRight: 4 } : {}) }}
             title={
               grabando
                 ? 'Parar de grabar. Cada tanda de movimientos ha creado un frame'
                 : 'Grabar: cada movimiento en el campo crea un frame solo'
             }
           >
-            {grabando ? '⏹ Grabando' : '⏺ Grabar'}
+            {compactos ? (
+              <ConEtiqueta etiqueta={grabando ? 'Grabando' : 'Grabar'}>
+                <span className="text-sm">{grabando ? '⏹' : '⏺'}</span>
+              </ConEtiqueta>
+            ) : grabando ? (
+              '⏹ Grabando'
+            ) : (
+              '⏺ Grabar'
+            )}
           </Boton>
           {/* Herramienta Movimiento. Un recorrido pertenece al tramo entre dos
               fases, así que basta con que la jugada tenga dos. Estando en la
@@ -193,6 +252,8 @@ export function TimelineTactica() {
             disabled={!hayVariasFases || reproduciendo}
             onClick={alternarMovimiento}
             aria-pressed={modoTrayectoriaActivo}
+            aria-label="Movimiento"
+            style={{ width: compactos ? ANCHOS_MOVIMIENTO.compacto : ANCHOS_MOVIMIENTO.normal, ...(compactos ? { paddingLeft: 4, paddingRight: 4 } : {}) }}
             title={
               !hayVariasFases
                 ? 'Añade una fase para poder marcar recorridos'
@@ -203,7 +264,15 @@ export function TimelineTactica() {
                     : 'Movimiento: toca una ficha y luego el campo para ir marcando su recorrido'
             }
           >
-            {modoTrayectoriaActivo ? '✔ Movimiento' : '✥ Movimiento'}
+            {compactos ? (
+              <ConEtiqueta etiqueta="Movimiento">
+                <span className="text-[15px]">{modoTrayectoriaActivo ? '✔' : '✥'}</span>
+              </ConEtiqueta>
+            ) : modoTrayectoriaActivo ? (
+              '✔ Movimiento'
+            ) : (
+              '✥ Movimiento'
+            )}
           </Boton>
 
           <Boton
@@ -218,9 +287,13 @@ export function TimelineTactica() {
             ↗
           </Boton>
 
-          {/* Mover, insertar, añadir al final, duplicar y borrar, con el nombre y la duración de la fase
-              y el nombre y la curva de la jugada: en el menú, para dejar sitio a las pestañas en la tablet. */}
-          <MenuEditarJugada indiceActivo={indiceActivo} soloMirando={soloMirando} />
+          {/* Lo que no cabe a la vista, y «Añadir fase al final», que vive siempre aquí. */}
+          <MenuEditarJugada
+            indiceActivo={indiceActivo}
+            soloMirando={soloMirando}
+            escondidos={escondidos}
+            jugadaEnMenu={!jugadaEnFila}
+          />
         </div>
       </div>
 

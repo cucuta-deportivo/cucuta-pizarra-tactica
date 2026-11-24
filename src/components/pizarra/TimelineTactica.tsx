@@ -1,20 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
 import { useBuscarJugador } from '../../store/plantillaStore';
 import { ControlesReproduccion } from './ControlesReproduccion';
+import { MenuEditarJugada } from './MenuEditarJugada';
 import { Boton } from '../ui/Boton';
-import {
-  duracionDeFrame,
-  DURACION_MAXIMA_MS,
-  DURACION_MINIMA_MS,
-  EASING_POR_DEFECTO,
-  ETIQUETAS_EASING,
-  tiempoHastaFrame,
-} from '../../utils/interpolacion';
+import { duracionDeFrame, DURACION_MINIMA_MS, tiempoHastaFrame } from '../../utils/interpolacion';
 import { duracionDeRuta, trayectoriaDe } from '../../utils/trayectorias';
-import type { ModoOrientacion, TipoEasing } from '../../types';
+import type { ModoOrientacion } from '../../types';
 
 /**
  * Línea de tiempo de la jugada (frames). Solo se monta cuando hay una secuencia
@@ -26,16 +20,7 @@ import type { ModoOrientacion, TipoEasing } from '../../types';
 export function TimelineTactica() {
   const secuencia = useAlineacionStore((s) => s.historial.presente.secuencia);
   const irAFrame = useAlineacionStore((s) => s.irAFrame);
-  const agregarFrame = useAlineacionStore((s) => s.agregarFrame);
-  const duplicarFrame = useAlineacionStore((s) => s.duplicarFrame);
-  const eliminarFrame = useAlineacionStore((s) => s.eliminarFrame);
-  const renombrarFrame = useAlineacionStore((s) => s.renombrarFrame);
   const cerrarJugada = useAlineacionStore((s) => s.cerrarJugada);
-  const setDuracionFrame = useAlineacionStore((s) => s.setDuracionFrame);
-  const setEasingSecuencia = useAlineacionStore((s) => s.setEasingSecuencia);
-  const moverFrame = useAlineacionStore((s) => s.moverFrame);
-  const renombrarSecuencia = useAlineacionStore((s) => s.renombrarSecuencia);
-  const agregarFrameAlFinal = useAlineacionStore((s) => s.agregarFrameAlFinal);
   const setDuracionTrayectoria = useAlineacionStore((s) => s.setDuracionTrayectoria);
   const setOrientacionTrayectoria = useAlineacionStore((s) => s.setOrientacionTrayectoria);
   const alternarVisibilidadTrayectoria = useAlineacionStore((s) => s.alternarVisibilidadTrayectoria);
@@ -66,9 +51,6 @@ export function TimelineTactica() {
     : undefined;
 
   const listaRef = useRef<HTMLDivElement>(null);
-  const [nombre, setNombre] = useState('');
-  const [nombreJugada, setNombreJugada] = useState('');
-  const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
 
   // Reproduciendo o con la barra de tiempo arrastrada (previsualizando) manda la fase que se VE, la del reloj;
   // editando, la del documento. Antes, con la barra, la pestaña y el nombre eran los de la fase activa del
@@ -78,20 +60,6 @@ export function TimelineTactica() {
   const indiceActivo = soloMirando ? indiceEnReproduccion : (secuencia?.indiceActivo ?? 0);
   const frameActivo = secuencia?.frames[indiceActivo];
   const enElUltimoFrame = indiceActivo >= (secuencia?.frames.length ?? 1) - 1;
-
-  useEffect(() => {
-    setNombre(frameActivo?.nombre ?? '');
-  }, [frameActivo?.id, frameActivo?.nombre]);
-
-  useEffect(() => {
-    setNombreJugada(secuencia?.nombre ?? '');
-  }, [secuencia?.nombre]);
-
-  // La confirmación de borrado no sobrevive a cambiar de fase: pedir confirmación
-  // para una fase y que la acepte otra sería un borrado por sorpresa.
-  useEffect(() => {
-    setConfirmandoBorrado(false);
-  }, [indiceActivo, secuencia?.frames.length]);
 
   // Mantiene a la vista el frame activo cuando la jugada es larga y hay scroll.
   useEffect(() => {
@@ -151,77 +119,10 @@ export function TimelineTactica() {
   return (
     <div className="superficie-vidrio flex flex-col gap-2 border-t border-white/10 px-2 py-2 sm:px-4">
       <div className="flex items-center gap-2">
-        <input
-          value={nombreJugada}
-          disabled={reproduciendo}
-          onChange={(e) => setNombreJugada(e.target.value)}
-          onBlur={() => renombrarSecuencia(nombreJugada)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-          }}
-          maxLength={60}
-          placeholder="Nombre de la jugada…"
-          aria-label="Nombre de la jugada"
-          className="h-9 w-36 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 font-display text-xs font-semibold text-white placeholder:font-normal placeholder:text-club-plata/40 outline-none focus:border-club-rojo sm:w-48"
-        />
-
-        <span className="shrink-0 font-display text-[11px] font-semibold uppercase tracking-wide text-club-plata/70">
+        {/* Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
+        <span className="flex-1 font-display text-[11px] font-semibold uppercase tracking-wide text-club-plata/70">
           {secuencia.frames.length} {secuencia.frames.length === 1 ? 'fase' : 'fases'}
         </span>
-
-        <input
-          value={nombre}
-          disabled={soloMirando}
-          onChange={(e) => setNombre(e.target.value)}
-          onBlur={() => renombrarFrame(indiceActivo, nombre)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-          }}
-          maxLength={30}
-          placeholder={`Nombrar frame ${indiceActivo + 1}…`}
-          aria-label={`Nombre del frame ${indiceActivo + 1}`}
-          className="h-9 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-white placeholder:text-club-plata/40 outline-none focus:border-club-rojo"
-        />
-
-        {/*
-          La duración pertenece al TRAMO que arranca en esta fase, así que en la
-          última no hay nada que ajustar: no hay transición después de ella.
-        */}
-        {!enElUltimoFrame && (
-          <label className="flex shrink-0 items-center gap-1.5 text-[11px] text-club-plata/70" title="Lo que tarda esta fase en llegar a la siguiente">
-            <span className="hidden sm:inline">Dura</span>
-            <input
-              type="number"
-              value={(duracionDeFrame(frameActivo) / 1000).toFixed(1)}
-              disabled={soloMirando}
-              min={DURACION_MINIMA_MS / 1000}
-              max={DURACION_MAXIMA_MS / 1000}
-              step={0.1}
-              onChange={(e) => {
-                const segundos = Number(e.target.value);
-                if (Number.isFinite(segundos)) setDuracionFrame(indiceActivo, segundos * 1000);
-              }}
-              aria-label={`Duración de la fase ${indiceActivo + 1} en segundos`}
-              className="h-9 w-16 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-white outline-none focus:border-club-rojo"
-            />
-            <span>s</span>
-          </label>
-        )}
-
-        <select
-          value={secuencia.easing ?? EASING_POR_DEFECTO}
-          disabled={reproduciendo}
-          onChange={(e) => setEasingSecuencia(e.target.value as TipoEasing)}
-          aria-label="Curva de movimiento de la jugada"
-          title="Cómo arrancan y frenan los jugadores"
-          className="h-9 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-white outline-none focus:border-club-rojo"
-        >
-          {(Object.keys(ETIQUETAS_EASING) as TipoEasing[]).map((tipo) => (
-            <option key={tipo} value={tipo} className="bg-club-carbon">
-              {ETIQUETAS_EASING[tipo]}
-            </option>
-          ))}
-        </select>
 
         {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
         <Boton
@@ -315,86 +216,9 @@ export function TimelineTactica() {
             ↗
           </Boton>
 
-          {/* Reordenar. Botones y no arrastre: la fila ya tiene scroll horizontal
-              y arrastrar dentro de algo que también se desplaza es un desastre con el dedo.
-              Con ◀ ▶ parecían de navegar y cambiaban el orden sin querer: el icono es la
-              pestaña de la fase con una flecha, y el texto avisa de que cambia el orden. */}
-          <Boton
-            tamano="icono"
-            variante="secundario"
-            disabled={indiceActivo === 0 || soloMirando}
-            onClick={() => moverFrame(indiceActivo, indiceActivo - 1)}
-            aria-label={`Mover la fase ${indiceActivo + 1} a la izquierda`}
-            title="Mover esta fase a la izquierda. Cambia el orden de la jugada."
-          >
-            <IconoMoverFase hacia="antes" />
-          </Boton>
-          <Boton
-            tamano="icono"
-            variante="secundario"
-            disabled={enElUltimoFrame || soloMirando}
-            onClick={() => moverFrame(indiceActivo, indiceActivo + 1)}
-            aria-label={`Mover la fase ${indiceActivo + 1} a la derecha`}
-            title="Mover esta fase a la derecha. Cambia el orden de la jugada."
-          >
-            <IconoMoverFase hacia="despues" />
-          </Boton>
-
-          <Boton
-            tamano="sm"
-            variante="secundario"
-            disabled={soloMirando}
-            onClick={agregarFrame}
-            title="Insertar una fase justo después de la actual, copiando el estado"
-          >
-            ＋ Fase
-          </Boton>
-          <Boton
-            tamano="icono"
-            variante="secundario"
-            disabled={enElUltimoFrame || soloMirando}
-            onClick={agregarFrameAlFinal}
-            aria-label="Añadir una fase al final"
-            title={enElUltimoFrame ? 'Ya estás en la última fase: usa ＋ Fase' : 'Añadir una fase al final de la jugada'}
-          >
-            ⇥
-          </Boton>
-          <Boton
-            tamano="icono"
-            variante="secundario"
-            disabled={soloMirando}
-            onClick={() => duplicarFrame(indiceActivo)}
-            aria-label="Duplicar este frame"
-            title="Duplicar esta fase"
-          >
-            ⧉
-          </Boton>
-
-          {/* Borrado en dos toques: el primero pide confirmación, el segundo borra.
-              Con una sola fase no hay nada que confirmar porque no se puede borrar. */}
-          <Boton
-            tamano={confirmandoBorrado ? 'sm' : 'icono'}
-            variante="peligro"
-            disabled={secuencia.frames.length <= 1 || soloMirando}
-            onClick={() => {
-              if (!confirmandoBorrado) {
-                setConfirmandoBorrado(true);
-                return;
-              }
-              setConfirmandoBorrado(false);
-              eliminarFrame(indiceActivo);
-            }}
-            aria-label={confirmandoBorrado ? 'Confirmar el borrado de la fase' : 'Eliminar este frame'}
-            title={
-              secuencia.frames.length <= 1
-                ? 'La jugada necesita al menos una fase'
-                : confirmandoBorrado
-                  ? `Pulsa otra vez para borrar la fase ${indiceActivo + 1}`
-                  : 'Eliminar esta fase'
-            }
-          >
-            {confirmandoBorrado ? '¿Borrar?' : '🗑'}
-          </Boton>
+          {/* Mover, insertar, añadir al final, duplicar y borrar, con el nombre y la duración de la fase
+              y el nombre y la curva de la jugada: en el menú, para dejar sitio a las pestañas en la tablet. */}
+          <MenuEditarJugada indiceActivo={indiceActivo} soloMirando={soloMirando} />
         </div>
       </div>
 
@@ -494,34 +318,3 @@ export function TimelineTactica() {
   );
 }
 
-/**
- * Icono de reordenar: la pestaña de la fase (el rectángulo) con una flecha que
- * sale de ella hacia donde se mueve. No se parece a ⏮ ⏭ ni a una flecha de
- * navegar, que es con lo que se confundían los ◀ ▶ de antes.
- */
-function IconoMoverFase({ hacia }: { hacia: 'antes' | 'despues' }) {
-  // «Mover» va escrito debajo del icono, dentro del mismo botón de 44 px: en tablet no hay texto
-  // emergente, y una etiqueta al lado no cabe (la barra ya no deja sitio a las pestañas de las fases).
-  return (
-    <span className="flex flex-col items-center gap-0.5 leading-none">
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        aria-hidden="true"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={hacia === 'despues' ? { transform: 'scaleX(-1)' } : undefined}
-      >
-        <rect x="11" y="5" width="10" height="14" rx="2" />
-        <path d="M8.5 12H2.5M5.5 9l-3 3 3 3" />
-      </svg>
-      <span aria-hidden="true" className="font-display text-[10px] font-semibold uppercase tracking-wide">
-        Mover
-      </span>
-    </span>
-  );
-}

@@ -7,6 +7,21 @@ import { generarId } from '../../utils/id';
 import { simplificarRDP } from '../../utils/suavizado';
 import { dibujarTrazo, type PuntoPx } from '../../utils/renderTrazos';
 
+/**
+ * Borra el lienzo ENTERO sea cual sea la escala: en píxeles de dispositivo, sin
+ * la escala de `devicePixelRatio` que llevan los dibujos. Con la escala puesta,
+ * `clearRect(0, 0, canvas.width, canvas.height)` solo limpiaba la fracción dpr del
+ * ancho y del alto: con el zoom del navegador por debajo del 100 % (dpr < 1), en la
+ * franja derecha e inferior se quedaban pegados los dibujos de otras fases, se
+ * oscurecían en cada vuelta y el borrador no los quitaba de la pantalla.
+ */
+function limpiarLienzo(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
 const TOLERANCIA_SIMPLIFICACION_PX = 2;
 const TOLERANCIA_BORRADOR_PX = 10;
 const UMBRAL_CURVA_PORCENTAJE = 3;
@@ -160,21 +175,21 @@ export const CapaDibujo = forwardRef<HTMLCanvasElement, CapaDibujoProps>(functio
     const canvas = canvasEstaticoRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    limpiarLienzo(canvas, ctx);
     for (const trazo of trazos) dibujarTrazo(ctx, trazo, aPixeles);
   }, [trazos, ancho, alto, aPixeles]);
 
   function limpiarTemp(): void {
     const canvas = canvasTempRef.current;
     const ctx = canvas?.getContext('2d');
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (canvas && ctx) limpiarLienzo(canvas, ctx);
   }
 
   function dibujarPreview(): void {
     const canvas = canvasTempRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || puntosActualesRef.current.length === 0) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    limpiarLienzo(canvas, ctx);
     const tipoPreview = herramienta === 'discontinua' || herramienta === 'flecha' || herramienta === 'zona' ? herramienta : 'libre';
     ctx.globalAlpha = 0.85;
     dibujarTrazo(ctx, { id: 'preview', tipo: tipoPreview, puntos: puntosActualesRef.current, color, grosor }, aPixeles);

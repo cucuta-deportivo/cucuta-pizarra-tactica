@@ -140,14 +140,23 @@ Orden de trabajo: F5.4a y F5.3; F5.2 (antes, la tabla posición → número); F5
 
 ### F5.4c · Biblioteca de jugadas: plan aprobado (19 nov 2026)
 
+**Cómo la quiere el usuario (24 nov).** Donde choca con el plan del 19 nov, manda esto:
+
+- **«Repertorio del club» dentro de la app.** Las 14 jugadas del repertorio vienen con la app, sin importar nada. Van en un fragmento aparte que solo se carga al abrir la biblioteca (no pesan en el arranque) y funcionan sin internet (el service worker lo guarda con el resto de la app). Solo llevan fichas genéricas (dorsal y posición; sin nombre, foto ni id de jugadores reales: comprobado el 24 nov), así que pueden ir en el repositorio.
+- **«Usar jugada»** copia la jugada a la alineación abierta como una jugada más (necesita F5.4b). La de la biblioteca no se toca.
+- **Las jugadas que creen los entrenadores** se guardan en la biblioteca en Supabase, nunca en el repositorio, que es público.
+- **Por confirmar con el cuerpo técnico:** quién ve y quién edita las jugadas de los entrenadores, y la revisión de las 14 del repertorio.
+
+Orden (24 nov): la barra de la jugada en tablet (rama `barra-jugada-tablet`), luego F5.4b y luego F5.4c.
+
 - **Adaptación a otros jugadores: por papeles según la posición.** Al guardar, cada jugador nuestro de la jugada pasa a ser un papel (posición de su zona o natural, y un rótulo opcional como «Lanzador»); no se guarda nombre, foto, dorsal ni id del jugador. Al usarla, la ventana «¿Quién hace cada papel?» propone un jugador de la alineación por posición (natural, secundarias, banquillo; con dos, el del mismo lado) y el entrenador lo cambia si quiere. El papel sin nadie sale como ficha genérica (jugador personalizado con el rótulo). Los rivales se copian tal cual.
 - **Qué guarda:** nombre, tipo, descripción, categoría donde se creó (solo para filtrar), las fases como hoy (posiciones, rivales, balón, objetos, dibujos, zonas pintadas, recorridos, duraciones y nombres), la curva, y la formación y paleta del rival.
 - **Tipos:** salida de balón, ataque, defensa, transición, córner a favor, córner en contra, tiro libre a favor, tiro libre en contra, saque de banda, penal y otra; el usuario pidió añadir contraataque, saque inicial desde el centro, robo de balón y presión. La lista la confirma el cuerpo técnico antes de ejecutar el SQL.
-- **Uso: copiar, no enlazar.** ⋯ → «Guardar jugada en la biblioteca» guarda una copia; ⋯ → «Biblioteca de jugadas» (lista con filtro por tipo, búsqueda y vista de la primera fase) → «Usar en esta alineación». Cambiarla en la alineación no cambia la biblioteca ni al revés. Si la alineación ya tiene jugada, se pregunta si reemplazarla (con Deshacer). En la biblioteca se editan nombre, tipo y descripción, y se borra (marcado).
-- **Supabase:** tabla `jugadas` con los mismos permisos que `alineaciones` (leer, crear y editar solo entrenadores activos; sin DELETE, borrar es marcar `eliminada_en`), las mismas funciones de trigger para versión, fechas y autores, y `origen` ('club' o 'app'): las de la app no se crean ni cambian desde la app. El SQL se mostró en el chat el 19 nov; lo ejecuta el usuario, con comprobaciones y prueba en transacción, y se copia a `schema.sql`.
+- **Uso: copiar, no enlazar.** ⋯ → «Guardar jugada en la biblioteca» guarda una copia; ⋯ → «Biblioteca de jugadas» (lista con filtro por tipo, búsqueda y vista de la primera fase) → «Usar jugada». Cambiarla en la alineación no cambia la biblioteca ni al revés. Se añade como una jugada más de la alineación abierta, con Deshacer (cambiado el 24 nov: antes se preguntaba si reemplazar la única jugada). En la biblioteca se editan nombre, tipo y descripción, y se borra (marcado).
+- **Supabase:** tabla `jugadas`, solo para las de los entrenadores. Quién ve y quién edita, por confirmar con el cuerpo técnico (la propuesta del 19 nov era la de `alineaciones`: leer, crear y editar solo entrenadores activos). Sin DELETE: borrar es marcar `eliminada_en`. Las mismas funciones de trigger para versión, fechas y autores. El SQL mostrado el 19 nov hay que rehacerlo antes de ejecutarlo: sobra `origen` ('club' o 'app'), porque el repertorio ya no va en la base, y faltan los permisos que se confirmen. Lo ejecuta el usuario, con comprobaciones y prueba en transacción, y se copia a `schema.sql`.
 - **Sin señal y sincronización:** igual que las alineaciones (IndexedDB como copia de trabajo, marcas por subir, mismos disparadores, conflictos como copia). El motor de sincronización y el acceso a Supabase se generalizan para las dos tablas, sin copiar código; el indicador suma lo pendiente de ambas.
-- **Jugadas prediseñadas:** misma tabla y formato con `origen = 'app'`. Se prueban primero en local, sin Supabase; solo se cargan en la base las que apruebe el club.
-- **Pasos:** B1 SQL; B2 convertir jugada ↔ papeles (tests); B3 tabla local; B4 sincronización generalizada; B5 pantalla de la biblioteca; B6 «Usar en esta alineación» con la ventana de papeles; B7 prueba con Supabase real en dos perfiles y README.
+- **Jugadas prediseñadas:** son el «Repertorio del club», dentro de la app (cambiado el 24 nov: antes iban a la misma tabla con `origen = 'app'`). Entran las que apruebe el cuerpo técnico.
+- **Pasos:** B1 SQL; B2 convertir jugada ↔ papeles (tests); B3 tabla local; B4 sincronización generalizada; B5 pantalla de la biblioteca con el «Repertorio del club» (fragmento aparte, sin internet); B6 «Usar jugada» con la ventana de papeles; B7 prueba con Supabase real en dos perfiles y README.
 
 ## Pendientes menores
 

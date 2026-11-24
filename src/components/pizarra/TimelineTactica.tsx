@@ -500,21 +500,28 @@ export function TimelineTactica() {
  * navegar, que es con lo que se confundían los ◀ ▶ de antes.
  */
 function IconoMoverFase({ hacia }: { hacia: 'antes' | 'despues' }) {
+  // «Mover» va escrito debajo del icono, dentro del mismo botón de 44 px: en tablet no hay texto
+  // emergente, y una etiqueta al lado no cabe (la barra ya no deja sitio a las pestañas de las fases).
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={hacia === 'despues' ? { transform: 'scaleX(-1)' } : undefined}
-    >
-      <rect x="11" y="5" width="10" height="14" rx="2" />
-      <path d="M8.5 12H2.5M5.5 9l-3 3 3 3" />
-    </svg>
+    <span className="flex flex-col items-center gap-0.5 leading-none">
+      <svg
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={hacia === 'despues' ? { transform: 'scaleX(-1)' } : undefined}
+      >
+        <rect x="11" y="5" width="10" height="14" rx="2" />
+        <path d="M8.5 12H2.5M5.5 9l-3 3 3 3" />
+      </svg>
+      <span aria-hidden="true" className="font-display text-[10px] font-semibold uppercase tracking-wide">
+        Mover
+      </span>
+    </span>
   );
 }

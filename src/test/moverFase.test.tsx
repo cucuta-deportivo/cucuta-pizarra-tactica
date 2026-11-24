@@ -37,6 +37,9 @@ describe('reordenar fases: los botones dicen lo que hacen', () => {
     expect(derecha).toHaveAttribute('title', 'Mover esta fase a la derecha. Cambia el orden de la jugada.');
     expect(izquierda.textContent).not.toMatch(/[◀▶]/);
     expect(derecha.textContent).not.toMatch(/[◀▶]/);
+    // En tablet no hay texto emergente: la palabra va escrita dentro del botón.
+    expect(izquierda).toHaveTextContent('Mover');
+    expect(derecha).toHaveTextContent('Mover');
   });
 
   it('mueven la fase activa, que se va con ella', () => {

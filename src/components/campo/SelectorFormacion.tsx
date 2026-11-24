@@ -4,10 +4,15 @@ import { useUiStore } from '../../store/uiStore';
 import { FORMACIONES, obtenerFormacion } from '../../data/formaciones';
 import type { Formacion } from '../../types';
 
-function MiniCampo({ formacion, activa }: { formacion: Formacion; activa: boolean }) {
+/**
+ * Campo en miniatura con los puntos de la formación. En el botón de la cabecera va
+ * pequeño (36 px de alto) para que el botón mida 44 px como los demás: con 56 px
+ * la cabecera medía 83 y tapaba el borde de arriba del campo. En la lista, grande.
+ */
+function MiniCampo({ formacion, activa, pequeno = false }: { formacion: Formacion; activa: boolean; pequeno?: boolean }) {
   return (
     <div
-      className={`relative h-14 w-10 shrink-0 overflow-hidden rounded border bg-club-cesped ${
+      className={`relative shrink-0 overflow-hidden rounded border bg-club-cesped ${pequeno ? 'h-9 w-[26px]' : 'h-14 w-10'} ${
         activa ? 'border-club-rojo' : 'border-white/15'
       }`}
       aria-hidden="true"
@@ -56,9 +61,9 @@ export function SelectorFormacion() {
             onClick={alternar}
             aria-haspopup="true"
             aria-expanded={abierto}
-            className="flex min-h-[44px] min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-left transition-colors duration-rapido hover:border-club-rojo/60 sm:px-3"
+            className="flex min-h-[44px] min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-0.5 text-left transition-colors duration-rapido hover:border-club-rojo/60 sm:px-3"
           >
-            {formacionActual && <MiniCampo formacion={formacionActual} activa />}
+            {formacionActual && <MiniCampo formacion={formacionActual} activa pequeno />}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate font-display text-base font-bold uppercase tracking-wide text-white sm:text-lg">
                 {formacionActual?.nombre ?? 'Elegir formación'}

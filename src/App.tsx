@@ -578,6 +578,8 @@ export default function App() {
   // Alto real de la barra de la jugada (con la ayuda de Movimiento si está abierta): el campo
   // le cede justo ese sitio. Antes eran altos fijos y, cuando la barra crecía, tapaba el campo.
   const [refTimeline, altoTimeline] = useAltoElemento<HTMLDivElement>();
+  // Y el de la cabecera: el campo empieza donde acaba. Con 68 px fijos y una cabecera de 83, tapaba 15 px del campo.
+  const [refCabecera, altoCabecera] = useAltoElemento<HTMLElement>();
 
   const cuadricula = useAlineacionStore((s) => s.historial.presente.cuadricula);
   const actualizarCuadricula = useAlineacionStore((s) => s.actualizarCuadricula);
@@ -671,12 +673,15 @@ export default function App() {
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-club-negro text-white">
       {/* Con la jugada abierta, el campo cede el alto de la timeline para no quedar tapado. */}
-      <main className="absolute inset-0 px-2 pt-[68px] sm:px-4" style={{ paddingBottom: reservaInferior }}>
+      <main
+        className="absolute inset-0 px-2 sm:px-4"
+        style={{ paddingTop: barrasVisibles ? altoCabecera || 61 : 68, paddingBottom: reservaInferior }}
+      >
         <Campo ref={campoRef} />
       </main>
 
       {barrasVisibles && (
-        <header className="superficie-vidrio pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center gap-2 border-b border-white/10 px-2.5 py-2 sm:gap-3 sm:px-4">
+        <header ref={refCabecera} className="superficie-vidrio pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center gap-2 border-b border-white/10 px-2.5 py-2 sm:gap-3 sm:px-4">
           <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <EscudoClub />
             <SelectorFormacion />

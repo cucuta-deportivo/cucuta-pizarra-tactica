@@ -121,11 +121,11 @@ export function TimelineTactica() {
   }
 
   return (
-    <div className="superficie-vidrio flex flex-col gap-2 border-t border-white/10 px-2 py-2 sm:px-4">
+    <div className="superficie-vidrio flex flex-col gap-1 border-t border-white/10 px-2 py-1.5 sm:px-4">
       <div className="flex items-center gap-2">
         {/* Arriba, las pestañas de las fases a todo lo ancho: en la tablet no cabían junto a los
             mandos. Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
-        <div ref={listaRef} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto pb-1">
+        <div ref={listaRef} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto">
           {secuencia.frames.map((frame, indice) => {
             const activo = indice === indiceActivo;
             return (
@@ -171,7 +171,7 @@ export function TimelineTactica() {
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <Boton
-            tamano="sm"
+            tamano="md"
             variante={grabando ? 'peligro' : 'secundario'}
             onClick={grabando ? detenerGrabacion : iniciarGrabacion}
             aria-pressed={grabando}
@@ -188,7 +188,7 @@ export function TimelineTactica() {
               última no se deshabilita: se retrocede sola a la anterior, que es
               donde arranca el tramo que el entrenador quiere dibujar. */}
           <Boton
-            tamano="sm"
+            tamano="md"
             variante={modoTrayectoriaActivo ? 'primario' : 'secundario'}
             disabled={!hayVariasFases || reproduciendo}
             onClick={alternarMovimiento}

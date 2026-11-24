@@ -140,7 +140,7 @@ Orden de trabajo: F5.4a y F5.3; F5.2 (antes, la tabla posición → número); F5
 | F5.6 | **Prioridad alta** (21 nov): es lo que más se va a usar en el banquillo. Va justo después de F5.4b. Que «Medio campo» y «Tercio ofensivo» amplíen de verdad con la tablet en horizontal, porque el banquillo la usa así (pedido del 21 nov). Hoy esas vistas solo recortan el largo del campo; en horizontal el tamaño lo fija el ancho de 68 m, que no cambia, así que en la tablet apaisada el área se ve igual de pequeña que con el campo completo y solo queda una franja. Solo amplían en vertical. Visto el 20 nov en 1180 × 820. Sin plan todavía | Pendiente |
 | F5.7 | Número dentro del círculo en las fichas sin nombre ni apellido (las genéricas, como las que usará la biblioteca por posición): el dorsal en el círculo, como en las del rival, y la posición debajo, en pantalla y en el PNG y el PDF. Hoy el círculo solo lleva la foto o las iniciales, y el dorsal va en la chapa. Aprobado el 21 nov; se planifica en su propia rama, después de F5.4b | Pendiente |
 
-Orden de lo que queda (21 nov): F5.4b y después F5.6. F5.7 se planifica después de F5.4b.
+Orden (24 nov): la barra de la jugada en tablet (rama `barra-jugada-tablet`), F5.4b, F5.6 y F5.4c. F5.6 va antes que F5.4c para que, cuando el repertorio entre en la app, los balones parados ya se vean bien en horizontal. F5.7 se planifica después de F5.4b.
 
 ### F5.4c · Biblioteca de jugadas: plan aprobado (19 nov 2026)
 

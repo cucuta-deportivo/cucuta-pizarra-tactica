@@ -119,31 +119,8 @@ export function TimelineTactica() {
   return (
     <div className="superficie-vidrio flex flex-col gap-2 border-t border-white/10 px-2 py-2 sm:px-4">
       <div className="flex items-center gap-2">
-        {/* Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
-        <span className="flex-1 font-display text-[11px] font-semibold uppercase tracking-wide text-club-plata/70">
-          {secuencia.frames.length} {secuencia.frames.length === 1 ? 'fase' : 'fases'}
-        </span>
-
-        {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
-        <Boton
-          tamano="sm"
-          variante="fantasma"
-          onClick={() => {
-            // Sin jugada en pantalla no queda nada que reproducir, grabar ni recorrer.
-            detener();
-            detenerGrabacion();
-            desactivarModoTrayectoria();
-            cerrarJugada();
-          }}
-          title="Guardar la jugada y volver a la pizarra. Se vuelve a abrir desde ⋯"
-        >
-          Cerrar jugada
-        </Boton>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <ControlesReproduccion />
-
+        {/* Arriba, las pestañas de las fases a todo lo ancho: en la tablet no cabían junto a los
+            mandos. Nombre y duración de la fase, nombre y curva de la jugada: en el menú «Editar ▾». */}
         <div ref={listaRef} className="barra-scroll flex flex-1 items-center gap-1.5 overflow-x-auto pb-1">
           {secuencia.frames.map((frame, indice) => {
             const activo = indice === indiceActivo;
@@ -167,7 +144,28 @@ export function TimelineTactica() {
           })}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
+        <Boton
+          tamano="md"
+          variante="fantasma"
+          className="shrink-0"
+          onClick={() => {
+            // Sin jugada en pantalla no queda nada que reproducir, grabar ni recorrer.
+            detener();
+            detenerGrabacion();
+            desactivarModoTrayectoria();
+            cerrarJugada();
+          }}
+          title="Guardar la jugada y volver a la pizarra. Se vuelve a abrir desde ⋯"
+        >
+          Cerrar jugada
+        </Boton>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <ControlesReproduccion />
+
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <Boton
             tamano="sm"
             variante={grabando ? 'peligro' : 'secundario'}

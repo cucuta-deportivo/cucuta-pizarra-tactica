@@ -170,26 +170,39 @@ function aplicarFrameADocumento(doc: DocumentoTactico, frame: TableroTactico): v
 /**
  * Captura automática (decisión de diseño): antes de movernos a otro frame se
  * vuelca lo que hay en pantalla al frame activo, para que nadie pierda cambios
- * por no haber pulsado un botón de guardar.
+ * por no haber pulsado un botón de guardar. Devuelve si escribió algo: es lo
+ * único de moverse por la jugada que hay que guardar (mirar no guarda).
  */
-function capturarFrameActivo(doc: DocumentoTactico): void {
+function capturarFrameActivo(doc: DocumentoTactico): boolean {
   const secuencia = doc.secuencia;
-  if (!secuencia) return;
+  if (!secuencia) return false;
   const activo = secuencia.frames[secuencia.indiceActivo];
-  if (!activo) return;
+  if (!activo) return false;
   const candidato = frameDesdeDocumento(doc, activo.id, activo);
   // Solo se escribe si de verdad cambió algo. `frameDesdeDocumento` devuelve
   // siempre un objeto nuevo, y asignarlo a ciegas haría que Immer marcase el
   // documento como modificado y el historial se llenase de pasos vacíos cada
   // vez que se pulsa play o se toca un chip de la timeline.
-  if (mismoContenidoFrame(candidato, activo)) return;
+  if (mismoContenidoFrame(candidato, activo)) return false;
   secuencia.frames[secuencia.indiceActivo] = candidato;
+  return true;
 }
 
 /** Compara dos frames por su contenido táctico; el id y el nombre no cuentan. */
 function mismoContenidoFrame(a: FrameTactico, b: FrameTactico): boolean {
-  const soloContenido = ({ id: _id, nombre: _nombre, ...resto }: FrameTactico) => JSON.stringify(resto);
-  return soloContenido(a) === soloContenido(b);
+  // Campo a campo y no la fase entera serializada: JSON.stringify depende del
+  // orden de las claves, y las fases que bajan de Supabase (jsonb no lo
+  // conserva) o vienen de un JSON lo traen distinto. Comparando la fase entera,
+  // la primera vez que se pasaba por cada una parecía cambiada, se reescribía y
+  // se guardaba (una versión nueva solo por mirarla). Sin editar, el documento
+  // comparte los arrays con la fase, así que casi siempre basta con la referencia.
+  const claves = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof FrameTactico)[]);
+  claves.delete('id');
+  claves.delete('nombre');
+  for (const clave of claves) {
+    if (a[clave] !== b[clave] && JSON.stringify(a[clave]) !== JSON.stringify(b[clave])) return false;
+  }
+  return true;
 }
 
 /** Mete un frame nuevo con el estado actual justo detrás del activo, y se planta en él. */
@@ -506,6 +519,12 @@ let temporizadorAutoguardado: ReturnType<typeof setTimeout> | null = null;
 let revisionAbierta = 0;
 /** Hay cambios en la pizarra que todavía no empezaron a guardarse. */
 let sinGuardar = false;
+/**
+ * La jugada se abrió solo para mirar y lo guardado todavía la tiene cerrada.
+ * Cerrarla entonces no guarda nada; si entretanto se guardó (porque se editó),
+ * cerrarla sí, para que lo guardado no se quede con la jugada abierta.
+ */
+let aperturaSinGuardar = false;
 /** Los guardados van de uno en uno: cada uno parte de la revisión que dejó el anterior. */
 let colaDeGuardado: Promise<void> = Promise.resolve();
 /** Cuándo se avisó por última vez de que la abierta es de solo lectura, para no repetir el aviso en cada toque. */
@@ -547,9 +566,12 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
    * se aplicó porque la abierta es de solo lectura (formato más nuevo): quien
    * avisa de lo hecho no debe avisar entonces. `soloVer` es para lo que solo
    * cambia lo que se mira (ir a otra fase de la jugada): se permite, pero
-   * tampoco se guarda.
+   * tampoco se guarda. `guardar: false` aplica el cambio sin dejarlo por guardar:
+   * mirar una jugada no es editarla, y guardarla haría una versión nueva en cada
+   * vista (en producción, una subida a Supabase y posibles copias por conflicto).
+   * Quien la usa decide después si hubo algo que guardar.
    */
-  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string, { soloVer = false } = {}): boolean {
+  function mutar(receta: (doc: DocumentoTactico) => void, etiqueta: string, { soloVer = false, guardar = true } = {}): boolean {
     const soloLectura = get().alineacionSoloLectura !== null;
     if (soloLectura && !soloVer) {
       avisarSoloLectura();
@@ -558,7 +580,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     set((estado) => ({ historial: actualizarHistorial(estado.historial, receta, etiqueta) }));
     if (soloLectura) return true;
     capturarFichas();
-    marcarPendiente();
+    if (guardar) marcarPendiente();
     return true;
   }
 
@@ -624,6 +646,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
     revisionAbierta = revision;
     sinGuardar = false;
+    aperturaSinGuardar = false;
     const soloLectura = esDeUnaVersionMasNueva(alineacion);
     set({
       id: alineacion.id,
@@ -683,6 +706,8 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       const resultado = await alineacionRepository.guardar(alineacion, revisionAbierta);
       if (!resultado.guardada) await guardarComoCopia(alineacion);
       else if (get().id === alineacion.id) revisionAbierta = resultado.revision;
+      // Lo guardado ya es lo que se ve, con la jugada abierta si lo estaba.
+      if (get().id === alineacion.id) aperturaSinGuardar = false;
       // Si se editó mientras se guardaba, sigue pendiente: lo guarda el autoguardado que ya está programado.
       if (!sinGuardar) set({ estadoGuardado: 'guardado', modificadaEn: alineacion.modificadaEn });
       programarSincronizacion();
@@ -729,6 +754,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
       const ahora = new Date().toISOString();
       revisionAbierta = 0;
+      aperturaSinGuardar = false;
       set({
         id: generarId(),
         nombre: nombre ?? `Alineación ${new Date().toLocaleDateString('es-CO')}`,
@@ -797,6 +823,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     reemplazarDocumentoCompleto: (alineacion) => {
       if (temporizadorAutoguardado) clearTimeout(temporizadorAutoguardado);
       revisionAbierta = 0;
+      aperturaSinGuardar = false;
       set({
         id: alineacion.id,
         nombre: alineacion.nombre,
@@ -1367,28 +1394,46 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // cosa vuelve a su sitio.
     cerrarJugada: () => {
       if (!get().historial.presente.secuencia) return;
-      const hecho = mutar((doc) => {
-        const secuencia = doc.secuencia;
-        if (!secuencia) return;
-        capturarFrameActivo(doc);
-        const { pizarra, ...jugada } = secuencia;
-        if (pizarra) aplicarFrameADocumento(doc, pizarra);
-        doc.jugadaCerrada = jugada;
-        doc.secuencia = null;
-      }, 'Jugada cerrada');
+      let capturado = false;
+      const hecho = mutar(
+        (doc) => {
+          const secuencia = doc.secuencia;
+          if (!secuencia) return;
+          capturado = capturarFrameActivo(doc);
+          const { pizarra, ...jugada } = secuencia;
+          if (pizarra) aplicarFrameADocumento(doc, pizarra);
+          doc.jugadaCerrada = jugada;
+          doc.secuencia = null;
+        },
+        'Jugada cerrada',
+        { guardar: false },
+      );
+      // Cerrar lo que se abrió solo para mirar no guarda nada. Sí se guarda si
+      // en la fase quedaba algo editado, o si lo guardado ya tenía la jugada abierta.
+      if (hecho && (capturado || !aperturaSinGuardar)) marcarPendiente();
+      aperturaSinGuardar = false;
       if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
     },
 
-    abrirJugada: () =>
-      mutar((doc) => {
-        const jugada = doc.jugadaCerrada;
-        if (!jugada || doc.secuencia) return;
-        const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
-        const activo = jugada.frames[indiceActivo];
-        doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
-        doc.jugadaCerrada = null;
-        if (activo) aplicarFrameADocumento(doc, activo);
-      }, 'Jugada abierta'),
+    // Abrir una jugada es mirarla: no se guarda. Si luego se edita, se guarda con todo, jugada abierta incluida.
+    abrirJugada: () => {
+      let abierta = false;
+      mutar(
+        (doc) => {
+          const jugada = doc.jugadaCerrada;
+          if (!jugada || doc.secuencia) return;
+          const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
+          const activo = jugada.frames[indiceActivo];
+          doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
+          doc.jugadaCerrada = null;
+          if (activo) aplicarFrameADocumento(doc, activo);
+          abierta = true;
+        },
+        'Jugada abierta',
+        { guardar: false },
+      );
+      if (abierta) aperturaSinGuardar = true;
+    },
 
     agregarFrame: () =>
       mutar((doc) => {
@@ -1439,21 +1484,30 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         aplicarFrameADocumento(doc, secuencia.frames[secuencia.indiceActivo]!);
       }, 'Frame eliminado'),
 
-    irAFrame: (indice) =>
-      mutar((doc) => {
-        const secuencia = doc.secuencia;
-        if (!secuencia) return;
-        const destino = secuencia.frames[indice];
-        if (!destino) return;
-        // Se captura siempre, incluso al "ir" al frame en el que ya se está: es
-        // lo que recoge lo editado antes de reproducir. Sin esto, quien mueve
-        // un jugador y pulsa play directamente ve la jugada anterior.
-        capturarFrameActivo(doc);
-        if (indice === secuencia.indiceActivo) return;
-        secuencia.indiceActivo = indice;
-        aplicarFrameADocumento(doc, destino);
-        // Ir a otra fase es mirar, no editar: también vale en solo lectura (y ahí no se guarda).
-      }, `Frame ${indice + 1}`, { soloVer: true }),
+    irAFrame: (indice) => {
+      let capturado = false;
+      mutar(
+        (doc) => {
+          const secuencia = doc.secuencia;
+          if (!secuencia) return;
+          const destino = secuencia.frames[indice];
+          if (!destino) return;
+          // Se captura siempre, incluso al "ir" al frame en el que ya se está: es
+          // lo que recoge lo editado antes de reproducir. Sin esto, quien mueve
+          // un jugador y pulsa play directamente ve la jugada anterior.
+          capturado = capturarFrameActivo(doc);
+          if (indice === secuencia.indiceActivo) return;
+          secuencia.indiceActivo = indice;
+          aplicarFrameADocumento(doc, destino);
+        },
+        `Frame ${indice + 1}`,
+        // Ir a otra fase es mirar, no editar: también vale en solo lectura, y no se guarda.
+        { soloVer: true, guardar: false },
+      );
+      // Solo se guarda lo que se editó en la fase que se deja (al reproducir, pausar,
+      // terminar o cambiar de fase). La fase que se mira se guarda con la próxima edición.
+      if (capturado) marcarPendiente();
+    },
 
     setDuracionFrame: (indice, duracionMs) =>
       mutar((doc) => {

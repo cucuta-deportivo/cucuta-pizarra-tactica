@@ -2,12 +2,15 @@ import type { RemotoBajada } from '../data/sincronizacion/bajarCambios';
 import type { Remoto } from '../data/sincronizacion/subirPendientes';
 import {
   ErrorSinConexion,
+  ErrorSupabase,
   type AlineacionRemota,
   type EstadoRemoto,
   type ResultadoAlta,
   type ResultadoSubida,
 } from '../data/supabase/alineacionesApi';
 import { canchaVacia, cuadriculaVacia } from '../utils/anexoA';
+import { formatoDe } from '../utils/formatoAlineacion';
+import { pesoEnServidor, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
 import type { Alineacion } from '../types';
 
 /**
@@ -15,6 +18,9 @@ import type { Alineacion } from '../types';
  * mismas reglas que la tabla real (comprobadas en S1.1): la versión la pone el
  * servidor, un cambio solo se escribe si el servidor sigue en la versión de la
  * que parte, un alta con un id que ya existe no pisa nada y borrar es marcar.
+ * También rechaza lo mismo que la tabla: un documento de más de 1 MB (la
+ * restricción alineaciones_documento_valido, código 23514) y guardar encima con
+ * un formato menor (el trigger alineaciones_formato, código CDF01).
  * Guarda copias, no referencias: cada dispositivo de la prueba tiene las suyas.
  */
 interface Fila {
@@ -84,9 +90,20 @@ export class ServidorFalso implements Remoto, RemotoBajada {
     return resultado;
   }
 
+  /** Las reglas de la tabla real que rechazan un documento (schema.sql). */
+  private comprobarDocumento(nueva: Alineacion, anterior?: Alineacion): void {
+    if (pesoEnServidor(nueva) > TOPE_SERVIDOR) {
+      throw new ErrorSupabase('new row for relation "alineaciones" violates check constraint "alineaciones_documento_valido"', '23514', 400);
+    }
+    if (anterior && formatoDe(nueva) < formatoDe(anterior)) {
+      throw new ErrorSupabase('Esta alineacion se guardo con una version mas nueva de la app. Actualiza la app para guardarla.', 'CDF01', 400);
+    }
+  }
+
   crear(alineacion: Alineacion, ultimoCambio: string): Promise<ResultadoAlta> {
     return this.llamada(() => {
       if (this.filas.has(alineacion.id)) return { tipo: 'ya-existe' as const };
+      this.comprobarDocumento(alineacion);
       this.filas.set(alineacion.id, { alineacion: copiar(alineacion), version: 1, ultimoCambio, eliminada: false });
       return { tipo: 'subida' as const, version: 1 };
     });
@@ -101,6 +118,7 @@ export class ServidorFalso implements Remoto, RemotoBajada {
       }
       const fila = this.filas.get(alineacion.id);
       if (!fila || fila.version !== versionBase) return { tipo: 'sin-cambio' as const };
+      this.comprobarDocumento(alineacion, fila.alineacion);
       Object.assign(fila, { alineacion: copiar(alineacion), version: fila.version + 1, ultimoCambio });
       return { tipo: 'subida' as const, version: fila.version };
     });

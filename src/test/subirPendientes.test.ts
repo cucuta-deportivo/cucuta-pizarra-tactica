@@ -3,6 +3,18 @@ import { crearProgramador, crearSubidor } from '../data/sincronizacion/subirPend
 import { MemoriaAlineacionRepository } from '../data/repositorio/memoriaAlineacionRepository';
 import { ErrorSupabase } from '../data/supabase/alineacionesApi';
 import { alineacion, ServidorFalso } from './servidorFalso';
+import type { Trazo } from '../types';
+
+/** Un dibujo de `puntos` puntos: unos 29 bytes por punto (40 000, más de 1 MB). */
+function dibujo(puntos: number): Trazo {
+  return {
+    id: 'dibujo',
+    tipo: 'libre',
+    color: '#D4111E',
+    grosor: 2,
+    puntos: Array.from({ length: puntos }, (_, i) => ({ x: (i % 100) + 0.1234, y: ((i * 7) % 100) + 0.5678 })),
+  };
+}
 
 /**
  * S1.6: subir lo marcado "por subir" sin pisar nunca el trabajo de otro
@@ -168,15 +180,64 @@ describe('subir lo pendiente', () => {
     expect(await local.pendientesDeSubir()).toEqual([]);
   });
 
-  it('un error del servidor (por ejemplo, de permisos) detiene la vuelta y deja todo por subir', async () => {
+  // F5.4b: antes un error cortaba la vuelta y frenaba a todas las de detrás.
+  it('un error del servidor en una (por ejemplo, de permisos) no frena a las demás: esa se queda por subir y se reintenta', async () => {
     const { local, servidor, subidor } = preparar();
     await local.guardar(alineacion('a'));
     await local.guardar(alineacion('b'));
     servidor.fallarCon(new ErrorSupabase('new row violates row-level security policy', '42501', 403));
 
-    expect(await subidor.subir()).toMatchObject({ estado: 'error', subidas: 0, mensaje: 'new row violates row-level security policy' });
-    expect(servidor.filas.size).toBe(0);
-    expect(await local.pendientesDeSubir()).toHaveLength(2);
+    expect(await subidor.subir()).toMatchObject({ estado: 'error', subidas: 1, mensaje: 'new row violates row-level security policy' });
+    expect([...servidor.filas.keys()]).toEqual(['b']);
+    expect((await local.pendientesDeSubir()).map((m) => m.id)).toEqual(['a']);
+
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 1, conflictos: 0 });
+    expect(await local.pendientesDeSubir()).toEqual([]);
+  });
+
+  it('una de más de 1 MB no se intenta subir, no frena a las demás y se reintenta cuando se aligera', async () => {
+    const { local, servidor, subidor } = preparar();
+    const pesada = { ...alineacion('a', 'La pesada'), trazos: [dibujo(40000)] };
+    await local.guardar(pesada);
+    await local.guardar(alineacion('b'));
+
+    const llamadas = servidor.llamadas;
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 1, conflictos: 0, demasiadoGrandes: ['La pesada'] });
+    expect(servidor.filas.has('a')).toBe(false);
+    expect(servidor.llamadas - llamadas).toBe(1); // solo la de «b»
+
+    // Mientras no cambie, ni se intenta: sigue en este dispositivo.
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 0, conflictos: 0, demasiadoGrandes: ['La pesada'] });
+    expect(await local.obtener('a')).toMatchObject({ nombre: 'La pesada' });
+
+    await local.guardar({ ...pesada, trazos: [] });
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 1, conflictos: 0 });
+    expect(await local.pendientesDeSubir()).toEqual([]);
+  });
+
+  it('si el servidor la rechaza por grande (restricción 23514), igual: se queda aquí y no frena a las demás', async () => {
+    const { local, servidor, subidor } = preparar();
+    await local.guardar(alineacion('a', 'Rechazada'));
+    await local.guardar(alineacion('b'));
+    servidor.fallarCon(new ErrorSupabase('new row for relation "alineaciones" violates check constraint "alineaciones_documento_valido"', '23514', 400));
+
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 1, conflictos: 0, demasiadoGrandes: ['Rechazada'] });
+    expect([...servidor.filas.keys()]).toEqual(['b']);
+  });
+
+  it('si el servidor no deja guardarla por formato (trigger, CDF01), queda en conflicto y no se reintenta', async () => {
+    const { local, servidor, subidor } = preparar();
+    await local.guardar({ ...alineacion('a'), formato: 3 });
+    await subidor.subir();
+    await local.guardar({ ...alineacion('a', 'Guardada por una app vieja'), formato: 2 });
+
+    expect(await subidor.subir()).toEqual({ estado: 'al-dia', subidas: 0, conflictos: 1 });
+    expect(servidor.filas.get('a')).toMatchObject({ version: 1, alineacion: { formato: 3, nombre: 'Titular del sábado' } });
+    expect((await local.pendientesDeSubir())[0]).toMatchObject({ conflicto: true, versionServidor: null });
+
+    const llamadas = servidor.llamadas;
+    await subidor.subir();
+    expect(servidor.llamadas).toBe(llamadas);
   });
 
   it('dos vueltas a la vez no suben dos veces', async () => {

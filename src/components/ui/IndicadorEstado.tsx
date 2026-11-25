@@ -25,7 +25,9 @@ const porSubir = (n: number) => `${n} por subir`;
 export function describirEstado(guardado: EstadoGuardado, sincronizacion: SincronizacionState): DescripcionEstado {
   if (guardado === 'error') return { texto: 'Error al guardar', punto: 'rojo' };
   if (guardado !== 'guardado') return { texto: 'Guardando…', punto: 'ambarPulso' };
-  const { estado, pendientes, mensaje } = sincronizacion;
+  const { estado, pendientes, mensaje, demasiadoGrandes } = sincronizacion;
+  // F5.4b: alguna no cabe en el servidor y sigue solo en este dispositivo.
+  const noCaben = demasiadoGrandes.length > 0 ? `${demasiadoGrandes.map((n) => `«${n}»`).join(', ')} no cabe en la nube: solo está en este aparato` : undefined;
   switch (estado) {
     case 'inactiva':
       return { texto: 'Guardado', punto: 'verde' };
@@ -34,9 +36,11 @@ export function describirEstado(guardado: EstadoGuardado, sincronizacion: Sincro
     case 'sin-conexion':
       return { texto: pendientes > 0 ? `Sin conexión · ${porSubir(pendientes)}` : 'Sin conexión', punto: 'ambar' };
     case 'error':
-      return { texto: 'Error al sincronizar', punto: 'rojo', detalle: mensaje ?? undefined };
+      return { texto: 'Error al sincronizar', punto: 'rojo', detalle: [mensaje, noCaben].filter(Boolean).join(' · ') || undefined };
     case 'al-dia':
-      return pendientes > 0 ? { texto: `Guardado · ${porSubir(pendientes)}`, punto: 'ambar' } : { texto: 'Sincronizado', punto: 'verde' };
+      return pendientes > 0
+        ? { texto: `Guardado · ${porSubir(pendientes)}`, punto: 'ambar', detalle: noCaben }
+        : { texto: 'Sincronizado', punto: 'verde' };
   }
 }
 

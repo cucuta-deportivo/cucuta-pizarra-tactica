@@ -2,6 +2,7 @@ import { supabaseConfigurado } from '../../lib/supabaseClient';
 import type { Alineacion } from '../../types';
 import { alCerrarPorInactividad, useAuthStore } from '../../store/authStore';
 import { estadoTrasVuelta, useSincronizacionStore } from '../../store/sincronizacionStore';
+import { useUiStore } from '../../store/uiStore';
 import { copiaPorConflicto } from '../../utils/copias';
 import { generarId } from '../../utils/id';
 import { alineacionRepository } from '../repositorio';
@@ -102,11 +103,28 @@ export async function sincronizarAhora(): Promise<ResumenSincronizacion | null> 
     const resumen = await sincronizador.sincronizar();
     // Solo una vuelta que terminó al día cuenta como vista: si se cortó a mitad, se vuelve a mirar.
     if (resumen.estado === 'al-dia') comprobador.recordar(ultimoCambioVisto);
+    const antes = useSincronizacionStore.getState().demasiadoGrandes;
     useSincronizacionStore.setState(estadoTrasVuelta(resumen, await contarPendientes(), new Date()));
+    avisarDeLasQueNoCaben(antes, resumen.demasiadoGrandes ?? []);
     return resumen;
   } catch (error) {
     useSincronizacionStore.setState({ estado: 'error', mensaje: error instanceof Error ? error.message : String(error) });
     return null;
+  }
+}
+
+/**
+ * F5.4b: una alineación que no cabe en el servidor se avisa una vez, la primera
+ * vuelta en que aparece (no cada 45 s). En tablet no hay texto emergente: el
+ * detalle del indicador no se ve. Sin KB: los entrenadores no saben qué es.
+ */
+function avisarDeLasQueNoCaben(antes: string[], ahora: string[]): void {
+  for (const nombre of ahora.filter((n) => !antes.includes(n))) {
+    useUiStore.getState().mostrarToast({
+      tipo: 'error',
+      fijo: true,
+      mensaje: `«${nombre}» está demasiado llena para guardarse en la nube: de momento solo está en este aparato. Bórrale fases o jugadas que no uses y se subirá sola.`,
+    });
   }
 }
 

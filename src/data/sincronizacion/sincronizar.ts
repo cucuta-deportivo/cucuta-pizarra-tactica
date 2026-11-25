@@ -5,7 +5,9 @@ import type { ResumenSubida } from './subirPendientes';
 /**
  * Una vuelta de sincronización (S1.7): sube lo pendiente, baja lo que cambió en
  * otros dispositivos y, si al bajar quedaron copias por un conflicto, las sube.
- * Si subir falla no se baja: primero tiene que quedar a salvo lo de aquí.
+ * Sin red no se baja. Si alguna alineación no subió por otro error, sí (F5.4b):
+ * bajar nunca pisa lo de aquí (lo que no subió pasa a copia si hace falta), y
+ * antes un solo documento rechazado dejaba sin bajar lo de todos los demás.
  */
 export interface ResumenSincronizacion extends ResumenSubida {
   cambios: CambioBajado[];
@@ -22,18 +24,20 @@ interface Bajador {
 export function crearSincronizador({ subidor, bajador, alBajar }: { subidor: Subidor; bajador: Bajador; alBajar: (cambios: CambioBajado[]) => void }) {
   async function vuelta(): Promise<ResumenSincronizacion> {
     const subida = await subidor.subir();
-    if (subida.estado !== 'al-dia') return { ...subida, cambios: [] };
+    if (subida.estado === 'sin-conexion') return { ...subida, cambios: [] };
     let cambios: CambioBajado[];
     try {
       cambios = await bajador.bajar();
     } catch (error) {
       if (error instanceof ErrorSinConexion) return { ...subida, estado: 'sin-conexion', cambios: [] };
-      return { ...subida, estado: 'error', mensaje: error instanceof Error ? error.message : String(error), cambios: [] };
+      return { ...subida, estado: 'error', mensaje: subida.mensaje ?? (error instanceof Error ? error.message : String(error)), cambios: [] };
     }
     if (cambios.length > 0) alBajar(cambios);
     if (!cambios.some((c) => c.tipo === 'copia')) return { ...subida, cambios };
     const copias = await subidor.subir();
-    return { ...copias, subidas: subida.subidas + copias.subidas, cambios };
+    // Un error de la primera subida no lo tapa que las copias suban bien.
+    const conError = subida.estado === 'error' ? { estado: 'error' as const, mensaje: subida.mensaje } : {};
+    return { ...copias, ...conError, subidas: subida.subidas + copias.subidas, cambios };
   }
 
   let enCurso: Promise<ResumenSincronizacion> | null = null;

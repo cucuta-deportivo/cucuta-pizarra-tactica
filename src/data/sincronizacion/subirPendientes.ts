@@ -1,12 +1,23 @@
 import type { Alineacion } from '../../types';
 import type { RegistroSincronizacion } from '../repositorio/AlineacionRepository';
-import { ErrorSinConexion, type EstadoRemoto, type ResultadoAlta, type ResultadoSubida } from '../supabase/alineacionesApi';
+import { ErrorSinConexion, ErrorSupabase, type EstadoRemoto, type ResultadoAlta, type ResultadoSubida } from '../supabase/alineacionesApi';
+import { pesoEnServidor, TOPE_SERVIDOR } from '../../utils/pesoAlineacion';
 
 /**
  * Sube lo marcado "por subir" (S1.6) sin pisar nunca el trabajo de otro
  * dispositivo: cada cambio sale desde la versión de la que parte y, si el
  * servidor ya no está en ella, no se escribe nada. De una en una, en orden.
+ *
+ * F5.4b: una alineación que el servidor rechaza no frena a las demás. Si pasa de
+ * 1 MB no se intenta (ni se reintenta hasta que se edite); si el servidor la
+ * rechaza por formato (alguien guardó encima con una versión más nueva de la
+ * app), queda en conflicto y al bajar lo de aquí pasa a una copia; con otro
+ * error, se queda por subir y se sigue con las siguientes.
  */
+
+/** Códigos de Postgres con los que la tabla rechaza un documento (schema.sql). */
+const CODIGO_DEMASIADO_GRANDE = '23514'; // restricción alineaciones_documento_valido
+const CODIGO_FORMATO_MENOR = 'CDF01'; // trigger alineaciones_formato
 
 /** Lo que necesita del servidor (en la app, `alineacionesApi`). */
 export interface Remoto {
@@ -27,14 +38,19 @@ export interface Local {
 }
 
 export interface ResumenSubida {
-  /** `sin-conexion` y `error` cortan la vuelta: lo que faltaba sigue por subir. */
+  /**
+   * `sin-conexion` corta la vuelta: lo que faltaba sigue por subir. `error`: alguna
+   * no subió por otro motivo (el mensaje es el del primer error); las demás, sí.
+   */
   estado: 'al-dia' | 'sin-conexion' | 'error';
   subidas: number;
   conflictos: number;
   mensaje?: string;
+  /** Nombres de las que no se pueden subir por pasar de 1 MB: se quedan en este dispositivo. Solo si hay alguna. */
+  demasiadoGrandes?: string[];
 }
 
-type Resultado = 'subida' | 'conflicto' | 'nada';
+type Resultado = 'subida' | 'conflicto' | 'nada' | 'demasiado-grande';
 
 // --- Cómo cambia la marca en cada caso (puro) ---
 
@@ -64,6 +80,20 @@ function enConflicto(marca: RegistroSincronizacion): RegistroSincronizacion {
   return { ...marca, ...SIN_INTENTO, conflicto: true };
 }
 
+/** No cabe en el servidor (más de 1 MB): no se reintenta hasta que cambie la revisión. */
+function demasiadoGrande(marca: RegistroSincronizacion, revision: number): RegistroSincronizacion {
+  return { ...marca, ...SIN_INTENTO, demasiadoGrandeEnRevision: revision };
+}
+
+/**
+ * El servidor no deja guardarla encima: tiene un formato más nuevo. Se trata como
+ * un conflicto, y sin versión de partida, para que al bajar lo de aquí pase a una
+ * copia y llegue la del servidor (S1.7). Si no, se reintentaría siempre.
+ */
+function rechazadaPorFormato(marca: RegistroSincronizacion): RegistroSincronizacion {
+  return { ...marca, ...SIN_INTENTO, conflicto: true, versionServidor: null };
+}
+
 /** El servidor no la tiene: en la siguiente vuelta se sube como nueva. */
 function sinVersion(marca: RegistroSincronizacion): RegistroSincronizacion {
   return { ...marca, ...SIN_INTENTO, versionServidor: null };
@@ -90,7 +120,25 @@ export function crearSubidor({ local, remoto, nuevoId }: { local: Local; remoto:
 
   async function subirCambios(alineacion: Alineacion, versionServidor: number | null, cambio: string, revision: number): Promise<Resultado> {
     const { id } = alineacion;
-    const respuesta = versionServidor === null ? await remoto.crear(alineacion, cambio) : await remoto.actualizar(alineacion, versionServidor, cambio);
+    // Más de 1 MB: el servidor la rechazaría. Ni se intenta.
+    if (pesoEnServidor(alineacion) > TOPE_SERVIDOR) {
+      await cambiar(id, (m) => demasiadoGrande(m, revision));
+      return 'demasiado-grande';
+    }
+    let respuesta: ResultadoAlta | ResultadoSubida;
+    try {
+      respuesta = versionServidor === null ? await remoto.crear(alineacion, cambio) : await remoto.actualizar(alineacion, versionServidor, cambio);
+    } catch (error) {
+      if (error instanceof ErrorSupabase && error.codigo === CODIGO_DEMASIADO_GRANDE) {
+        await cambiar(id, (m) => demasiadoGrande(m, revision));
+        return 'demasiado-grande';
+      }
+      if (error instanceof ErrorSupabase && error.codigo === CODIGO_FORMATO_MENOR) {
+        await cambiar(id, rechazadaPorFormato);
+        return 'conflicto';
+      }
+      throw error;
+    }
     if (respuesta.tipo === 'subida') {
       await cambiar(id, (m) => subidaConfirmada(m, respuesta.version, revision));
       return 'subida';
@@ -141,21 +189,37 @@ export function crearSubidor({ local, remoto, nuevoId }: { local: Local; remoto:
 
   async function vuelta(): Promise<ResumenSubida> {
     const resumen: ResumenSubida = { estado: 'al-dia', subidas: 0, conflictos: 0 };
+    const grandes: string[] = [];
+    let primerError: string | null = null;
     for (const marca of await local.pendientesDeSubir()) {
       if (marca.conflicto) {
         resumen.conflictos += 1;
+        continue;
+      }
+      // Ya se vio que no cabe y no ha cambiado desde entonces: ni se intenta.
+      if (marca.demasiadoGrandeEnRevision === marca.revision) {
+        grandes.push(marca.id);
         continue;
       }
       try {
         const resultado = await subirUna(marca.id);
         if (resultado === 'subida') resumen.subidas += 1;
         if (resultado === 'conflicto') resumen.conflictos += 1;
+        if (resultado === 'demasiado-grande') grandes.push(marca.id);
       } catch (error) {
-        if (error instanceof ErrorSinConexion) return { ...resumen, estado: 'sin-conexion' };
-        return { ...resumen, estado: 'error', mensaje: error instanceof Error ? error.message : String(error) };
+        if (error instanceof ErrorSinConexion) return conGrandes({ ...resumen, estado: 'sin-conexion' }, grandes);
+        // Esta se queda por subir; las demás siguen (F5.4b).
+        primerError ??= error instanceof Error ? error.message : String(error);
       }
     }
-    return resumen;
+    return conGrandes(primerError === null ? resumen : { ...resumen, estado: 'error', mensaje: primerError }, grandes);
+  }
+
+  /** El resumen con los nombres de las que no caben, si hay alguna. */
+  async function conGrandes(resumen: ResumenSubida, ids: string[]): Promise<ResumenSubida> {
+    if (ids.length === 0) return resumen;
+    const nombres = await Promise.all(ids.map(async (id) => (await local.obtener(id))?.nombre ?? id));
+    return { ...resumen, demasiadoGrandes: nombres };
   }
 
   let enCurso: Promise<ResumenSubida> | null = null;

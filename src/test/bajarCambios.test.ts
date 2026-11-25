@@ -4,7 +4,7 @@ import { crearSincronizador } from '../data/sincronizacion/sincronizar';
 import { crearSubidor } from '../data/sincronizacion/subirPendientes';
 import { marcarPorSubir, type RegistroSincronizacion } from '../data/repositorio/AlineacionRepository';
 import { MemoriaAlineacionRepository } from '../data/repositorio/memoriaAlineacionRepository';
-import { ErrorSinConexion } from '../data/supabase/alineacionesApi';
+import { ErrorSinConexion, ErrorSupabase } from '../data/supabase/alineacionesApi';
 import { alineacion, ServidorFalso } from './servidorFalso';
 import type { Alineacion } from '../types';
 
@@ -211,6 +211,32 @@ describe('sincronizar: subir y después bajar', () => {
     expect(await tablet.nombres()).toEqual(['Editada en la oficina']);
     expect(servidor.filas.get('a')).toMatchObject({ eliminada: false, version: 2 });
     expect(await tablet.local.pendientesDeSubir()).toEqual([]);
+  });
+
+  it('F5.4b: lo que el servidor no deja guardar por formato pasa a copia al bajar, y llega lo del servidor', async () => {
+    const servidor = new ServidorFalso();
+    servidor.crearDesdeOtroDispositivo({ ...alineacion('a', 'Con sus jugadas'), formato: 3 });
+    const vieja = dispositivo(servidor, 'vieja');
+    await vieja.bajador.bajar();
+    // Una versión de la app de antes de F5.5 la guardó aquí sin formato (perdiendo lo que no conocía).
+    await vieja.local.guardar(alineacion('a', 'Editada en la app vieja'));
+
+    expect(await vieja.sincronizador.sincronizar()).toMatchObject({ estado: 'al-dia' });
+    expect(await vieja.nombres()).toEqual(['Con sus jugadas', 'Editada en la app vieja (copia vieja)']);
+    expect(servidor.filas.get('a')).toMatchObject({ version: 1, alineacion: { formato: 3, nombre: 'Con sus jugadas' } });
+    expect([...servidor.filas.values()].map((f) => f.alineacion.nombre).sort()).toEqual(['Con sus jugadas', 'Editada en la app vieja (copia vieja)']);
+    expect(await vieja.local.pendientesDeSubir()).toEqual([]);
+  });
+
+  it('F5.4b: si una no sube por un error, igual se baja lo de los demás, y la vuelta lo dice', async () => {
+    const { servidor, tablet } = await conLaOficina();
+    await tablet.local.guardar(alineacion('b', 'No sube'));
+    servidor.crearDesdeOtroDispositivo(alineacion('c', 'Nueva de la oficina'));
+    servidor.fallarCon(new ErrorSupabase('permiso denegado', '42501', 403));
+
+    expect(await tablet.sincronizador.sincronizar()).toMatchObject({ estado: 'error', mensaje: 'permiso denegado' });
+    expect(await tablet.nombres()).toEqual(['No sube', 'Nueva de la oficina', 'Titular del sábado']);
+    expect((await tablet.local.pendientesDeSubir()).map((m) => m.id)).toEqual(['b']);
   });
 
   it('sin red no se baja nada y lo pendiente sigue por subir', async () => {

@@ -1611,7 +1611,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       // en la fase quedaba algo editado, o si lo guardado ya tenía la jugada abierta.
       if (hecho && (capturado || !aperturaSinGuardar)) marcarPendiente();
       aperturaSinGuardar = false;
-      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
+      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Está en 🎬 Jugadas, en la barra de abajo.' });
     },
 
     // Abrir una jugada es mirarla: no se guarda. Si luego se edita, se guarda con todo, jugada abierta incluida.

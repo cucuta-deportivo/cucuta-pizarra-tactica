@@ -26,7 +26,6 @@ import { ConfirmarCierreSesion } from './components/auth/ConfirmarCierreSesion';
 import { useAuthStore } from './store/authStore';
 import { supabaseConfigurado } from './lib/supabaseClient';
 import { usePizarraStore } from './store/pizarraStore';
-import { useReproduccionStore } from './store/reproduccionStore';
 import { usePizarraCampoStore } from './store/pizarraCampoStore';
 import { usePlantillaStore } from './store/plantillaStore';
 import { useUiStore, type OrientacionForzada } from './store/uiStore';
@@ -42,6 +41,7 @@ const ModalMigracion = diferido(() => import('./components/ui/ModalMigracion').t
 const ModalZonas = diferido(() => import('./components/ui/ModalZonas').then((m) => m.ModalZonas));
 const ModalRival = diferido(() => import('./components/ui/ModalRival').then((m) => m.ModalRival));
 const ModalCancha = diferido(() => import('./components/ui/ModalCancha').then((m) => m.ModalCancha));
+const VentanaJugadas = diferido(() => import('./components/pizarra/VentanaJugadas').then((m) => m.VentanaJugadas));
 const PantallaPlantilla = diferido(() => import('./components/plantilla/PantallaPlantilla').then((m) => m.PantallaPlantilla));
 const ModalComparacion = diferido(() => import('./components/ui/ModalComparacion').then((m) => m.ModalComparacion));
 // Este no está siempre montado: su trozo se pide la primera vez que se abre.
@@ -327,13 +327,8 @@ function MenuOpciones({
   onAbrirActividad,
   onAbrirCuentas,
   onAbrirExportar,
-  onCrearJugada,
-  onGrabarJugada,
-  onAbrirJugada,
-  onBorrarJugada,
+  onAbrirJugadas,
   onVaciarCampo,
-  hayJugada,
-  hayJugadaCerrada,
 }: {
   onAbrirAlineaciones: () => void;
   onAbrirGestionPlantilla: () => void;
@@ -342,13 +337,8 @@ function MenuOpciones({
   onAbrirActividad: () => void;
   onAbrirCuentas: () => void;
   onAbrirExportar: () => void;
-  onCrearJugada: () => void;
-  onGrabarJugada: () => void;
-  onAbrirJugada: () => void;
-  onBorrarJugada: () => void;
+  onAbrirJugadas: () => void;
   onVaciarCampo: () => void;
-  hayJugada: boolean;
-  hayJugadaCerrada: boolean;
 }) {
   const pantallaCompleta = useUiStore((s) => s.pantallaCompleta);
   const setPantallaCompleta = useUiStore((s) => s.setPantallaCompleta);
@@ -419,47 +409,15 @@ function MenuOpciones({
             >
               🏟️ Cancha
             </ItemMenu>
-            {!hayJugada && !hayJugadaCerrada && (
-              <>
-                <ItemMenu
-                  onClick={() => {
-                    onCrearJugada();
-                    cerrar();
-                  }}
-                >
-                  🎬 Crear jugada
-                </ItemMenu>
-                <ItemMenu
-                  onClick={() => {
-                    onGrabarJugada();
-                    cerrar();
-                  }}
-                >
-                  ⏺ Grabar jugada
-                </ItemMenu>
-              </>
-            )}
-            {/* F5.4a: una jugada por alineación; la cerrada se reabre aquí y borrar es aparte, con confirmación. */}
-            {hayJugadaCerrada && (
-              <ItemMenu
-                onClick={() => {
-                  onAbrirJugada();
-                  cerrar();
-                }}
-              >
-                🎬 Abrir jugada
-              </ItemMenu>
-            )}
-            {(hayJugada || hayJugadaCerrada) && (
-              <ItemMenu
-                onClick={() => {
-                  onBorrarJugada();
-                  cerrar();
-                }}
-              >
-                🗑 Borrar jugada
-              </ItemMenu>
-            )}
+            {/* F5.4b: todas las jugadas en su ventana (también desde la barra inferior). */}
+            <ItemMenu
+              onClick={() => {
+                onAbrirJugadas();
+                cerrar();
+              }}
+            >
+              🎬 Jugadas
+            </ItemMenu>
             {titularesEnCampo > 0 && (
               <ItemMenu
                 onClick={() => {
@@ -564,11 +522,10 @@ export default function App() {
   const sincronizarFichas = usePlantillaStore((s) => s.sincronizarFichas);
   const fichas = useAlineacionStore((s) => s.fichas);
   const hayJugada = useAlineacionStore((s) => s.historial.presente.secuencia !== null);
-  const hayJugadaCerrada = useAlineacionStore((s) => s.historial.presente.jugadas.length > 0);
-  const iniciarSecuencia = useAlineacionStore((s) => s.iniciarSecuencia);
-  const abrirJugada = useAlineacionStore((s) => s.abrirJugada);
-  const descartarSecuencia = useAlineacionStore((s) => s.descartarSecuencia);
-  const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
+  const totalJugadas = useAlineacionStore((s) => s.historial.presente.jugadas.length + (s.historial.presente.secuencia ? 1 : 0));
+  const ventanaJugadasAbierta = useUiStore((s) => s.ventanaJugadasAbierta);
+  const abrirVentanaJugadas = useUiStore((s) => s.abrirVentanaJugadas);
+  const cerrarVentanaJugadas = useUiStore((s) => s.cerrarVentanaJugadas);
 
   const modoObjetoActivo = usePizarraCampoStore((s) => s.modoObjetoActivo);
   const activarModoObjeto = usePizarraCampoStore((s) => s.activarModoObjeto);
@@ -599,7 +556,6 @@ export default function App() {
   const [panelActividadAbierto, setPanelActividadAbierto] = useState(false);
   const [panelCuentasAbierto, setPanelCuentasAbierto] = useState(false);
   const [confirmandoVaciar, setConfirmandoVaciar] = useState(false);
-  const [confirmandoBorrarJugada, setConfirmandoBorrarJugada] = useState(false);
   // Alineaciones de antes de la sincronización por subir; `null` cuando no hay o se dejó para más tarde.
   const [porMigrar, setPorMigrar] = useState<PorMigrar | null>(null);
   const vaciarCampo = useAlineacionStore((s) => s.vaciarCampo);
@@ -699,18 +655,8 @@ export default function App() {
               onAbrirActividad={() => setPanelActividadAbierto(true)}
               onAbrirCuentas={() => setPanelCuentasAbierto(true)}
               onAbrirExportar={() => setModalExportarAbierto(true)}
-              onCrearJugada={iniciarSecuencia}
-              onGrabarJugada={() => {
-                // Abre la jugada y arranca a grabar de una vez: el primer frame
-                // guarda la posición de partida y los movimientos ya cuentan.
-                iniciarSecuencia();
-                iniciarGrabacion();
-              }}
-              onAbrirJugada={abrirJugada}
-              onBorrarJugada={() => setConfirmandoBorrarJugada(true)}
+              onAbrirJugadas={abrirVentanaJugadas}
               onVaciarCampo={() => setConfirmandoVaciar(true)}
-              hayJugada={hayJugada}
-              hayJugadaCerrada={hayJugadaCerrada}
             />
           </div>
         </header>
@@ -762,6 +708,14 @@ export default function App() {
             insignia={`${titularesCount}/11`}
             onClick={abrirDrawerPlantilla}
           />
+          {/* F5.4b: las jugadas, siempre a la vista («si hago otra, ¿dónde queda la anterior?»). */}
+          <BotonBarraInferior
+            icono="🎬"
+            etiqueta="Jugadas"
+            insignia={String(totalJugadas)}
+            activo={ventanaJugadasAbierta}
+            onClick={abrirVentanaJugadas}
+          />
           {/* Guardar/Exportar solo caben junto a los 5 grupos tácticos desde el
               breakpoint lg (tablet apaisada); por debajo viven en [⋯] (ver MenuOpciones). */}
           <div className="hidden lg:contents">
@@ -789,6 +743,7 @@ export default function App() {
         <ModalZonas abierto={modalZonasAbierto} onCerrar={() => setModalZonasAbierto(false)} />
         <ModalRival abierto={modalRivalAbierto} onCerrar={() => setModalRivalAbierto(false)} />
         <ModalCancha abierto={modalCanchaAbierto} onCerrar={() => setModalCanchaAbierto(false)} />
+        <VentanaJugadas abierto={ventanaJugadasAbierta} onCerrar={cerrarVentanaJugadas} />
         <ModalExportar
           abierto={modalExportarAbierto}
           onCerrar={() => setModalExportarAbierto(false)}
@@ -832,30 +787,6 @@ export default function App() {
             }}
           >
             Vaciar
-          </Boton>
-        </div>
-      </Modal>
-      <Modal abierto={confirmandoBorrarJugada} onCerrar={() => setConfirmandoBorrarJugada(false)} titulo="Borrar jugada" ancho="sm">
-        <p className="text-sm text-club-plata">
-          Se borrará la jugada con todas sus fases, también en los demás dispositivos. Si está abierta, el campo vuelve a la
-          pizarra. Puedes deshacerlo.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Boton variante="fantasma" onClick={() => setConfirmandoBorrarJugada(false)}>
-            Cancelar
-          </Boton>
-          <Boton
-            variante="peligro"
-            onClick={() => {
-              // Sin jugada no queda nada que reproducir, grabar ni recorrer.
-              useReproduccionStore.getState().detener();
-              useReproduccionStore.getState().detenerGrabacion();
-              usePizarraCampoStore.getState().desactivarModoTrayectoria();
-              descartarSecuencia();
-              setConfirmandoBorrarJugada(false);
-            }}
-          >
-            Borrar
           </Boton>
         </div>
       </Modal>

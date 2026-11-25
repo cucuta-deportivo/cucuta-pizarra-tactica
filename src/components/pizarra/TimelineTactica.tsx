@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
+import { useUiStore } from '../../store/uiStore';
 import { useBuscarJugador } from '../../store/plantillaStore';
 import { ControlesReproduccion } from './ControlesReproduccion';
 import { CamposJugada, ConEtiqueta, EdicionFase } from './ControlesEdicion';
@@ -55,6 +56,7 @@ export function TimelineTactica() {
   const desactivarModoTrayectoria = usePizarraCampoStore((s) => s.desactivarModoTrayectoria);
   const sujetoTrayectoria = usePizarraCampoStore((s) => s.sujetoTrayectoria);
   const rival = useAlineacionStore((s) => s.historial.presente.rival);
+  const abrirVentanaJugadas = useUiStore((s) => s.abrirVentanaJugadas);
   // Se suscribe a los datos y no solo a obtenerPorId: esa función es estable y
   // suscribirse a ella no vuelve a renderizar cuando cambia la plantilla.
   const buscarJugador = useBuscarJugador();
@@ -165,8 +167,25 @@ export function TimelineTactica() {
   return (
     <div className="superficie-vidrio flex flex-col gap-1 border-t border-white/10 px-2 py-1.5 sm:px-4">
       <div className="flex items-center gap-2">
-        {/* Arriba, la jugada: las pestañas de las fases (en la tablet no cabían junto a los mandos) y, si
-            sobra sitio, el nombre y la curva. Abajo, la fase que se ve. */}
+        {/* F5.4b: qué jugada está abierta (en la tablet no se veía en ninguna parte), y al tocarla, todas.
+            Ancho fijo por tamaño de pantalla, no por el nombre: si no, la fila se recolocaría al cambiar de jugada. */}
+        <button
+          type="button"
+          onClick={abrirVentanaJugadas}
+          aria-haspopup="dialog"
+          aria-label={`Jugada abierta: ${secuencia.nombre ?? 'sin nombre'}. Ver todas las jugadas`}
+          title="Ver todas las jugadas de esta alineación"
+          className="flex h-11 w-40 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 text-left text-white transition-colors duration-rapido hover:bg-white/10 xl:w-52"
+        >
+          <span aria-hidden="true">🎬</span>
+          <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold">{secuencia.nombre ?? 'Jugada'}</span>
+          <span aria-hidden="true" className="text-xs text-club-plata/70">
+            ▾
+          </span>
+        </button>
+
+        {/* Arriba, la jugada: cuál es, las pestañas de las fases (en la tablet no cabían junto a los
+            mandos) y, si sobra sitio, la curva. Abajo, la fase que se ve. */}
         <div ref={refPestanas} className="barra-scroll flex flex-1 scroll-smooth items-center gap-1.5 overflow-x-auto">
           {secuencia.frames.map((frame, indice) => {
             const activo = indice === indiceActivo;

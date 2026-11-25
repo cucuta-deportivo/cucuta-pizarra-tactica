@@ -1,0 +1,224 @@
+import { useState } from 'react';
+import { useAlineacionStore } from '../../store/alineacionStore';
+import { useReproduccionStore } from '../../store/reproduccionStore';
+import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
+import { Modal } from '../ui/Modal';
+import { Boton } from '../ui/Boton';
+import { AreaDiferida, CampoDiferido } from './CampoDiferido';
+import { MiniaturaFase } from './MiniaturaFase';
+import { enKB, PESO_AVISO, PESO_TOPE, porcentajeOcupado } from '../../utils/pesoAlineacion';
+import type { SecuenciaTactica } from '../../types';
+
+interface Props {
+  abierto: boolean;
+  onCerrar: () => void;
+}
+
+/** Las jugadas de la alineación en su orden, con la abierta en su sitio. */
+export function jugadasEnOrden(jugadas: SecuenciaTactica[], abierta: SecuenciaTactica | null): { jugada: SecuenciaTactica; abierta: boolean }[] {
+  const lista = jugadas.map((jugada) => ({ jugada, abierta: false }));
+  if (abierta) {
+    const sitio = Math.min(Math.max(0, abierta.posicion ?? lista.length), lista.length);
+    lista.splice(sitio, 0, { jugada: abierta, abierta: true });
+  }
+  return lista;
+}
+
+/**
+ * Ventana «Jugadas» (F5.4b): todas las jugadas de la alineación, para que no se
+ * pierda ninguna («si hago otra, ¿dónde queda la anterior?»). Abrir, crear,
+ * grabar, renombrar, describir, duplicar y borrar, y el espacio que queda, en
+ * porcentaje: los entrenadores no saben qué es un KB.
+ */
+export function VentanaJugadas({ abierto, onCerrar }: Props) {
+  const secuencia = useAlineacionStore((s) => s.historial.presente.secuencia);
+  const jugadas = useAlineacionStore((s) => s.historial.presente.jugadas);
+  const soloLectura = useAlineacionStore((s) => s.alineacionSoloLectura !== null);
+  const nuevaJugada = useAlineacionStore((s) => s.nuevaJugada);
+  const abrirJugada = useAlineacionStore((s) => s.abrirJugada);
+  const renombrarJugada = useAlineacionStore((s) => s.renombrarJugada);
+  const describirJugada = useAlineacionStore((s) => s.describirJugada);
+  const duplicarJugada = useAlineacionStore((s) => s.duplicarJugada);
+  const borrarJugada = useAlineacionStore((s) => s.borrarJugada);
+  const pesoAlineacion = useAlineacionStore((s) => s.pesoAlineacion);
+  const detener = useReproduccionStore((s) => s.detener);
+  const detenerGrabacion = useReproduccionStore((s) => s.detenerGrabacion);
+  const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
+  const desactivarModoTrayectoria = usePizarraCampoStore((s) => s.desactivarModoTrayectoria);
+  const paletaRival = useAlineacionStore((s) => s.historial.presente.rival?.paleta ?? 'blanco');
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState<string | null>(null);
+
+  if (!abierto) return null;
+
+  const lista = jugadasEnOrden(jugadas, secuencia);
+  const peso = pesoAlineacion();
+  const porcentaje = porcentajeOcupado(peso);
+  const llena = peso >= PESO_TOPE;
+  const casiLlena = !llena && peso >= PESO_AVISO;
+
+  /** Al cambiar de jugada se paran la reproducción, la grabación y Movimiento, como al cerrarla. */
+  const pararTodo = () => {
+    detener();
+    detenerGrabacion();
+    desactivarModoTrayectoria();
+  };
+
+  return (
+    <Modal abierto={abierto} onCerrar={onCerrar} titulo="🎬 Jugadas" ancho="lg">
+      <div className="flex flex-col gap-4">
+        {/* Espacio de la alineación: porcentaje y barra. Los KB, solo en el texto emergente (lo ve quien usa el PC). */}
+        <div title={`${enKB(peso)} KB de ${enKB(PESO_TOPE)} KB (el servidor admite 1 MB)`}>
+          <div className="mb-1 flex items-baseline justify-between text-xs text-club-plata">
+            <span>Espacio usado de esta alineación</span>
+            <span className={llena ? 'font-semibold text-red-300' : casiLlena ? 'font-semibold text-amber-300' : ''}>
+              {llena ? `Llena (${porcentaje} %)` : casiLlena ? `Casi llena (${porcentaje} %)` : `${porcentaje} %`}
+            </span>
+          </div>
+          <div
+            role="meter"
+            aria-label="Espacio usado de esta alineación"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={porcentaje}
+            aria-valuetext={`${porcentaje} %`}
+            className="h-2 overflow-hidden rounded-full bg-white/10"
+          >
+            <div
+              className={`h-full rounded-full ${llena ? 'bg-red-400' : casiLlena ? 'bg-amber-400' : 'bg-emerald-400'}`}
+              style={{ width: `${Math.max(2, porcentaje)}%` }}
+            />
+          </div>
+          {llena && <p className="mt-1 text-xs text-red-300">No caben más fases ni jugadas. Borra las que no uses o sigue en una alineación nueva.</p>}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Boton
+            tamano="md"
+            variante="primario"
+            disabled={soloLectura || llena}
+            onClick={() => {
+              pararTodo();
+              nuevaJugada();
+              onCerrar();
+            }}
+          >
+            ＋ Nueva jugada
+          </Boton>
+          <Boton
+            tamano="md"
+            variante="secundario"
+            disabled={soloLectura || llena}
+            onClick={() => {
+              pararTodo();
+              nuevaJugada();
+              iniciarGrabacion();
+              onCerrar();
+            }}
+            title="Jugada nueva grabando: cada movimiento en el campo crea una fase"
+          >
+            ⏺ Grabar jugada nueva
+          </Boton>
+        </div>
+
+        {lista.length === 0 ? (
+          <p className="text-sm text-club-plata">Esta alineación no tiene jugadas todavía. Las nuevas parten de lo que hay en la pizarra.</p>
+        ) : (
+          <ul className="flex flex-col gap-2" aria-label="Jugadas de esta alineación">
+            {lista.map(({ jugada, abierta }, indice) => {
+              const id = jugada.id ?? `sin-id-${indice}`;
+              const nombre = jugada.nombre ?? `Jugada ${indice + 1}`;
+              const fases = jugada.frames.length;
+              const primera = jugada.frames[0];
+              return (
+                <li
+                  key={id}
+                  aria-label={nombre}
+                  aria-current={abierta || undefined}
+                  className={`flex gap-3 rounded-lg border p-2 ${abierta ? 'border-club-rojo/60 bg-club-rojo/10' : 'border-white/10 bg-white/5'}`}
+                >
+                  {/* Miniatura de la fase 1, apaisada como el campo en la tablet. */}
+                  <div className="h-[62px] w-24 shrink-0 overflow-hidden rounded border border-white/10">
+                    {primera && <MiniaturaFase fase={primera} paletaRival={paletaRival} />}
+                  </div>
+
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <CampoDiferido
+                      key={`nombre-${id}`}
+                      valor={nombre}
+                      alConfirmar={(texto) => renombrarJugada(id, texto)}
+                      disabled={soloLectura}
+                      maxLength={60}
+                      aria-label={`Nombre de la jugada ${indice + 1}`}
+                      className="w-full font-display font-semibold"
+                    />
+                    <p className="text-[11px] text-club-plata/70">
+                      {fases === 1 ? '1 fase' : `${fases} fases`}
+                      {abierta && <span className="font-semibold text-white"> · Abierta</span>}
+                    </p>
+                    <AreaDiferida
+                      key={`descripcion-${id}`}
+                      valor={jugada.descripcion ?? ''}
+                      alConfirmar={(texto) => describirJugada(id, texto)}
+                      disabled={soloLectura}
+                      rows={2}
+                      maxLength={500}
+                      placeholder="Descripción: para qué sirve, cómo se ejecuta…"
+                      aria-label={`Descripción de la jugada ${indice + 1}`}
+                      className="w-full resize-none"
+                    />
+                  </div>
+
+                  <div className="flex w-32 shrink-0 flex-col gap-1.5">
+                    {abierta ? (
+                      <span className="flex h-11 items-center justify-center rounded-lg bg-club-rojo/20 text-sm font-semibold text-white">Abierta</span>
+                    ) : (
+                      <Boton
+                        tamano="md"
+                        variante="primario"
+                        onClick={() => {
+                          pararTodo();
+                          abrirJugada(id);
+                          onCerrar();
+                        }}
+                        aria-label={`Abrir «${nombre}»`}
+                      >
+                        Abrir
+                      </Boton>
+                    )}
+                    <Boton
+                      tamano="md"
+                      variante="secundario"
+                      disabled={soloLectura || llena}
+                      onClick={() => duplicarJugada(id)}
+                      aria-label={`Duplicar «${nombre}»`}
+                    >
+                      ⧉ Duplicar
+                    </Boton>
+                    {/* Borrado en dos toques; después, Deshacer en el aviso. */}
+                    <Boton
+                      tamano="md"
+                      variante="peligroSuave"
+                      disabled={soloLectura}
+                      onClick={() => {
+                        if (confirmandoBorrar !== id) {
+                          setConfirmandoBorrar(id);
+                          return;
+                        }
+                        setConfirmandoBorrar(null);
+                        if (abierta) pararTodo();
+                        borrarJugada(id);
+                      }}
+                      aria-label={confirmandoBorrar === id ? `Confirmar: borrar «${nombre}»` : `Borrar «${nombre}»`}
+                    >
+                      {confirmandoBorrar === id ? '¿Borrar?' : '🗑 Borrar'}
+                    </Boton>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}

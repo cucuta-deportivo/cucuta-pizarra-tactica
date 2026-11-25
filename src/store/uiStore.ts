@@ -23,6 +23,11 @@ interface UiState {
   abrirDrawerPlantilla: () => void;
   cerrarDrawerPlantilla: () => void;
 
+  /** F5.4b: la ventana «Jugadas». Se abre desde la barra inferior, desde ⋯ y desde el nombre de la jugada abierta. */
+  ventanaJugadasAbierta: boolean;
+  abrirVentanaJugadas: () => void;
+  cerrarVentanaJugadas: () => void;
+
   pantallaCompleta: boolean;
   setPantallaCompleta: (valor: boolean) => void;
 
@@ -44,6 +49,10 @@ export const useUiStore = create<UiState>((set) => ({
   drawerPlantillaAbierto: false,
   abrirDrawerPlantilla: () => set({ drawerPlantillaAbierto: true }),
   cerrarDrawerPlantilla: () => set({ drawerPlantillaAbierto: false }),
+
+  ventanaJugadasAbierta: false,
+  abrirVentanaJugadas: () => set({ ventanaJugadasAbierta: true }),
+  cerrarVentanaJugadas: () => set({ ventanaJugadasAbierta: false }),
 
   pantallaCompleta: false,
   setPantallaCompleta: (valor) => set({ pantallaCompleta: valor }),

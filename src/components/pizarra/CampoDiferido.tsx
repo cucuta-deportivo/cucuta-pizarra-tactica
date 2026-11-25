@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react';
+import { useEffect, useRef, useState, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
 /** Campo de 44 px de alto. Sin ancho: lo pone quien lo usa (fijo en la barra, todo el ancho en el menú). */
 export const CLASE_CAMPO =
@@ -29,6 +29,45 @@ export function CampoDiferido({
   InputHTMLAttributes<HTMLInputElement>,
   'value' | 'onChange' | 'onBlur'
 >) {
+  const { texto, cambiar, guardar } = useTextoDiferido(valor, alConfirmar);
+  return (
+    <input
+      {...resto}
+      value={texto}
+      onChange={(e) => cambiar(e.target.value)}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      className={`${CLASE_CAMPO} ${className}`}
+    />
+  );
+}
+
+/** Lo mismo en varias líneas (la descripción de una jugada): Intro hace salto de línea. */
+export function AreaDiferida({
+  valor,
+  alConfirmar,
+  className = '',
+  ...resto
+}: { valor: string; alConfirmar: (texto: string) => void } & Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  'value' | 'onChange' | 'onBlur'
+>) {
+  const { texto, cambiar, guardar } = useTextoDiferido(valor, alConfirmar);
+  return (
+    <textarea
+      {...resto}
+      value={texto}
+      onChange={(e) => cambiar(e.target.value)}
+      onBlur={guardar}
+      className={`rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-white placeholder:text-club-plata/40 outline-none focus:border-club-rojo disabled:opacity-40 ${className}`}
+    />
+  );
+}
+
+/** El texto del campo y cuándo guardarlo: al salir, con Intro (en el campo de una línea) o al desmontarse. */
+function useTextoDiferido(valor: string, alConfirmar: (texto: string) => void) {
   const [texto, setTexto] = useState(valor);
   // Lo escrito y no guardado, y cómo guardarlo con los datos del último render (la fase a la que pertenece).
   const pendiente = useRef<string | null>(null);
@@ -53,19 +92,9 @@ export function CampoDiferido({
     return () => alSalir.current();
   }, []);
 
-  return (
-    <input
-      {...resto}
-      value={texto}
-      onChange={(e) => {
-        setTexto(e.target.value);
-        pendiente.current = e.target.value;
-      }}
-      onBlur={guardar}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-      }}
-      className={`${CLASE_CAMPO} ${className}`}
-    />
-  );
+  const cambiar = (nuevo: string) => {
+    setTexto(nuevo);
+    pendiente.current = nuevo;
+  };
+  return { texto, cambiar, guardar };
 }

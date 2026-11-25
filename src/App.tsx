@@ -790,8 +790,9 @@ export default function App() {
           </Boton>
         </div>
       </Modal>
-      {/* Los avisos van por encima de la barra inferior y de la jugada abierta: no tapan sus botones. */}
-      <ToastContainer abajo={barrasVisibles ? reservaInferior + 8 : 16} />
+      {/* Los avisos van por encima de la barra inferior y de la jugada abierta: no tapan sus botones.
+          Con la ventana Jugadas abierta van en su pie, para no tapar las filas. */}
+      {!ventanaJugadasAbierta && <ToastContainer abajo={barrasVisibles ? reservaInferior + 8 : 16} />}
     </div>
   );
 }

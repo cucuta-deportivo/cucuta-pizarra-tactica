@@ -73,19 +73,43 @@ describe('ventana «Jugadas»', () => {
     expect(onCerrar).toHaveBeenCalled();
   });
 
+  it('la abierta lleva «Cerrar», no un «Abierta» que no hace nada: guarda la jugada y vuelve a la pizarra', () => {
+    tresJugadas();
+    const onCerrar = vi.fn();
+    render(<VentanaJugadas abierto onCerrar={onCerrar} />);
+    expect(screen.queryByRole('button', { name: /Abierta/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Abrir «Contra»' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar «Contra»' }));
+    expect(doc().secuencia).toBeNull();
+    expect(doc().jugadas.map((j) => j.nombre)).toEqual(['Salida', 'Córner', 'Contra']);
+    expect(onCerrar).toHaveBeenCalled();
+  });
+
+  it('la descripción vacía ocupa una línea, «＋ Añadir descripción», y se abre al tocarla', () => {
+    tresJugadas();
+    estado().describirJugada(doc().jugadas[0]!.id!, 'Salida en corto con el portero.');
+    render(<VentanaJugadas abierto onCerrar={vi.fn()} />);
+    expect(screen.queryByRole('textbox', { name: /^Descripción/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Añadir descripción a «Córner»' })).toHaveTextContent('＋ Añadir descripción');
+    expect(screen.getByRole('button', { name: 'Editar la descripción de «Salida»' })).toHaveTextContent('Salida en corto con el portero.');
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir descripción a «Córner»' }));
+    expect(screen.getByRole('textbox', { name: 'Descripción de la jugada 2' })).toHaveFocus();
+  });
+
   it('renombrar y describir desde la ventana', () => {
     tresJugadas();
     render(<VentanaJugadas abierto onCerrar={vi.fn()} />);
     const nombre = screen.getByRole('textbox', { name: 'Nombre de la jugada 2' });
     fireEvent.change(nombre, { target: { value: 'Córner al primer palo' } });
     fireEvent.blur(nombre);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir descripción a «Córner al primer palo»' }));
     const descripcion = screen.getByRole('textbox', { name: 'Descripción de la jugada 2' });
     fireEvent.change(descripcion, { target: { value: 'El 4 ataca el primer palo; el 9, el segundo.' } });
     fireEvent.blur(descripcion);
     expect(doc().jugadas[1]).toMatchObject({ nombre: 'Córner al primer palo', descripcion: 'El 4 ataca el primer palo; el 9, el segundo.' });
   });
 
-  it('duplicar pone la copia detrás; borrar pide dos toques y deja Deshacer', () => {
+  it('duplicar pone la copia detrás; borrar pide dos toques y deja Deshacer en el pie de la ventana', () => {
     tresJugadas();
     render(<VentanaJugadas abierto onCerrar={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Duplicar «Salida»' }));
@@ -95,7 +119,8 @@ describe('ventana «Jugadas»', () => {
     expect(doc().jugadas.map((j) => j.nombre)).toContain('Córner');
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar: borrar «Córner»' }));
     expect(filas().map((f) => f.getAttribute('aria-label'))).toEqual(['Salida', 'Salida (copia)', 'Contra']);
-    useUiStore.getState().toasts.find((t) => t.accion?.etiqueta === 'Deshacer')!.accion!.ejecutar();
+    // El aviso sale dentro de la ventana, debajo de la lista: no tapa las filas.
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Deshacer' }));
     expect(doc().jugadas.map((j) => j.nombre)).toContain('Córner');
   });
 

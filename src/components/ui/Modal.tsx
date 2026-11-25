@@ -7,6 +7,8 @@ interface ModalProps {
   titulo: string;
   children: ReactNode;
   ancho?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Franja fija bajo el contenido, que no se desplaza con él (los avisos de la ventana Jugadas). */
+  pie?: ReactNode;
 }
 
 const ANCHOS: Record<NonNullable<ModalProps['ancho']>, string> = {
@@ -16,7 +18,7 @@ const ANCHOS: Record<NonNullable<ModalProps['ancho']>, string> = {
   xl: 'max-w-5xl',
 };
 
-export function Modal({ abierto, onCerrar, titulo, children, ancho = 'md' }: ModalProps) {
+export function Modal({ abierto, onCerrar, titulo, children, ancho = 'md', pie }: ModalProps) {
   useEffect(() => {
     if (!abierto) return;
     function manejarEsc(evento: KeyboardEvent) {
@@ -52,6 +54,7 @@ export function Modal({ abierto, onCerrar, titulo, children, ancho = 'md' }: Mod
           </button>
         </div>
         <div className="barra-scroll overflow-y-auto p-5">{children}</div>
+        {pie && <div className="shrink-0 border-t border-white/10 px-5 py-3">{pie}</div>}
       </div>
     </div>,
     document.body,

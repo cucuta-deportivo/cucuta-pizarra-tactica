@@ -211,7 +211,7 @@ export function TimelineTactica() {
 
         {jugadaEnFila && <CamposJugada />}
 
-        {/* F5.4a: cerrar guarda la jugada (se reabre desde ⋯); borrarla es otra opción del menú ⋯. */}
+        {/* Cerrar guarda la jugada; se reabre, y se borra, desde la ventana 🎬 Jugadas. */}
         <Boton
           tamano="md"
           variante="fantasma"
@@ -223,7 +223,7 @@ export function TimelineTactica() {
             desactivarModoTrayectoria();
             cerrarJugada();
           }}
-          title="Guardar la jugada y volver a la pizarra. Se vuelve a abrir desde ⋯"
+          title="Guardar la jugada y volver a la pizarra. Se vuelve a abrir desde 🎬 Jugadas"
         >
           Cerrar jugada
         </Boton>

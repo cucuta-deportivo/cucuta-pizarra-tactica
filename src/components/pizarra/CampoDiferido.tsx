@@ -10,7 +10,8 @@ export const CLASE_CAMPO =
  * acabaría en otra fase (tras borrar) o se perdería.
  */
 export function soltarFoco(): void {
-  if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+  const activo = document.activeElement;
+  if (activo instanceof HTMLInputElement || activo instanceof HTMLTextAreaElement) activo.blur();
 }
 
 /**

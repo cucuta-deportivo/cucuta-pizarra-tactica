@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useAlineacionStore } from '../../store/alineacionStore';
 import { useReproduccionStore } from '../../store/reproduccionStore';
 import { usePizarraCampoStore } from '../../store/pizarraCampoStore';
+import { useUiStore } from '../../store/uiStore';
 import { Modal } from '../ui/Modal';
 import { Boton } from '../ui/Boton';
-import { AreaDiferida, CampoDiferido } from './CampoDiferido';
+import { Toast } from '../ui/Toast';
+import { AreaDiferida, CampoDiferido, soltarFoco } from './CampoDiferido';
 import { MiniaturaFase } from './MiniaturaFase';
 import { enKB, PESO_AVISO, PESO_TOPE, porcentajeOcupado } from '../../utils/pesoAlineacion';
 import type { SecuenciaTactica } from '../../types';
@@ -40,13 +42,25 @@ export function VentanaJugadas({ abierto, onCerrar }: Props) {
   const describirJugada = useAlineacionStore((s) => s.describirJugada);
   const duplicarJugada = useAlineacionStore((s) => s.duplicarJugada);
   const borrarJugada = useAlineacionStore((s) => s.borrarJugada);
+  const cerrarJugada = useAlineacionStore((s) => s.cerrarJugada);
   const pesoAlineacion = useAlineacionStore((s) => s.pesoAlineacion);
   const detener = useReproduccionStore((s) => s.detener);
   const detenerGrabacion = useReproduccionStore((s) => s.detenerGrabacion);
   const iniciarGrabacion = useReproduccionStore((s) => s.iniciarGrabacion);
   const desactivarModoTrayectoria = usePizarraCampoStore((s) => s.desactivarModoTrayectoria);
   const paletaRival = useAlineacionStore((s) => s.historial.presente.rival?.paleta ?? 'blanco');
+  const toasts = useUiStore((s) => s.toasts);
   const [confirmandoBorrar, setConfirmandoBorrar] = useState<string | null>(null);
+  // Descripciones desplegadas. Se quedan abiertas hasta cerrar la ventana: si se plegaran al salir
+  // del campo, la fila encogería entre el toque y el clic y el botón tocado se movería.
+  const [conDescripcionAbierta, setConDescripcionAbierta] = useState<ReadonlySet<string>>(new Set());
+  // Cada vez que se abre, la ventana empieza limpia: descripciones plegadas y ningún borrado a medio confirmar.
+  const [abiertoAntes, setAbiertoAntes] = useState(abierto);
+  if (abierto !== abiertoAntes) {
+    setAbiertoAntes(abierto);
+    setConDescripcionAbierta(new Set());
+    setConfirmandoBorrar(null);
+  }
 
   if (!abierto) return null;
 
@@ -58,13 +72,25 @@ export function VentanaJugadas({ abierto, onCerrar }: Props) {
 
   /** Al cambiar de jugada se paran la reproducción, la grabación y Movimiento, como al cerrarla. */
   const pararTodo = () => {
+    soltarFoco();
     detener();
     detenerGrabacion();
     desactivarModoTrayectoria();
   };
 
+  // Los avisos (jugada borrada con Deshacer, casi llena…) van en el pie mientras la ventana está
+  // abierta: abajo de la pantalla taparían las filas. App deja de pintarlos allí.
+  const pie =
+    toasts.length > 0 ? (
+      <div className="flex flex-col items-center gap-2" aria-live="polite">
+        {toasts.map((t) => (
+          <Toast key={t.id} toast={t} />
+        ))}
+      </div>
+    ) : undefined;
+
   return (
-    <Modal abierto={abierto} onCerrar={onCerrar} titulo="🎬 Jugadas" ancho="lg">
+    <Modal abierto={abierto} onCerrar={onCerrar} titulo="🎬 Jugadas" ancho="lg" pie={pie}>
       <div className="flex flex-col gap-4">
         {/* Espacio de la alineación: porcentaje y barra. Los KB, solo en el texto emergente (lo ve quien usa el PC). */}
         <div title={`${enKB(peso)} KB de ${enKB(PESO_TOPE)} KB (el servidor admite 1 MB)`}>
@@ -129,89 +155,134 @@ export function VentanaJugadas({ abierto, onCerrar }: Props) {
               const nombre = jugada.nombre ?? `Jugada ${indice + 1}`;
               const fases = jugada.frames.length;
               const primera = jugada.frames[0];
+              const descripcion = jugada.descripcion ?? '';
+              const conDescripcion = conDescripcionAbierta.has(id);
               return (
                 <li
                   key={id}
                   aria-label={nombre}
                   aria-current={abierta || undefined}
-                  className={`flex gap-3 rounded-lg border p-2 ${abierta ? 'border-club-rojo/60 bg-club-rojo/10' : 'border-white/10 bg-white/5'}`}
+                  className={`flex gap-3 rounded-lg border p-1.5 ${abierta ? 'border-club-rojo/60 bg-club-rojo/10' : 'border-white/10 bg-white/5'}`}
                 >
-                  {/* Miniatura de la fase 1, apaisada como el campo en la tablet. */}
-                  <div className="h-[62px] w-24 shrink-0 overflow-hidden rounded border border-white/10">
-                    {primera && <MiniaturaFase fase={primera} paletaRival={paletaRival} />}
-                  </div>
-
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <CampoDiferido
-                      key={`nombre-${id}`}
-                      valor={nombre}
-                      alConfirmar={(texto) => renombrarJugada(id, texto)}
-                      disabled={soloLectura}
-                      maxLength={60}
-                      aria-label={`Nombre de la jugada ${indice + 1}`}
-                      className="w-full font-display font-semibold"
-                    />
-                    <p className="text-[11px] text-club-plata/70">
+                  {/* Miniatura de la fase 1, apaisada como el campo en la tablet; debajo, las fases y si está abierta. */}
+                  <div className="flex w-20 shrink-0 flex-col gap-1">
+                    <div className="h-[52px] overflow-hidden rounded border border-white/10">
+                      {primera && <MiniaturaFase fase={primera} paletaRival={paletaRival} />}
+                    </div>
+                    <p className="text-center text-[11px] leading-tight text-club-plata/70">
                       {fases === 1 ? '1 fase' : `${fases} fases`}
-                      {abierta && <span className="font-semibold text-white"> · Abierta</span>}
+                      {abierta && <span className="block font-semibold text-white">Abierta</span>}
                     </p>
-                    <AreaDiferida
-                      key={`descripcion-${id}`}
-                      valor={jugada.descripcion ?? ''}
-                      alConfirmar={(texto) => describirJugada(id, texto)}
-                      disabled={soloLectura}
-                      rows={2}
-                      maxLength={500}
-                      placeholder="Descripción: para qué sirve, cómo se ejecuta…"
-                      aria-label={`Descripción de la jugada ${indice + 1}`}
-                      className="w-full resize-none"
-                    />
                   </div>
 
-                  <div className="flex w-32 shrink-0 flex-col gap-1.5">
-                    {abierta ? (
-                      <span className="flex h-11 items-center justify-center rounded-lg bg-club-rojo/20 text-sm font-semibold text-white">Abierta</span>
-                    ) : (
+                  {/* Dos líneas: nombre y Abrir (o Cerrar); descripción, Duplicar y Borrar. */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex gap-2">
+                      <CampoDiferido
+                        key={`nombre-${id}`}
+                        valor={nombre}
+                        alConfirmar={(texto) => renombrarJugada(id, texto)}
+                        disabled={soloLectura}
+                        maxLength={60}
+                        aria-label={`Nombre de la jugada ${indice + 1}`}
+                        className="min-w-0 flex-1 font-display font-semibold"
+                      />
+                      {/* Gris: con muchas jugadas, en rojo solo queda «＋ Nueva jugada». */}
+                      {abierta ? (
+                        <Boton
+                          tamano="md"
+                          variante="secundario"
+                          className="w-24 shrink-0"
+                          onClick={() => {
+                            pararTodo();
+                            cerrarJugada();
+                            onCerrar();
+                          }}
+                          aria-label={`Cerrar «${nombre}»`}
+                          title="Guardar la jugada y volver a la pizarra"
+                        >
+                          Cerrar
+                        </Boton>
+                      ) : (
+                        <Boton
+                          tamano="md"
+                          variante="secundario"
+                          className="w-24 shrink-0"
+                          onClick={() => {
+                            pararTodo();
+                            abrirJugada(id);
+                            onCerrar();
+                          }}
+                          aria-label={`Abrir «${nombre}»`}
+                        >
+                          Abrir
+                        </Boton>
+                      )}
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      {conDescripcion ? (
+                        <AreaDiferida
+                          key={`descripcion-${id}`}
+                          valor={descripcion}
+                          alConfirmar={(texto) => describirJugada(id, texto)}
+                          disabled={soloLectura}
+                          autoFocus
+                          rows={3}
+                          maxLength={500}
+                          placeholder="Para qué sirve, cómo se ejecuta…"
+                          aria-label={`Descripción de la jugada ${indice + 1}`}
+                          className="min-w-0 flex-1 resize-none"
+                        />
+                      ) : (
+                        // Plegada en una línea: «＋ Añadir descripción» o el principio de la que tiene. Al tocarla se abre.
+                        <button
+                          type="button"
+                          disabled={soloLectura}
+                          onClick={() => setConDescripcionAbierta((abiertas) => new Set(abiertas).add(id))}
+                          aria-label={descripcion ? `Editar la descripción de «${nombre}»` : `Añadir descripción a «${nombre}»`}
+                          title={descripcion || undefined}
+                          className="flex h-11 min-w-0 flex-1 items-center rounded-lg px-2.5 text-left text-sm transition-colors duration-rapido hover:bg-white/5 disabled:opacity-40"
+                        >
+                          <span className={`truncate ${descripcion ? 'text-white/80' : 'text-club-plata/70'}`}>
+                            {descripcion || '＋ Añadir descripción'}
+                          </span>
+                        </button>
+                      )}
                       <Boton
                         tamano="md"
-                        variante="primario"
+                        variante="secundario"
+                        className="shrink-0"
+                        disabled={soloLectura || llena}
                         onClick={() => {
-                          pararTodo();
-                          abrirJugada(id);
-                          onCerrar();
+                          soltarFoco();
+                          duplicarJugada(id);
                         }}
-                        aria-label={`Abrir «${nombre}»`}
+                        aria-label={`Duplicar «${nombre}»`}
                       >
-                        Abrir
+                        ⧉ Duplicar
                       </Boton>
-                    )}
-                    <Boton
-                      tamano="md"
-                      variante="secundario"
-                      disabled={soloLectura || llena}
-                      onClick={() => duplicarJugada(id)}
-                      aria-label={`Duplicar «${nombre}»`}
-                    >
-                      ⧉ Duplicar
-                    </Boton>
-                    {/* Borrado en dos toques; después, Deshacer en el aviso. */}
-                    <Boton
-                      tamano="md"
-                      variante="peligroSuave"
-                      disabled={soloLectura}
-                      onClick={() => {
-                        if (confirmandoBorrar !== id) {
-                          setConfirmandoBorrar(id);
-                          return;
-                        }
-                        setConfirmandoBorrar(null);
-                        if (abierta) pararTodo();
-                        borrarJugada(id);
-                      }}
-                      aria-label={confirmandoBorrar === id ? `Confirmar: borrar «${nombre}»` : `Borrar «${nombre}»`}
-                    >
-                      {confirmandoBorrar === id ? '¿Borrar?' : '🗑 Borrar'}
-                    </Boton>
+                      {/* Borrado en dos toques; después, Deshacer en el aviso del pie. */}
+                      <Boton
+                        tamano="md"
+                        variante="peligroSuave"
+                        className="w-28 shrink-0"
+                        disabled={soloLectura}
+                        onClick={() => {
+                          if (confirmandoBorrar !== id) {
+                            setConfirmandoBorrar(id);
+                            return;
+                          }
+                          setConfirmandoBorrar(null);
+                          if (abierta) pararTodo();
+                          else soltarFoco();
+                          borrarJugada(id);
+                        }}
+                        aria-label={confirmandoBorrar === id ? `Confirmar: borrar «${nombre}»` : `Borrar «${nombre}»`}
+                      >
+                        {confirmandoBorrar === id ? '¿Borrar?' : '🗑 Borrar'}
+                      </Boton>
+                    </div>
                   </div>
                 </li>
               );

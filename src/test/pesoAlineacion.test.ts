@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sembrarPlantilla } from './fixturePlantilla';
 import { useAlineacionStore } from '../store/alineacionStore';
 import { useUiStore } from '../store/uiStore';
-import { enKB, PESO_AVISO, PESO_TOPE, pesoEnServidor, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
+import { PESO_AVISO, PESO_TOPE, pesoEnServidor, porcentajeOcupado, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
 import type { Trazo } from '../types';
 
 /**
@@ -11,6 +11,15 @@ import type { Trazo } from '../types';
  * cuenta Postgres, `octet_length(documento::text)`, y por encima de 900 KB no se
  * añaden fases ni jugadas; editar, mover y borrar sí.
  */
+describe('espacio en porcentaje (lo que ven los entrenadores)', () => {
+  it('el 100 % es el tope de 900 KB; el aviso de 700 KB sale al 78 %; nunca pasa de 100', () => {
+    expect(porcentajeOcupado(0)).toBe(0);
+    expect(porcentajeOcupado(PESO_AVISO)).toBe(78);
+    expect(porcentajeOcupado(PESO_TOPE)).toBe(100);
+    expect(porcentajeOcupado(TOPE_SERVIDOR)).toBe(100);
+  });
+});
+
 describe('peso como lo cuenta Postgres (jsonb como texto)', () => {
   it('un espacio detrás de cada «:» y cada «,» que separan', () => {
     expect(pesoEnServidor({ a: 1, b: [1, 2], c: { d: 'x' } })).toBe('{"a": 1, "b": [1, 2], "c": {"d": "x"}}'.length);
@@ -74,7 +83,7 @@ describe('aviso a 700 KB y tope a 900 KB', () => {
       estado().agregarFrame();
       intentos += 1;
     }
-    expect(toasts().filter((m) => m.includes('ya ocupa'))).toHaveLength(1);
+    expect(toasts().filter((m) => m.includes('ya está al'))).toHaveLength(1);
     expect(estado().pesoAlineacion()).toBeGreaterThanOrEqual(PESO_TOPE);
     expect(estado().pesoAlineacion()).toBeLessThan(TOPE_SERVIDOR);
 
@@ -84,7 +93,9 @@ describe('aviso a 700 KB y tope a 900 KB', () => {
     estado().agregarFrameAlFinal();
     estado().duplicarFrame(0);
     expect(fases()).toBe(antes);
-    expect(toasts().some((m) => m.includes(`ocupa ${enKB(estado().pesoAlineacion())} KB de 1 MB: no caben más fases`))).toBe(true);
+    expect(toasts().some((m) => m.includes('está llena (100 %): no caben más fases'))).toBe(true);
+    // Los entrenadores no saben qué es un KB: ningún aviso lo menciona.
+    expect(toasts().some((m) => /KB|MB/.test(m))).toBe(false);
 
     // Editar sí se puede, y borrar libera sitio.
     estado().renombrarJugada(uno, 'Pesada pero editable');
@@ -117,6 +128,7 @@ describe('aviso a 700 KB y tope a 900 KB', () => {
     estado().agregarFrame(); // copiaría el dibujo de la fase dos veces: más de 1 MB
     expect(doc().secuencia!.frames).toHaveLength(fases);
     expect(estado().pesoAlineacion()).toBe(peso);
-    expect(toasts().some((m) => m.startsWith('No cabe: la alineación pasaría de 1 MB'))).toBe(true);
+    expect(toasts().some((m) => m.startsWith('No cabe: con esto la alineación se pasaría de su espacio'))).toBe(true);
+    expect(toasts().some((m) => /KB|MB/.test(m))).toBe(false);
   });
 });

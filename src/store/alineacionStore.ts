@@ -45,7 +45,7 @@ import {
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
 import { AVISO_ACTUALIZAR_APP, conJugadasEnLista, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
-import { enKB, PESO_AVISO, PESO_TOPE, pesoEnServidor, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
+import { PESO_AVISO, PESO_TOPE, pesoEnServidor, porcentajeOcupado, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -714,7 +714,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         ultimoAvisoPeso = ahora;
         useUiStore.getState().mostrarToast({
           tipo: 'error',
-          mensaje: `La alineación ocupa ${enKB(antes)} KB de 1 MB: no caben más ${que}. Borra fases o jugadas que no uses, o sigue en una alineación nueva.`,
+          mensaje: `La alineación está llena (${porcentajeOcupado(antes)} %): no caben más ${que}. Borra fases o jugadas que no uses, o sigue en una alineación nueva.`,
         });
       }
       return;
@@ -726,14 +726,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       set({ historial: historialAntes });
       useUiStore.getState().mostrarToast({
         tipo: 'error',
-        mensaje: `No cabe: la alineación pasaría de 1 MB (${enKB(despues)} KB). Borra fases o jugadas que no uses.`,
+        mensaje: 'No cabe: con esto la alineación se pasaría de su espacio. Borra fases o jugadas que no uses.',
       });
       return;
     }
     if (antes < PESO_AVISO && despues >= PESO_AVISO) {
       useUiStore.getState().mostrarToast({
         tipo: 'info',
-        mensaje: `La alineación ya ocupa ${enKB(despues)} KB de 1 MB. Desde 900 KB no se podrán añadir más fases ni jugadas.`,
+        mensaje: `La alineación ya está al ${porcentajeOcupado(despues)} % de su espacio. Al llegar al 100 % no se podrán añadir más fases ni jugadas.`,
       });
     }
   }

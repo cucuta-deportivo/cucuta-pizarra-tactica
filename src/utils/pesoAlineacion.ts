@@ -24,7 +24,16 @@ export function pesoEnServidor(documento: unknown): number {
   return bytesUtf8(texto) + separadoresFueraDeTexto(texto);
 }
 
-/** En KB redondeados, para los avisos. */
+/**
+ * Cuánto espacio de la alineación está usado, en porcentaje: el 100 % es el tope
+ * de 900 KB, donde ya no se añaden fases ni jugadas. Es lo que ven los
+ * entrenadores: no saben qué es un KB. No pasa de 100.
+ */
+export function porcentajeOcupado(bytes: number): number {
+  return Math.min(100, Math.round((bytes / PESO_TOPE) * 100));
+}
+
+/** En KB redondeados: solo para el detalle que ve el administrador (texto emergente en el PC). */
 export function enKB(bytes: number): number {
   return Math.round(bytes / 1024);
 }

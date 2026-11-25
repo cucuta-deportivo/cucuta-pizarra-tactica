@@ -141,22 +141,26 @@ describe('secuencia táctica: frames', () => {
     expect(posicionDe(jugadorId)).toMatchObject({ x: 80, y: 20 });
   });
 
-  it('con una jugada cerrada no se crea otra, y borrarla no mueve la pizarra y se puede deshacer', () => {
+  // F5.4a decía «con una jugada cerrada no se crea otra»; desde F5.4b caben varias.
+  it('con una jugada cerrada se crea otra desde la pizarra, y borrar no mueve la pizarra y se puede deshacer', () => {
     estado().iniciarSecuencia();
     estado().agregarFrame();
     estado().cerrarJugada();
     estado().moverJugador(jugadorId, 10, 10);
 
     estado().iniciarSecuencia();
-    expect(doc().secuencia).toBeNull();
+    expect(doc().secuencia).toMatchObject({ nombre: 'Jugada 2' });
+    expect(doc().secuencia!.frames[0]!.titulares.find((t) => t.jugadorId === jugadorId)).toMatchObject({ x: 10, y: 10 });
+    estado().cerrarJugada();
+    expect(doc().jugadas.map((j) => j.nombre)).toEqual(['Jugada 1', 'Jugada 2']);
 
     useUiStore.setState({ toasts: [] });
     estado().descartarSecuencia();
-    expect(doc().jugadas).toEqual([]);
+    expect(doc().jugadas.map((j) => j.nombre)).toEqual(['Jugada 2']);
     expect(posicionDe(jugadorId)).toMatchObject({ x: 10, y: 10 });
 
     useUiStore.getState().toasts.find((t) => t.accion?.etiqueta === 'Deshacer')!.accion!.ejecutar();
-    expect(doc().jugadas[0]!.frames).toHaveLength(2);
+    expect(doc().jugadas.map((j) => j.frames.length)).toEqual([2, 1]);
   });
 
   it('borrar la jugada abierta devuelve el campo a la pizarra de antes de la jugada', () => {

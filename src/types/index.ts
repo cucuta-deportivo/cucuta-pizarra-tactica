@@ -315,6 +315,8 @@ export interface SecuenciaTactica {
    * cerrarla. Mientras está abierta no está en la lista, así no se guarda dos veces.
    */
   posicion?: number;
+  /** Solo en la jugada abierta: la vista de la pizarra, a la que vuelve el campo al cerrarla. */
+  vistaPizarra?: VistaCampo;
   frames: FrameTactico[];
   /** Frame que se está editando; es el que el campo muestra en modo edición. */
   indiceActivo: number;

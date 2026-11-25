@@ -33,6 +33,12 @@ export interface RegistroSincronizacion {
   revisionEnCurso: number | null;
   /** Al subir, el servidor ya no estaba en `versionServidor` (otro dispositivo la cambió). Lo resuelve S1.7. */
   conflicto: boolean;
+  /**
+   * F5.4b: la revisión que no se pudo subir por pasar de 1 MB (el tope de la
+   * tabla). Mientras no se edite, no se vuelve a intentar; al guardarla de nuevo
+   * la marca se rehace sin esto y se reintenta.
+   */
+  demasiadoGrandeEnRevision?: number;
 }
 
 /** El registro tras guardar en este dispositivo: queda por subir, desde la versión que tuviera. */

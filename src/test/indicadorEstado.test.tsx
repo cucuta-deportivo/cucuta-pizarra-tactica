@@ -14,6 +14,7 @@ import { useUiStore } from '../store/uiStore';
 const sincronizacion = (cambios: Partial<SincronizacionState> = {}): SincronizacionState => ({
   estado: 'al-dia',
   pendientes: 0,
+  demasiadoGrandes: [],
   mensaje: null,
   ultimaVez: null,
   ...cambios,
@@ -44,9 +45,21 @@ describe('qué dice el indicador', () => {
 
   it('el estado tras una vuelta: al día guarda la hora; sin conexión o con error, no', () => {
     const ahora = new Date('2026-11-09T18:40:00Z');
-    expect(estadoTrasVuelta({ estado: 'al-dia' }, 0, ahora)).toEqual({ estado: 'al-dia', pendientes: 0, mensaje: null, ultimaVez: ahora.toISOString() });
-    expect(estadoTrasVuelta({ estado: 'sin-conexion' }, 2, ahora)).toEqual({ estado: 'sin-conexion', pendientes: 2, mensaje: null });
-    expect(estadoTrasVuelta({ estado: 'error', mensaje: 'x' }, 1, ahora)).toEqual({ estado: 'error', pendientes: 1, mensaje: 'x' });
+    expect(estadoTrasVuelta({ estado: 'al-dia' }, 0, ahora)).toEqual({ estado: 'al-dia', pendientes: 0, mensaje: null, ultimaVez: ahora.toISOString(), demasiadoGrandes: [] });
+    expect(estadoTrasVuelta({ estado: 'sin-conexion' }, 2, ahora)).toEqual({ estado: 'sin-conexion', pendientes: 2, mensaje: null, demasiadoGrandes: [] });
+    expect(estadoTrasVuelta({ estado: 'error', mensaje: 'x' }, 1, ahora)).toEqual({ estado: 'error', pendientes: 1, mensaje: 'x', demasiadoGrandes: [] });
+  });
+
+  it('F5.4b: una alineación que no cabe en la nube se nombra en el detalle del indicador, sin KB', () => {
+    const estado = sincronizacion({ pendientes: 1, demasiadoGrandes: ['Contra el Cúcuta B'] });
+    expect(describirEstado('guardado', estado)).toEqual({
+      texto: 'Guardado · 1 por subir',
+      punto: 'ambar',
+      detalle: '«Contra el Cúcuta B» no cabe en la nube: solo está en este aparato',
+    });
+    expect(describirEstado('guardado', estado).detalle).not.toMatch(/KB|MB/);
+    const ahora = new Date('2026-11-25T18:40:00Z');
+    expect(estadoTrasVuelta({ estado: 'al-dia', demasiadoGrandes: ['X'] }, 1, ahora)).toMatchObject({ demasiadoGrandes: ['X'] });
   });
 });
 

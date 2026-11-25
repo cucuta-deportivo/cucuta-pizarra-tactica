@@ -15,7 +15,7 @@ interface Props {
   soloMirando: boolean;
   /** Los controles de la fase que no caben en la barra: van aquí. */
   escondidos: ReadonlySet<ControlEdicion>;
-  /** El nombre y la curva de la jugada no caben en la fila de las pestañas: van aquí. */
+  /** La curva de la jugada no cabe en la fila de las pestañas: va aquí. */
   jugadaEnMenu: boolean;
 }
 
@@ -32,7 +32,6 @@ export function MenuEditarJugada({ indiceActivo, soloMirando, escondidos, jugada
   const eliminarFrame = useAlineacionStore((s) => s.eliminarFrame);
   const moverFrame = useAlineacionStore((s) => s.moverFrame);
   const renombrarFrame = useAlineacionStore((s) => s.renombrarFrame);
-  const renombrarSecuencia = useAlineacionStore((s) => s.renombrarSecuencia);
   const setDuracionFrame = useAlineacionStore((s) => s.setDuracionFrame);
   const setEasingSecuencia = useAlineacionStore((s) => s.setEasingSecuencia);
   const reproduciendo = useReproduccionStore((s) => s.reproduciendo);
@@ -186,20 +185,9 @@ export function MenuEditarJugada({ indiceActivo, soloMirando, escondidos, jugada
               <>
                 <div className="my-1.5 border-t border-white/10" />
                 <TituloSeccion>Jugada</TituloSeccion>
+                {/* El nombre de la jugada se cambia en la ventana Jugadas (F5.4b). */}
                 <div className="flex gap-2 px-3 pb-1.5">
-                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-club-plata/70">
-                    Nombre de la jugada
-                    <CampoDiferido
-                      valor={secuencia.nombre ?? ''}
-                      alConfirmar={renombrarSecuencia}
-                      disabled={reproduciendo}
-                      maxLength={60}
-                      placeholder="Nombre de la jugada…"
-                      aria-label="Nombre de la jugada"
-                      className="w-full"
-                    />
-                  </label>
-                  <label className="flex w-28 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70">
+                  <label className="flex w-40 shrink-0 flex-col gap-1 text-[11px] text-club-plata/70">
                     Curva
                     <SelectorCurva
                       valor={secuencia.easing ?? EASING_POR_DEFECTO}

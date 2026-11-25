@@ -161,7 +161,7 @@ export function EdicionFase({ indiceActivo, soloMirando, visibles }: PropsEdicio
       {visibles.has('borrar') && (
         <Boton
           tamano="icono"
-          variante="peligro"
+          variante="peligroSuave"
           className="shrink-0"
           style={{ width: ANCHOS_EDICION.borrar }}
           disabled={total <= 1 || soloMirando}
@@ -192,30 +192,18 @@ export function EdicionFase({ indiceActivo, soloMirando, visibles }: PropsEdicio
 }
 
 /**
- * Nombre y curva de la jugada en la fila de las pestañas, en pantallas anchas: la
- * fila de arriba es la jugada y la de abajo, la fase que se ve. Anchos fijos (200
- * y 130), los de `ANCHO_JUGADA_ARRIBA`.
+ * La curva de la jugada en la fila de las pestañas, en pantallas anchas: la fila
+ * de arriba es la jugada y la de abajo, la fase que se ve. Ancho fijo (130), el de
+ * `ANCHO_JUGADA_ARRIBA`. El nombre de la jugada no va aquí: se cambia en la
+ * ventana Jugadas (F5.4b).
  */
 export function CamposJugada() {
   const secuencia = useAlineacionStore((s) => s.historial.presente.secuencia);
-  const renombrarSecuencia = useAlineacionStore((s) => s.renombrarSecuencia);
   const setEasingSecuencia = useAlineacionStore((s) => s.setEasingSecuencia);
   const reproduciendo = useReproduccionStore((s) => s.reproduciendo);
   if (!secuencia) return null;
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <CampoDiferido
-        valor={secuencia.nombre ?? ''}
-        alConfirmar={renombrarSecuencia}
-        disabled={reproduciendo}
-        maxLength={60}
-        placeholder="Nombre de la jugada…"
-        aria-label="Nombre de la jugada"
-        title={secuencia.nombre || 'Nombre de la jugada'}
-        className="w-[200px] font-display font-semibold"
-      />
-      <SelectorCurva disabled={reproduciendo} valor={secuencia.easing ?? EASING_POR_DEFECTO} alCambiar={setEasingSecuencia} className="w-[130px]" />
-    </div>
+    <SelectorCurva disabled={reproduciendo} valor={secuencia.easing ?? EASING_POR_DEFECTO} alCambiar={setEasingSecuencia} className="w-[130px]" />
   );
 }
 

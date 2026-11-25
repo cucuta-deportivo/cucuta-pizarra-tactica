@@ -49,14 +49,14 @@ describe('fila de abajo: qué se ve según el sitio', () => {
   });
 });
 
-describe('fila de arriba: nombre y curva de la jugada junto a las pestañas', () => {
-  it('suben solo si a las pestañas les quedan al menos 720 px', () => {
-    expect(jugadaArriba(1196, false)).toBe(true); // 1366 de ancho
-    expect(jugadaArriba(1010, false)).toBe(false); // 1180 de ancho: se quedan en «Más ▾»
+describe('fila de arriba: la curva de la jugada junto a las pestañas', () => {
+  it('sube solo si a las pestañas les quedan al menos 720 px (la curva ocupa 138)', () => {
+    expect(jugadaArriba(858, false)).toBe(true);
+    expect(jugadaArriba(857, false)).toBe(false); // se queda en «Más ▾»
   });
 
-  it('no oscila: con los campos ya arriba, la medida de las pestañas da lo mismo', () => {
-    expect(jugadaArriba(1196 - 344, true)).toBe(true);
-    expect(jugadaArriba(1010 - 344, true)).toBe(false);
+  it('no oscila: con la curva ya arriba, la medida de las pestañas da lo mismo', () => {
+    expect(jugadaArriba(858 - 138, true)).toBe(true);
+    expect(jugadaArriba(857 - 138, true)).toBe(false);
   });
 });

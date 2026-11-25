@@ -101,7 +101,7 @@ describe('formato de la alineación', () => {
 
   it('en solo lectura se puede mirar otra fase de su jugada, sin guardar nada', async () => {
     const actual = await guardarUna('Jugada del futuro');
-    const conJugadaAbierta = { ...actual, secuencia: actual.jugadaCerrada, jugadaCerrada: null, formato: FORMATO_ALINEACION + 1 };
+    const conJugadaAbierta = { ...actual, secuencia: { ...actual.jugadas![0]!, posicion: 0 }, jugadas: [], formato: FORMATO_ALINEACION + 1 };
     await alineacionRepository.guardar(conJugadaAbierta);
     await estado().cargarAlineacion(actual.id);
 

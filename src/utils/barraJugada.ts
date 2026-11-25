@@ -85,14 +85,14 @@ export function espacioDisponible(anchoBloqueFase: number, nivelAlMedir: number)
   return anchoBloqueFase + anchoOcupado(nivelAlMedir);
 }
 
-/** Nombre y curva de la jugada en la fila de arriba: campo de 200, selector de 130, sus huecos. */
-export const ANCHO_JUGADA_ARRIBA = 200 + HUECO + 130 + 8;
-/** Lo que se deja como mínimo a las pestañas antes de subir el nombre y la curva (unas 7 pestañas con nombre). */
+/** La curva de la jugada en la fila de arriba: selector de 130 y su hueco. El nombre se cambia en la ventana Jugadas. */
+export const ANCHO_JUGADA_ARRIBA = 130 + 8;
+/** Lo que se deja como mínimo a las pestañas antes de subir la curva (unas 7 pestañas con nombre). */
 export const MINIMO_PESTANAS = 720;
 
 /**
- * ¿Caben el nombre y la curva de la jugada en la fila de las pestañas? Solo en
- * pantallas anchas: las pestañas mandan en esa fila.
+ * ¿Cabe la curva de la jugada en la fila de las pestañas? Solo si a las pestañas
+ * les sobra sitio: mandan en esa fila.
  */
 export function jugadaArriba(anchoPestanas: number, estabaArriba: boolean): boolean {
   const espacio = anchoPestanas + (estabaArriba ? ANCHO_JUGADA_ARRIBA : 0);

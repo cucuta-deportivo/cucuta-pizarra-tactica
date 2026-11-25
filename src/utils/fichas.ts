@@ -32,18 +32,19 @@ interface DocumentoConJugadores {
   banquillo: string[];
   jugadoresPersonalizados: Jugador[];
   secuencia: SecuenciaTactica | null;
-  jugadaCerrada?: SecuenciaTactica | null;
+  jugadas?: SecuenciaTactica[];
 }
 
 /**
  * Todos los jugadores que aparecen en la alineación: en el campo, en el banquillo,
- * en algún paso de la jugada (abierta o cerrada) o en la pizarra guardada mientras
- * la jugada está abierta.
+ * en alguna fase de cualquiera de sus jugadas (la abierta y todas las cerradas) o
+ * en la pizarra guardada mientras hay una abierta. Si faltara una jugada, quien
+ * solo sale en ella (un traspasado, por ejemplo) se quedaría sin ficha y sin pintar.
  */
 function idsEnAlineacion(doc: DocumentoConJugadores): Set<string> {
   const ids = new Set<string>(doc.banquillo);
   for (const titular of doc.titulares) ids.add(titular.jugadorId);
-  for (const jugada of [doc.secuencia, doc.jugadaCerrada]) {
+  for (const jugada of [doc.secuencia, ...(doc.jugadas ?? [])]) {
     for (const frame of jugada?.frames ?? []) {
       for (const titular of frame.titulares) ids.add(titular.jugadorId);
     }

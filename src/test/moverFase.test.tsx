@@ -62,7 +62,7 @@ describe('barra ancha: la edición de la fase a la vista', () => {
     simularBarra(ANCHA);
   });
 
-  it('enseña nombre, duración, ＋ Fase, mover, duplicar y borrar, y arriba el nombre y la curva de la jugada', () => {
+  it('enseña nombre, duración, ＋ Fase, mover, duplicar y borrar, y arriba la curva de la jugada (su nombre, en la ventana Jugadas)', () => {
     render(<TimelineTactica />);
     expect(screen.getByRole('textbox', { name: 'Nombre de la fase' })).toHaveValue('Pase');
     expect(screen.getByRole('spinbutton', { name: 'Duración de la fase en segundos' })).toBeEnabled();
@@ -74,8 +74,11 @@ describe('barra ancha: la edición de la fase a la vista', () => {
     expect(screen.getByRole('button', { name: 'Mover la fase 2 a la derecha' })).toHaveTextContent('Mover');
     expect(screen.getByRole('button', { name: 'Duplicar la fase 2' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Borrar la fase 2' })).toBeEnabled();
-    expect(screen.getByRole('textbox', { name: 'Nombre de la jugada' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Nombre de la jugada' })).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Curva' })).toBeInTheDocument();
+    // «Borrar» en rojo, pero sin el fondo rojo lleno: es lo más peligroso y no debe ser lo que más llama la atención.
+    expect(screen.getByRole('button', { name: 'Borrar la fase 2' }).className).not.toMatch(/bg-red-950 /);
+    expect(screen.getByRole('button', { name: 'Borrar la fase 2' }).className).toMatch(/text-red-300/);
   });
 
   it('«Más ▾» solo guarda «Añadir fase al final»', () => {
@@ -162,7 +165,7 @@ describe('barra estrecha: ＋ Fase a la vista y lo demás en «Más ▾»', () =
     for (const texto of ['Mover a la izquierda', 'Mover a la derecha', '⇥ Añadir fase al final', '⧉ Duplicar fase', '🗑 Borrar fase']) {
       expect(within(menu).getByRole('button', { name: texto })).toBeEnabled();
     }
-    expect(within(menu).getByRole('textbox', { name: 'Nombre de la jugada' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('textbox', { name: 'Nombre de la jugada' })).not.toBeInTheDocument();
     expect(within(menu).getByRole('combobox', { name: 'Curva' })).toBeInTheDocument();
     expect(menu.textContent).not.toMatch(/[◀▶]/);
   });
@@ -195,11 +198,9 @@ describe('barra estrecha: ＋ Fase a la vista y lo demás en «Más ▾»', () =
     render(<TimelineTactica />);
     const menu = abrirMas();
     fireEvent.change(within(menu).getByRole('textbox', { name: 'Nombre de la fase' }), { target: { value: 'Pase al 7' } });
-    fireEvent.change(within(menu).getByRole('textbox', { name: 'Nombre de la jugada' }), { target: { value: 'Salida por la derecha' } });
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(nombres()).toEqual(['Salida', 'Pase al 7', 'Remate']);
-    expect(estado().historial.presente.secuencia!.nombre).toBe('Salida por la derecha');
   });
 
   it('un nombre a medias en el menú se guarda en su fase antes de moverla', () => {

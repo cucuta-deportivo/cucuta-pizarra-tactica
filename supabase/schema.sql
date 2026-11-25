@@ -594,6 +594,37 @@ create trigger alineaciones_version
   before update on alineaciones
   for each row execute function public.alineacion_nueva_version();
 
+-- F5.4b (ejecutado el 2026-11-25): nunca se guarda una alineacion con un
+-- formato menor que el que ya tiene (sin marca cuenta como 1). Asi un aparato
+-- con una version vieja de la app no borra lo que no conoce (por ejemplo, las
+-- jugadas). Marcarla como borrada si se deja: no reescribe el documento. Ojo
+-- al corregir alineaciones a mano con SQL: el documento tiene que conservar su
+-- "formato". La app reconoce el rechazo por su codigo, CDF01.
+create or replace function public.alineacion_sin_bajar_formato()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  formato_guardado integer := case when jsonb_typeof(old.documento -> 'formato') = 'number'
+                                   then (old.documento ->> 'formato')::integer else 1 end;
+  formato_nuevo    integer := case when jsonb_typeof(new.documento -> 'formato') = 'number'
+                                   then (new.documento ->> 'formato')::integer else 1 end;
+begin
+  if new.documento is distinct from old.documento and formato_nuevo < formato_guardado then
+    raise exception 'Esta alineacion se guardo con una version mas nueva de la app (formato %, este aparato guarda el %). Actualiza la app para guardarla.',
+      formato_guardado, formato_nuevo
+      using errcode = 'CDF01';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists alineaciones_formato on alineaciones;
+create trigger alineaciones_formato
+  before update on alineaciones
+  for each row execute function public.alineacion_sin_bajar_formato();
+
 -- ------------------------------------------------------------
 -- Seguridad
 --

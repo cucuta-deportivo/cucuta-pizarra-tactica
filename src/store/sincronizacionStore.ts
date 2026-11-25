@@ -16,6 +16,8 @@ export interface SincronizacionState {
   mensaje: string | null;
   /** Cuándo terminó la última vuelta sin problemas. */
   ultimaVez: string | null;
+  /** F5.4b: nombres de las alineaciones que no caben en el servidor (más de 1 MB): siguen solo en este dispositivo. */
+  demasiadoGrandes: string[];
 }
 
 export const useSincronizacionStore = create<SincronizacionState>(() => ({
@@ -23,14 +25,16 @@ export const useSincronizacionStore = create<SincronizacionState>(() => ({
   pendientes: 0,
   mensaje: null,
   ultimaVez: null,
+  demasiadoGrandes: [],
 }));
 
 /** El estado después de una vuelta: si fue bien, guarda la hora; si no, conserva la de la última buena. */
 export function estadoTrasVuelta(
-  resumen: { estado: 'al-dia' | 'sin-conexion' | 'error'; mensaje?: string },
+  resumen: { estado: 'al-dia' | 'sin-conexion' | 'error'; mensaje?: string; demasiadoGrandes?: string[] },
   pendientes: number,
   ahora: Date,
 ): Partial<SincronizacionState> {
-  if (resumen.estado === 'al-dia') return { estado: 'al-dia', pendientes, mensaje: null, ultimaVez: ahora.toISOString() };
-  return { estado: resumen.estado, pendientes, mensaje: resumen.estado === 'error' ? (resumen.mensaje ?? null) : null };
+  const demasiadoGrandes = resumen.demasiadoGrandes ?? [];
+  if (resumen.estado === 'al-dia') return { estado: 'al-dia', pendientes, mensaje: null, ultimaVez: ahora.toISOString(), demasiadoGrandes };
+  return { estado: resumen.estado, pendientes, mensaje: resumen.estado === 'error' ? (resumen.mensaje ?? null) : null, demasiadoGrandes };
 }

@@ -299,8 +299,24 @@ export interface TrayectoriaMovimiento {
 export type TipoDestinoRuta = 'titular' | 'rival' | 'balon' | 'objeto';
 
 export interface SecuenciaTactica {
+  /**
+   * Identifica la jugada dentro de su alineación (F5.4b). Desde el formato 3 la
+   * llevan todas: la conversión al leer se lo pone a las de antes.
+   */
+  id?: string;
   /** Nombre de la jugada: "Salida ante presión", "ABP - Córner"… */
   nombre?: string;
+  /** Para qué sirve la jugada o cómo se ejecuta; se ve en la ventana Jugadas (F5.4b). */
+  descripcion?: string;
+  /** Vista del campo de esta jugada (completo, medio, tercio). Sin ella, la de la pizarra (F5.4b). */
+  vista?: VistaCampo;
+  /**
+   * Solo en la jugada abierta: el sitio de la lista `jugadas` al que vuelve al
+   * cerrarla. Mientras está abierta no está en la lista, así no se guarda dos veces.
+   */
+  posicion?: number;
+  /** Solo en la jugada abierta: la vista de la pizarra, a la que vuelve el campo al cerrarla. */
+  vistaPizarra?: VistaCampo;
   frames: FrameTactico[];
   /** Frame que se está editando; es el que el campo muestra en modo edición. */
   indiceActivo: number;
@@ -342,9 +358,14 @@ export interface Alineacion {
   categoriaId?: string | null;
   /** Ficha de cada jugador de la plantilla que usa (ver `FichaJugador`). Las guardadas antes no la tienen. */
   fichas?: FichaJugador[];
-  /** `null` mientras el tablero sea una pizarra fija: solo existe al crear una jugada. */
+  /** La jugada abierta; `null` si el campo es la pizarra. */
   secuencia?: SecuenciaTactica | null;
-  /** La jugada cerrada con «Cerrar jugada» (F5.4a), guardada para volver a abrirla. Las guardadas antes no la tienen. */
+  /** Las jugadas cerradas, en su orden (F5.4b, formato 3). La abierta no está: vive en `secuencia`. */
+  jugadas?: SecuenciaTactica[];
+  /**
+   * Formatos 1 y 2: la única jugada cerrada (F5.4a). Al leerla pasa a ser la
+   * primera de `jugadas` (ver `conJugadasEnLista`) y ya no se escribe.
+   */
   jugadaCerrada?: SecuenciaTactica | null;
 }
 

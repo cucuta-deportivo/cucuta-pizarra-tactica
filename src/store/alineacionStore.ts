@@ -44,7 +44,8 @@ import {
 } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
-import { AVISO_ACTUALIZAR_APP, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
+import { AVISO_ACTUALIZAR_APP, conJugadasEnLista, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
+import { PESO_AVISO, PESO_TOPE, pesoEnServidor, porcentajeOcupado, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -62,6 +63,7 @@ import type {
   TipoDestinoRuta,
   TipoEasing,
   TipoInterpolacionRuta,
+  VistaCampo,
   ZonaFormacion,
 } from '../types';
 
@@ -90,11 +92,11 @@ export interface DocumentoTactico {
    */
   secuencia: SecuenciaTactica | null;
   /**
-   * La jugada cerrada (F5.4a): guardada aparte para que la pizarra se edite sin
-   * tocar sus fases, y para volver a abrirla desde ⋯. Nunca hay a la vez una
-   * abierta (`secuencia`) y una cerrada.
+   * Las jugadas cerradas, en su orden (F5.4b). Guardadas aparte para que la
+   * pizarra se edite sin tocar sus fases (F5.4a). La abierta no está aquí: vive
+   * en `secuencia` y recuerda su sitio en `posicion`.
    */
-  jugadaCerrada: SecuenciaTactica | null;
+  jugadas: SecuenciaTactica[];
 }
 
 function balonInicial(): Balon {
@@ -116,7 +118,7 @@ function documentoVacio(formacionId: string): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
-    jugadaCerrada: null,
+    jugadas: [],
   };
 }
 
@@ -205,6 +207,123 @@ function mismoContenidoFrame(a: FrameTactico, b: FrameTactico): boolean {
   return true;
 }
 
+// --- F5.4b: varias jugadas por alineación -------------------------------------
+
+/** «Jugada N» con el primer número que no use ya otra jugada de la alineación. */
+function nombreParaJugadaNueva(doc: DocumentoTactico): string {
+  const usados = new Set([...doc.jugadas, ...(doc.secuencia ? [doc.secuencia] : [])].map((j) => j.nombre));
+  let n = doc.jugadas.length + (doc.secuencia ? 1 : 0) + 1;
+  while (usados.has(`Jugada ${n}`)) n += 1;
+  return `Jugada ${n}`;
+}
+
+/**
+ * La vista que se guarda con la jugada abierta al cerrarla o copiarla: la que
+ * tenga el campo si la jugada ya tenía una o si se cambió estando abierta; si
+ * no, ninguna (sigue la de la pizarra).
+ */
+function vistaDeLaAbierta(doc: DocumentoTactico): VistaCampo | undefined {
+  const secuencia = doc.secuencia;
+  if (!secuencia || secuencia.vistaPizarra === undefined) return secuencia?.vista;
+  return secuencia.vista !== undefined || doc.cancha.vista !== secuencia.vistaPizarra ? doc.cancha.vista : undefined;
+}
+
+/**
+ * Cierra la jugada abierta dentro de una mutación: lo de la fase en pantalla se
+ * vuelca a la jugada, la jugada vuelve a su sitio de la lista con su vista, y el
+ * campo vuelve a la pizarra y a la vista de la pizarra. Devuelve si había algo
+ * editado en la fase (entonces hay que guardar).
+ */
+function cerrarAbiertaEn(doc: DocumentoTactico): boolean {
+  if (!doc.secuencia) return false;
+  const capturado = capturarFrameActivo(doc);
+  const vista = vistaDeLaAbierta(doc);
+  const { pizarra, posicion, vistaPizarra, ...jugada } = doc.secuencia;
+  if (vista !== undefined) jugada.vista = vista;
+  if (vistaPizarra !== undefined) doc.cancha.vista = vistaPizarra;
+  if (pizarra) aplicarFrameADocumento(doc, pizarra);
+  const sitio = Math.min(Math.max(0, posicion ?? doc.jugadas.length), doc.jugadas.length);
+  doc.jugadas.splice(sitio, 0, jugada);
+  doc.secuencia = null;
+  return capturado;
+}
+
+/** Abre la jugada que está en `posicion` de la lista, en la fase en que se dejó y con su vista. */
+function abrirEnPosicionEn(doc: DocumentoTactico, posicion: number): boolean {
+  const jugada = doc.jugadas[posicion];
+  if (!jugada || doc.secuencia) return false;
+  const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
+  const activo = jugada.frames[indiceActivo];
+  const vista = jugada.vista;
+  doc.secuencia = { ...jugada, indiceActivo, posicion, pizarra: tableroDesdeDocumento(doc), vistaPizarra: doc.cancha.vista };
+  doc.jugadas.splice(posicion, 1);
+  if (vista) doc.cancha.vista = vista;
+  if (activo) aplicarFrameADocumento(doc, activo);
+  return true;
+}
+
+/** Quita la jugada abierta sin guardarla en la lista: el campo vuelve a la pizarra y a su vista. */
+function quitarAbiertaEn(doc: DocumentoTactico): void {
+  const secuencia = doc.secuencia;
+  if (!secuencia) return;
+  if (secuencia.pizarra) aplicarFrameADocumento(doc, secuencia.pizarra);
+  if (secuencia.vistaPizarra !== undefined) doc.cancha.vista = secuencia.vistaPizarra;
+  doc.secuencia = null;
+}
+
+/** La jugada con ese id, sea la abierta o una de la lista. */
+function buscarJugada(doc: DocumentoTactico, id: string): SecuenciaTactica | undefined {
+  return doc.secuencia?.id === id ? doc.secuencia : doc.jugadas.find((j) => j.id === id);
+}
+
+/** Jugada nueva desde lo que hay en el campo (la pizarra), abierta y al final de la lista. */
+function crearJugadaEn(doc: DocumentoTactico): void {
+  const nombre = nombreParaJugadaNueva(doc);
+  doc.secuencia = {
+    id: generarId(),
+    nombre,
+    posicion: doc.jugadas.length,
+    frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })],
+    indiceActivo: 0,
+    pizarra: tableroDesdeDocumento(doc),
+    vistaPizarra: doc.cancha.vista,
+  };
+}
+
+/** Copia de una jugada con ids nuevos (la jugada y sus fases), sin lo que solo tiene la abierta. */
+function copiaDeJugada(jugada: SecuenciaTactica, vista: VistaCampo | undefined): SecuenciaTactica {
+  const copia = JSON.parse(JSON.stringify(jugada)) as SecuenciaTactica;
+  delete copia.pizarra;
+  delete copia.posicion;
+  delete copia.vistaPizarra;
+  if (vista !== undefined) copia.vista = vista;
+  copia.id = generarId();
+  copia.nombre = `${jugada.nombre ?? 'Jugada'} (copia)`;
+  copia.frames = copia.frames.map((frame) => ({ ...frame, id: generarId() }));
+  return copia;
+}
+
+/**
+ * El cambio «entra B por A» en un tablero (la pizarra o una fase): B ocupa el
+ * sitio de A, con lo que colgaba de él (balón pegado y sus recorridos). Si B ya
+ * estaba en ese tablero no se toca: no puede estar dos veces.
+ */
+function cambiarJugadorEnTablero(
+  tablero: Pick<FrameTactico, 'titulares' | 'balones'> & { trayectorias?: FrameTactico['trayectorias'] },
+  saleId: string,
+  entraId: string,
+): 'cambiado' | 'no-estaba' | 'ya-estaba' {
+  const titular = tablero.titulares.find((t) => t.jugadorId === saleId);
+  if (!titular) return 'no-estaba';
+  if (tablero.titulares.some((t) => t.jugadorId === entraId)) return 'ya-estaba';
+  titular.jugadorId = entraId;
+  titular.esCapitan = false;
+  delete titular.nota;
+  for (const balon of tablero.balones) if (balon.jugadorPoseedorId === saleId) balon.jugadorPoseedorId = entraId;
+  for (const ruta of tablero.trayectorias ?? []) if (ruta.jugadorId === saleId) ruta.jugadorId = entraId;
+  return 'cambiado';
+}
+
 /** Mete un frame nuevo con el estado actual justo detrás del activo, y se planta en él. */
 function insertarFrameTrasActivo(doc: DocumentoTactico): void {
   const secuencia = doc.secuencia;
@@ -215,7 +334,9 @@ function insertarFrameTrasActivo(doc: DocumentoTactico): void {
 
 /** Convierte una `Alineacion` guardada a `DocumentoTactico`, rellenando con valores por
  * defecto los campos del Anexo A que no existían en tableros guardados antes de esa versión. */
-function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
+function documentoDesdeAlineacion(guardada: Alineacion): DocumentoTactico {
+  // Formatos 1 y 2 (y JSON o respaldos de antes): la jugada cerrada pasa a la lista.
+  const alineacion = conJugadasEnLista(guardada);
   return {
     formacionId: alineacion.formacionId,
     titulares: alineacion.titulares,
@@ -230,7 +351,7 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
     cancha: alineacion.cancha ?? canchaVacia(),
     jugadoresPersonalizados: alineacion.jugadoresPersonalizados ?? [],
     secuencia: alineacion.secuencia ?? null,
-    jugadaCerrada: alineacion.jugadaCerrada ?? null,
+    jugadas: alineacion.jugadas ?? [],
   };
 }
 
@@ -335,7 +456,7 @@ export function alineacionDesdeDocumento(
     cancha: doc.cancha,
     jugadoresPersonalizados: doc.jugadoresPersonalizados,
     secuencia: doc.secuencia,
-    jugadaCerrada: doc.jugadaCerrada,
+    jugadas: doc.jugadas,
     creadaEn: base.creadaEn,
     modificadaEn,
   };
@@ -459,13 +580,23 @@ interface AlineacionState {
   actualizarCancha: (cambios: Partial<IdentidadCancha>) => void;
 
   // Jugadas animadas (secuencia de frames)
+  /** Jugada nueva desde la pizarra («Jugada N»), si no hay otra abierta. */
   iniciarSecuencia: () => void;
-  /** Borra la jugada, abierta o cerrada; si estaba abierta, el campo vuelve a la pizarra. */
+  /** F5.4b: jugada nueva desde la pizarra; si había otra abierta, la cierra antes, guardándola en su sitio. */
+  nuevaJugada: () => void;
+  /** Borra la jugada abierta o, si no hay, la primera cerrada; si estaba abierta, el campo vuelve a la pizarra. */
   descartarSecuencia: () => void;
   /** Guarda la jugada abierta y vuelve a la pizarra (F5.4a). */
   cerrarJugada: () => void;
-  /** Vuelve a abrir la jugada cerrada, en la fase en la que se dejó. */
-  abrirJugada: () => void;
+  /** Abre una jugada de la lista (por defecto la primera), en la fase en que se dejó; si había otra abierta, la cierra antes. */
+  abrirJugada: (id?: string) => void;
+  /** F5.4b: lo que ocuparía ahora la alineación en el servidor, en bytes (tope: 1 MB; ver utils/pesoAlineacion). */
+  pesoAlineacion: () => number;
+  /** F5.4b: nombre, descripción, copia y borrado de cualquier jugada, abierta o cerrada. */
+  renombrarJugada: (id: string, nombre: string) => void;
+  describirJugada: (id: string, descripcion: string) => void;
+  duplicarJugada: (id: string) => void;
+  borrarJugada: (id: string) => void;
   agregarFrame: () => void;
   /** Cierra un frame con lo que hay en pantalla sin tocar el activo (modo grabación). */
   grabarFrame: () => void;
@@ -529,6 +660,7 @@ let aperturaSinGuardar = false;
 let colaDeGuardado: Promise<void> = Promise.resolve();
 /** Cuándo se avisó por última vez de que la abierta es de solo lectura, para no repetir el aviso en cada toque. */
 let ultimoAvisoSoloLectura = 0;
+let ultimoAvisoPeso = 0;
 
 export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function marcarPendiente(): void {
@@ -559,6 +691,51 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (ahora - ultimoAvisoSoloLectura < 4000) return;
     ultimoAvisoSoloLectura = ahora;
     useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: AVISO_ACTUALIZAR_APP });
+  }
+
+  /** Lo que ocuparía ahora la alineación en el servidor (ver utils/pesoAlineacion). */
+  function pesoActual(): number {
+    const estado = get();
+    return pesoEnServidor(alineacionDesdeDocumento(estado, estado.historial.presente, estado.modificadaEn));
+  }
+
+  /**
+   * F5.4b: lo que hace crecer la alineación (una fase o una jugada más) solo se
+   * hace si no ha llegado al tope de 900 KB; al pasar de 700 KB se avisa una vez.
+   * Editar, mover y borrar nunca se bloquean. Si una sola acción la llevara por
+   * encima de 1 MB (el servidor ya no la aceptaría), se deshace.
+   */
+  function crecer(accion: () => void, que: 'fases' | 'jugadas'): void {
+    const antes = pesoActual();
+    if (antes >= PESO_TOPE) {
+      const ahora = Date.now();
+      // Grabando, cada movimiento intenta añadir una fase: un aviso cada 4 s basta.
+      if (ahora - ultimoAvisoPeso >= 4000) {
+        ultimoAvisoPeso = ahora;
+        useUiStore.getState().mostrarToast({
+          tipo: 'error',
+          mensaje: `La alineación está llena (${porcentajeOcupado(antes)} %): no caben más ${que}. Borra fases o jugadas que no uses, o sigue en una alineación nueva.`,
+        });
+      }
+      return;
+    }
+    const historialAntes = get().historial;
+    accion();
+    const despues = pesoActual();
+    if (despues > TOPE_SERVIDOR) {
+      set({ historial: historialAntes });
+      useUiStore.getState().mostrarToast({
+        tipo: 'error',
+        mensaje: 'No cabe: con esto la alineación se pasaría de su espacio. Borra fases o jugadas que no uses.',
+      });
+      return;
+    }
+    if (antes < PESO_AVISO && despues >= PESO_AVISO) {
+      useUiStore.getState().mostrarToast({
+        tipo: 'info',
+        mensaje: `La alineación ya está al ${porcentajeOcupado(despues)} % de su espacio. Al llegar al 100 % no se podrán añadir más fases ni jugadas.`,
+      });
+    }
   }
 
   /**
@@ -1041,8 +1218,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, `${etiquetaJugador(jugadorId)} entra desde el banquillo${zona ? ` (${zona.posicion})` : ''}`);
     },
 
+    // F5.4b: el once es uno solo. El cambio se aplica en el tablero que se ve, en la pizarra y en
+    // todas las fases de todas las jugadas, abiertas o cerradas, en un solo paso de Deshacer. Antes
+    // solo cambiaba el tablero en pantalla y las jugadas seguían con el que había salido.
     sustituirEnCampo: (jugadorEnCampoId, jugadorDesdeBanquilloId) => {
-      const etiqueta = `Cambio: entra ${etiquetaJugador(jugadorDesdeBanquilloId)} por ${etiquetaJugador(jugadorEnCampoId)}`;
+      if (!get().historial.presente.titulares.some((t) => t.jugadorId === jugadorEnCampoId)) return;
+      const entra = etiquetaJugador(jugadorDesdeBanquilloId);
+      const etiqueta = `Cambio: entra ${entra} por ${etiquetaJugador(jugadorEnCampoId)}`;
+      let sinCambiar = 0;
       mutar((doc) => {
         const titular = doc.titulares.find((t) => t.jugadorId === jugadorEnCampoId);
         if (!titular) return;
@@ -1051,7 +1234,24 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.banquillo = doc.banquillo.filter((id) => id !== jugadorDesdeBanquilloId);
         if (doc.banquillo.length < CAPACIDAD_BANQUILLO) doc.banquillo.push(jugadorEnCampoId);
         doc.titulares.push({ jugadorId: jugadorDesdeBanquilloId, x, y, zonaOrigenId, fueraDeEsquema, zonaPerdida, esCapitan: false });
+        for (const balon of doc.balones) if (balon.jugadorPoseedorId === jugadorEnCampoId) balon.jugadorPoseedorId = jugadorDesdeBanquilloId;
+        for (const marcaje of doc.marcajes) if (marcaje.jugadorPropioId === jugadorEnCampoId) marcaje.jugadorPropioId = jugadorDesdeBanquilloId;
+
+        const tableros = [
+          ...(doc.secuencia?.pizarra ? [doc.secuencia.pizarra] : []),
+          ...(doc.secuencia?.frames ?? []),
+          ...doc.jugadas.flatMap((j) => j.frames),
+        ];
+        for (const tablero of tableros) {
+          if (cambiarJugadorEnTablero(tablero, jugadorEnCampoId, jugadorDesdeBanquilloId) === 'ya-estaba') sinCambiar += 1;
+        }
       }, etiqueta);
+      if (sinCambiar > 0) {
+        useUiStore.getState().mostrarToast({
+          tipo: 'info',
+          mensaje: `${entra} ya estaba en el campo en ${sinCambiar === 1 ? '1 fase' : `${sinCambiar} fases`} de las jugadas: ahí no se cambió.`,
+        });
+      }
     },
 
     toggleCapitan: (jugadorId) => {
@@ -1307,12 +1507,12 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     actualizarJugadorRival: (id, dorsal, apellido) =>
       mutar((doc) => {
         // El dorsal y el apellido son del jugador, no de una fase: se cambian en
-        // la pizarra y en todas las fases de la jugada, abierta o cerrada.
+        // la pizarra y en todas las fases de todas las jugadas, abiertas o cerradas.
         const listas = [
           doc.rival?.jugadores,
           ...(doc.secuencia?.frames ?? []).map((f) => f.jugadoresRival),
           doc.secuencia?.pizarra?.jugadoresRival,
-          ...(doc.jugadaCerrada?.frames ?? []).map((f) => f.jugadoresRival),
+          ...doc.jugadas.flatMap((j) => j.frames.map((f) => f.jugadoresRival)),
         ];
         for (const lista of listas) {
           const jugador = lista?.find((j) => j.id === id);
@@ -1367,24 +1567,29 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, cambios.rotado180 !== undefined ? 'Cancha rotada' : 'Identidad de cancha actualizada'),
 
     // --- Jugadas animadas ---
-    iniciarSecuencia: () =>
-      mutar((doc) => {
-        // Una jugada por alineación: con una cerrada, se abre esa (⋯ → Abrir jugada).
-        if (doc.secuencia || doc.jugadaCerrada) return;
-        doc.secuencia = {
-          frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })],
-          indiceActivo: 0,
-          pizarra: tableroDesdeDocumento(doc),
-        };
-      }, 'Jugada iniciada'),
+    iniciarSecuencia: () => {
+      if (get().historial.presente.secuencia) return;
+      crecer(() => mutar((doc) => crearJugadaEn(doc), 'Jugada iniciada'), 'jugadas');
+    },
+
+    // F5.4b: parte de la pizarra, no de la fase que se esté viendo; la que estaba abierta queda guardada en su sitio.
+    nuevaJugada: () =>
+      crecer(() => {
+        const hecho = mutar((doc) => {
+          cerrarAbiertaEn(doc);
+          crearJugadaEn(doc);
+        }, 'Jugada nueva');
+        // Crear es editar: se guarda, y lo guardado ya tiene esta jugada abierta.
+        if (hecho) aperturaSinGuardar = false;
+      }, 'jugadas'),
 
     descartarSecuencia: () => {
-      const { secuencia, jugadaCerrada } = get().historial.presente;
-      if (!secuencia && !jugadaCerrada) return;
+      const { secuencia, jugadas } = get().historial.presente;
+      if (!secuencia && jugadas.length === 0) return;
       const hecho = mutar((doc) => {
-        if (doc.secuencia?.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
-        doc.secuencia = null;
-        doc.jugadaCerrada = null;
+        // Se borra la abierta; si no hay, la primera cerrada.
+        if (doc.secuencia) quitarAbiertaEn(doc);
+        else doc.jugadas.splice(0, 1);
       }, 'Jugada borrada');
       if (hecho) avisarConDeshacer('Jugada borrada.');
     },
@@ -1397,13 +1602,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       let capturado = false;
       const hecho = mutar(
         (doc) => {
-          const secuencia = doc.secuencia;
-          if (!secuencia) return;
-          capturado = capturarFrameActivo(doc);
-          const { pizarra, ...jugada } = secuencia;
-          if (pizarra) aplicarFrameADocumento(doc, pizarra);
-          doc.jugadaCerrada = jugada;
-          doc.secuencia = null;
+          capturado = cerrarAbiertaEn(doc);
         },
         'Jugada cerrada',
         { guardar: false },
@@ -1412,41 +1611,111 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       // en la fase quedaba algo editado, o si lo guardado ya tenía la jugada abierta.
       if (hecho && (capturado || !aperturaSinGuardar)) marcarPendiente();
       aperturaSinGuardar = false;
-      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Se vuelve a abrir desde ⋯ → Abrir jugada.' });
+      if (hecho) useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: 'Jugada guardada. Está en 🎬 Jugadas, en la barra de abajo.' });
     },
 
     // Abrir una jugada es mirarla: no se guarda. Si luego se edita, se guarda con todo, jugada abierta incluida.
-    abrirJugada: () => {
-      let abierta = false;
-      mutar(
+    abrirJugada: (id) => {
+      const { secuencia, jugadas } = get().historial.presente;
+      const destino = id === undefined ? jugadas[0] : jugadas.find((j) => j.id === id);
+      if (!destino) return;
+      const habiaAbierta = secuencia !== null;
+      let capturado = false;
+      const hecho = mutar(
         (doc) => {
-          const jugada = doc.jugadaCerrada;
-          if (!jugada || doc.secuencia) return;
-          const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
-          const activo = jugada.frames[indiceActivo];
-          doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
-          doc.jugadaCerrada = null;
-          if (activo) aplicarFrameADocumento(doc, activo);
-          abierta = true;
+          // La que estaba abierta vuelve a su sitio con lo editado; luego se abre la pedida.
+          capturado = cerrarAbiertaEn(doc);
+          const posicion = destino.id === undefined ? 0 : doc.jugadas.findIndex((j) => j.id === destino.id);
+          abrirEnPosicionEn(doc, posicion);
         },
-        'Jugada abierta',
+        `Jugada «${destino.nombre ?? 'sin nombre'}» abierta`,
         { guardar: false },
       );
-      if (abierta) aperturaSinGuardar = true;
+      if (!hecho) return;
+      // Abrir es mirar: no se guarda. Sí, si la que se cerró tenía algo editado o lo guardado la tenía abierta.
+      if (habiaAbierta && (capturado || !aperturaSinGuardar)) {
+        marcarPendiente();
+        aperturaSinGuardar = false;
+      } else {
+        aperturaSinGuardar = true;
+      }
+    },
+
+    renombrarJugada: (id, nombre) => {
+      const limpio = nombre.trim();
+      if (!limpio || !buscarJugada(get().historial.presente, id)) return;
+      mutar((doc) => {
+        const jugada = buscarJugada(doc, id);
+        if (jugada) jugada.nombre = limpio;
+      }, 'Jugada renombrada');
+    },
+
+    describirJugada: (id, descripcion) => {
+      if (!buscarJugada(get().historial.presente, id)) return;
+      const limpia = descripcion.trim();
+      mutar((doc) => {
+        const jugada = buscarJugada(doc, id);
+        if (!jugada) return;
+        if (limpia) jugada.descripcion = limpia;
+        else delete jugada.descripcion;
+      }, 'Descripción de la jugada cambiada');
+    },
+
+    // La copia va justo detrás de la original y no se abre. Con ids nuevos (la jugada y sus fases).
+    duplicarJugada: (id) => {
+      if (!buscarJugada(get().historial.presente, id)) return;
+      crecer(() => mutar((doc) => {
+        if (doc.secuencia?.id === id) {
+          capturarFrameActivo(doc);
+          // En la lista, en el sitio de la abierta: queda justo detrás de ella.
+          const sitio = Math.min(Math.max(0, doc.secuencia.posicion ?? doc.jugadas.length), doc.jugadas.length);
+          doc.jugadas.splice(sitio, 0, copiaDeJugada(doc.secuencia, vistaDeLaAbierta(doc)));
+          return;
+        }
+        const indice = doc.jugadas.findIndex((j) => j.id === id);
+        const original = doc.jugadas[indice];
+        if (!original) return;
+        doc.jugadas.splice(indice + 1, 0, copiaDeJugada(original, original.vista));
+        // Si la abierta iba detrás de la original, ahora va detrás de la copia.
+        if (doc.secuencia && (doc.secuencia.posicion ?? 0) > indice) doc.secuencia.posicion = (doc.secuencia.posicion ?? 0) + 1;
+      }, 'Jugada duplicada'), 'jugadas');
+    },
+
+    pesoAlineacion: () => pesoActual(),
+
+    borrarJugada: (id) => {
+      const jugada = buscarJugada(get().historial.presente, id);
+      if (!jugada) return;
+      const nombre = jugada.nombre ?? 'sin nombre';
+      let eraAbierta = false;
+      const hecho = mutar((doc) => {
+        if (doc.secuencia?.id === id) {
+          eraAbierta = true;
+          quitarAbiertaEn(doc);
+          return;
+        }
+        const indice = doc.jugadas.findIndex((j) => j.id === id);
+        if (indice < 0) return;
+        doc.jugadas.splice(indice, 1);
+        if (doc.secuencia && (doc.secuencia.posicion ?? 0) > indice) doc.secuencia.posicion = (doc.secuencia.posicion ?? 0) - 1;
+      }, `Jugada «${nombre}» borrada`);
+      if (!hecho) return;
+      if (eraAbierta) aperturaSinGuardar = false;
+      avisarConDeshacer(`Jugada «${nombre}» borrada.`);
     },
 
     agregarFrame: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         // El frame nuevo arranca como copia del estado actual: así el entrenador
         // mueve solo lo que cambia en ese paso, en vez de recolocarlo todo.
         capturarFrameActivo(doc);
         insertarFrameTrasActivo(doc);
-      }, 'Frame añadido'),
+      }, 'Frame añadido'), 'fases'),
 
     grabarFrame: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         const activo = secuencia?.frames[secuencia.indiceActivo];
         if (!secuencia || !activo) return;
@@ -1459,10 +1728,10 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // las posiciones de partida. El activo conserva el "antes" y el nuevo
         // guarda el "después", que es lo que hace que la jugada se anime.
         insertarFrameTrasActivo(doc);
-      }, 'Movimiento grabado'),
+      }, 'Movimiento grabado'), 'fases'),
 
     duplicarFrame: (indice) =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         capturarFrameActivo(doc);
@@ -1471,7 +1740,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         secuencia.frames.splice(indice + 1, 0, { ...original, id: generarId(), nombre: undefined });
         secuencia.indiceActivo = indice + 1;
         aplicarFrameADocumento(doc, secuencia.frames[secuencia.indiceActivo]!);
-      }, 'Frame duplicado'),
+      }, 'Frame duplicado'), 'fases'),
 
     eliminarFrame: (indice) =>
       mutar((doc) => {
@@ -1540,13 +1809,13 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, 'Jugada renombrada'),
 
     agregarFrameAlFinal: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         capturarFrameActivo(doc);
         secuencia.frames.push(frameDesdeDocumento(doc, generarId()));
         secuencia.indiceActivo = secuencia.frames.length - 1;
-      }, 'Fase añadida al final'),
+      }, 'Fase añadida al final'), 'fases'),
 
     agregarNodoTrayectoria: (indiceFrame, tipo, id, punto, indiceInsercion) =>
       mutar((doc) => {

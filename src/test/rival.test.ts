@@ -52,7 +52,7 @@ describe('rival y nuestro equipo (F5.3)', () => {
           cancha: canchaVacia(),
           jugadoresPersonalizados: [],
           secuencia: null,
-          jugadaCerrada: null,
+          jugadas: [],
         },
         etiquetaPresente: 'Alineación inicial',
         futuro: [],

@@ -170,11 +170,31 @@ Opción C, elegida el 24 nov tras compararla con medidas (menú «Editar fase �
 | 4 | La fila de pestañas se desplaza sola para tener a la vista la fase que se ve (tocar, ⏮ ⏭, reproducir). Solo la fila: `scrollIntoView` movía la interfaz entera 51 px a 1024 | Hecho |
 | 5 | Barra compacta (6 px arriba y abajo, 4 entre filas: 105 px), Grabar y Movimiento de 44 px, y el campo deja el alto que MIDE la barra (antes, altos fijos; con la ayuda de Movimiento o una barra más alta, tapaba el campo) | Hecho |
 | 6 | Cabecera de 61 px (selector de formación a 44, minicampo de 36) y el campo empieza donde acaba: ya no se tapa nada, con jugada o sin ella | Hecho |
-| 7 | Barra inferior en columna a la izquierda en horizontal (con la jugada abierta o siempre). El usuario decide con capturas a 1024×768, rehechas con la barra mezcla | Por decidir |
+| 7 | Barra inferior en columna a la izquierda en horizontal. Fuera del PR de esta rama: el usuario lo decide cuando sepa qué tablet usa el club (25 nov). Medidas y recomendación, abajo en «Paso 7» | Pendiente |
 | 8 | Pruebas: menú (textos, acciones, nombres que se guardan al cerrar y antes de mover o borrar), nombre junto a «FASE», fila que sigue a la fase sin `scrollIntoView` (fallan sin los cambios). Navegador: los 6 casos de abajo, jugada de 13 fases con ⏭ y reproduciendo (pestaña siempre a la vista, página quieta) | Hecho |
 | 9 | Barra «mezcla» (pedida el 24 nov tras probarla a 1920: con todo en «Editar ▾» lo de editar quedaba escondido y en pantallas anchas sobraba sitio). Arriba, la jugada: pestañas y, si a las pestañas les quedan 720 px, nombre y curva. Abajo, la fase que se ve: nombre, duración, ＋ Fase, mover, duplicar y borrar a la vista mientras quepan; lo demás en «Más ▾», junto con «Añadir fase al final», que vive siempre ahí. Se esconde por prioridad (borrar, duplicar, mover, nombre; Grabar y Movimiento pasan a icono con la palabra debajo; duración); ＋ Fase nunca. Anchos fijos y una cuenta que no oscila ([barraJugada.ts](src/utils/barraJugada.ts)). El nombre junto a «FASE x/y» solo si el campo del nombre no está a la vista. A 1920 se ve todo; a 1366, nombre, duración y ＋ Fase; a 1180, duración y ＋ Fase; a 1024, ＋ Fase. Pruebas: la cuenta (7) y la barra en ancho y en estrecho (23, entre ellas un nombre a medias que se guarda al tocar otra pestaña o antes de mover; fallan sin los cambios). Navegador: flujo a 1920 y a 1024 y la ventana cambiando de tamaño en vivo sin oscilar | Hecho |
 
-Campo visible con la jugada abierta y la barra mezcla (instalada: alto menos la barra de estado; pestaña: menos 89 px, Safari con pestañas en iPad Air): 1024×768 68,2 % / 64,9 %; 1180×820 70,1 % / 67,4 %; 1366×1024 76,2 % / 74,5 %. Con la ayuda de Movimiento abierta (32 px más) baja unos 4 puntos. Con la columna del paso 7 (maqueta): del 75,0 % al 81,8 % (a 1366 instalada, 92,1 % del ancho) y con Movimiento del 70,3 % al 79,8 %. Sin jugada, la pizarra con la barra abajo va del 79,8 % al 86,3 %; con la columna, el campo crece en 4 de los 6 casos y encoge a 1024 instalada (611 → 593 px de alto) y a 1366 instalada (863 → 815).
+### Paso 7 · Barra inferior en columna: medidas y recomendación (pendiente)
+
+Se decide cuando se sepa qué tablet usa el club. **Recomendación: columna solo con la jugada abierta y la tablet en horizontal.** Con la jugada abierta es lo único que cumple el 70 % en las tablets pequeñas; sin jugada, la pizarra ya cumple con la barra abajo, así que no hace falta cambiar la pantalla que el cuerpo técnico ya conoce. Lo que cuesta: la barra pasa de abajo a la izquierda al abrir y cerrar una jugada.
+
+Campo visible con la jugada abierta y la barra mezcla, en % del alto de la pantalla (barra abajo: código real; columna: maqueta sobre la app). Con la ayuda de Movimiento abierta, la barra crece 32 px.
+
+| Pantalla (alto útil) | Barra abajo | Columna | Abajo, con Movimiento | Columna, con Movimiento |
+| --- | --- | --- | --- | --- |
+| 1024×768 instalada (748) | 68,2 % ✗ | 77,3 % | 63,9 % ✗ | 73,0 % |
+| 1024×768 pestaña de Safari (679) | 64,9 % ✗ | 75,0 % | 60,2 % ✗ | 70,3 % |
+| 1180×820 instalada (796) | 70,1 % | 78,6 % | 66,1 % ✗ | 74,7 % |
+| 1180×820 pestaña de Safari (731) | 67,4 % ✗ | 76,7 % | 63,1 % ✗ | 72,4 % |
+| 1280×800 sin barras (800) | 70,3 % | 78,8 % | 66,3 % ✗ | 74,8 % |
+| 1280×800 instalada en Android (728) | 67,3 % ✗ | 76,6 % | 62,9 % ✗ | 72,3 % |
+| 1280×800 pestaña de Chrome (632) | 62,3 % ✗ | 73,1 % | 57,3 % ✗ | 68,1 % ✗ |
+| 1366×1024 instalada (1000) | 76,2 % | 92,1 % del ancho | 73,0 % | 79,8 % |
+| 1366×1024 pestaña de Safari (935) | 74,5 % | 81,8 % | 71,1 % | 78,4 % |
+
+Altos útiles supuestos, no medidos en una tablet: iPad instalada, menos la barra de estado (20 o 24 px); pestaña de Safari, menos 89 px (Safari con fila de pestañas en un iPad Air, según los foros de desarrolladores de Apple); Android instalada, menos la barra de estado (24) y la de navegación de tres botones (48); pestaña de Chrome, además, menos la barra de direcciones (56) y la fila de pestañas de Chrome en tablet (40). A 1280 de ancho la barra mezcla deja arriba el nombre y la curva de la jugada, y abajo la duración y ＋ Fase (el nombre de la fase, junto a «FASE x/y»).
+
+Si la columna fuera siempre, también sin jugada, el alto del campo de la pizarra cambiaría así (barra abajo → columna): 1024 instalada 611 → 593 y 1366 instalada 863 → 815 (encoge); 1024 pestaña 542 → 593, 1180 instalada 659 → 694, 1180 pestaña 594 → 662, 1280 sin barras 663 → 731, 1280 instalada 591 → 659, 1280 Chrome 495 → 563 y 1366 pestaña 798 → 815 (crece). Sin jugada, con la barra abajo ya cumple en todos: del 78,3 % al 86,3 %.
 
 ## Pendientes menores
 

@@ -156,6 +156,8 @@ Orden (25 nov): F5.4b, F5.6 y F5.4c (la barra de la jugada en tablet ya está en
 - **Pruebas además de las de cada paso:** cambio del once y traspaso en todas las jugadas; cerrar la app con una jugada abierta y volver a abrirla (la jugada y la lista intactas); conversión de formatos 1 y 2; documento rechazado que no frena a los demás.
 - **Repertorio:** las 14 van a la biblioteca (F5.4c). Una alineación con las 14 es solo para probar F5.4b en local (`experimentos/`, no se sube).
 - **Pasos:** 1 tipos, formato 3 y conversión; 2 acciones del store (con los cambios del once en todas las jugadas); 3 peso, aviso y tope; 4 sincronización; 5 botón «Jugadas», ventana, ⋯ y «Más ▾»; 6 navegador por el camino del entrenador y PLAN.md.
+- **Hecho (25 nov):** paso 1. La alineación guarda `jugadas` (formato 3); las de los formatos 1 y 2 se convierten al abrirse (ids sacados del de la alineación, «Jugada N» si no tenía nombre) y se guardan en el 3 sin `jugadaCerrada`. Abrir, cerrar y borrar siguen como antes (una jugada) hasta el paso 5; cerrar devuelve la jugada a su sitio. Las fichas recorren todas las jugadas. Pruebas: conversión, guardar en el 3, cerrar la app con la jugada abierta y reabrir (jugada y lista intactas), fichas de quien solo sale en otra jugada; fallan sin los cambios. Navegador: un respaldo de formato 2 se abre, se edita, se guarda en el 3 y sigue igual tras recargar con la jugada abierta.
+- **Pendiente antes de unir a main:** que el usuario ejecute la consulta (a) y el trigger (b1) con su prueba (b2), y copiar el trigger a schema.sql.
 
 ### F5.4c · Biblioteca de jugadas: plan aprobado (19 nov 2026)
 

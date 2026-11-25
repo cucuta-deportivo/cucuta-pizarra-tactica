@@ -564,7 +564,7 @@ export default function App() {
   const sincronizarFichas = usePlantillaStore((s) => s.sincronizarFichas);
   const fichas = useAlineacionStore((s) => s.fichas);
   const hayJugada = useAlineacionStore((s) => s.historial.presente.secuencia !== null);
-  const hayJugadaCerrada = useAlineacionStore((s) => s.historial.presente.jugadaCerrada !== null);
+  const hayJugadaCerrada = useAlineacionStore((s) => s.historial.presente.jugadas.length > 0);
   const iniciarSecuencia = useAlineacionStore((s) => s.iniciarSecuencia);
   const abrirJugada = useAlineacionStore((s) => s.abrirJugada);
   const descartarSecuencia = useAlineacionStore((s) => s.descartarSecuencia);

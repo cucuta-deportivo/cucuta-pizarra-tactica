@@ -96,19 +96,19 @@ describe('secuencia táctica: frames', () => {
 
     estado().cerrarJugada();
     expect(doc().secuencia).toBeNull();
-    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
-    expect(doc().jugadaCerrada!.indiceActivo).toBe(1);
+    expect(doc().jugadas[0]!.frames).toHaveLength(2);
+    expect(doc().jugadas[0]!.indiceActivo).toBe(1);
     // Lo movido en la fase 2 quedó en ella aunque no se cambió de fase antes de cerrar.
-    expect(doc().jugadaCerrada!.frames[1]!.titulares[0]).toMatchObject({ x: 80, y: 20 });
+    expect(doc().jugadas[0]!.frames[1]!.titulares[0]).toMatchObject({ x: 80, y: 20 });
     expect(posicionDe(jugadorId)).toMatchObject({ x: inicial.x, y: inicial.y });
 
     // Editar la pizarra no toca la jugada cerrada.
-    const fases = doc().jugadaCerrada!.frames;
+    const fases = doc().jugadas[0]!.frames;
     estado().moverJugador(jugadorId, 10, 10);
-    expect(doc().jugadaCerrada!.frames).toBe(fases);
+    expect(doc().jugadas[0]!.frames).toBe(fases);
 
     estado().abrirJugada();
-    expect(doc().jugadaCerrada).toBeNull();
+    expect(doc().jugadas).toEqual([]);
     expect(doc().secuencia!.indiceActivo).toBe(1);
     expect(posicionDe(jugadorId)).toMatchObject({ x: 80, y: 20 });
 
@@ -123,7 +123,7 @@ describe('secuencia táctica: frames', () => {
     estado().cerrarJugada();
     estado().deshacer();
     expect(doc().secuencia!.frames).toHaveLength(2);
-    expect(doc().jugadaCerrada).toBeNull();
+    expect(doc().jugadas).toEqual([]);
   });
 
   it('una jugada de antes, sin la pizarra guardada, se cierra dejando el campo en la fase que se veía', () => {
@@ -137,7 +137,7 @@ describe('secuencia táctica: frames', () => {
     });
 
     estado().cerrarJugada();
-    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+    expect(doc().jugadas[0]!.frames).toHaveLength(2);
     expect(posicionDe(jugadorId)).toMatchObject({ x: 80, y: 20 });
   });
 
@@ -152,11 +152,11 @@ describe('secuencia táctica: frames', () => {
 
     useUiStore.setState({ toasts: [] });
     estado().descartarSecuencia();
-    expect(doc().jugadaCerrada).toBeNull();
+    expect(doc().jugadas).toEqual([]);
     expect(posicionDe(jugadorId)).toMatchObject({ x: 10, y: 10 });
 
     useUiStore.getState().toasts.find((t) => t.accion?.etiqueta === 'Deshacer')!.accion!.ejecutar();
-    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+    expect(doc().jugadas[0]!.frames).toHaveLength(2);
   });
 
   it('borrar la jugada abierta devuelve el campo a la pizarra de antes de la jugada', () => {
@@ -180,8 +180,8 @@ describe('secuencia táctica: frames', () => {
     estado().nuevaAlineacion();
     await estado().cargarAlineacion(id);
     expect(doc().secuencia).toBeNull();
-    expect(doc().jugadaCerrada).toMatchObject({ nombre: 'Salida ante presión' });
-    expect(doc().jugadaCerrada!.frames).toHaveLength(2);
+    expect(doc().jugadas[0]).toMatchObject({ nombre: 'Salida ante presión' });
+    expect(doc().jugadas[0]!.frames).toHaveLength(2);
   });
 });
 
@@ -386,15 +386,15 @@ describe('secuencia táctica: mirar no guarda', () => {
 
     estado().cerrarJugada();
     expect(estado().estadoGuardado).toBe('guardado');
-    expect(doc().jugadaCerrada!.frames[2]!.titulares[0]).toMatchObject({ x: 70, y: 70 });
+    expect(doc().jugadas[0]!.frames[2]!.titulares[0]).toMatchObject({ x: 70, y: 70 });
   });
 
   it('tampoco guarda una jugada que llegó con las claves de sus fases en otro orden (de Supabase o de un JSON)', () => {
     // El jsonb de PostgreSQL no conserva el orden de las claves: así llegan las fases bajadas del servidor.
     useAlineacionStore.setState((s) => {
-      const cerrada = s.historial.presente.jugadaCerrada!;
+      const cerrada = s.historial.presente.jugadas[0]!;
       const reordenada = cerrada.frames.map((fase) => Object.fromEntries(Object.entries(fase).reverse()) as typeof fase);
-      return { historial: { ...s.historial, presente: { ...s.historial.presente, jugadaCerrada: { ...cerrada, frames: reordenada } } } };
+      return { historial: { ...s.historial, presente: { ...s.historial.presente, jugadas: [{ ...cerrada, frames: reordenada }] } } };
     });
     estado().abrirJugada();
     estado().irAFrame(2);

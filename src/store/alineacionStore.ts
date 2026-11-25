@@ -44,7 +44,7 @@ import {
 } from '../utils/anexoA';
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
-import { AVISO_ACTUALIZAR_APP, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
+import { AVISO_ACTUALIZAR_APP, conJugadasEnLista, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -90,11 +90,11 @@ export interface DocumentoTactico {
    */
   secuencia: SecuenciaTactica | null;
   /**
-   * La jugada cerrada (F5.4a): guardada aparte para que la pizarra se edite sin
-   * tocar sus fases, y para volver a abrirla desde ⋯. Nunca hay a la vez una
-   * abierta (`secuencia`) y una cerrada.
+   * Las jugadas cerradas, en su orden (F5.4b). Guardadas aparte para que la
+   * pizarra se edite sin tocar sus fases (F5.4a). La abierta no está aquí: vive
+   * en `secuencia` y recuerda su sitio en `posicion`.
    */
-  jugadaCerrada: SecuenciaTactica | null;
+  jugadas: SecuenciaTactica[];
 }
 
 function balonInicial(): Balon {
@@ -116,7 +116,7 @@ function documentoVacio(formacionId: string): DocumentoTactico {
     cancha: canchaVacia(),
     jugadoresPersonalizados: [],
     secuencia: null,
-    jugadaCerrada: null,
+    jugadas: [],
   };
 }
 
@@ -215,7 +215,9 @@ function insertarFrameTrasActivo(doc: DocumentoTactico): void {
 
 /** Convierte una `Alineacion` guardada a `DocumentoTactico`, rellenando con valores por
  * defecto los campos del Anexo A que no existían en tableros guardados antes de esa versión. */
-function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
+function documentoDesdeAlineacion(guardada: Alineacion): DocumentoTactico {
+  // Formatos 1 y 2 (y JSON o respaldos de antes): la jugada cerrada pasa a la lista.
+  const alineacion = conJugadasEnLista(guardada);
   return {
     formacionId: alineacion.formacionId,
     titulares: alineacion.titulares,
@@ -230,7 +232,7 @@ function documentoDesdeAlineacion(alineacion: Alineacion): DocumentoTactico {
     cancha: alineacion.cancha ?? canchaVacia(),
     jugadoresPersonalizados: alineacion.jugadoresPersonalizados ?? [],
     secuencia: alineacion.secuencia ?? null,
-    jugadaCerrada: alineacion.jugadaCerrada ?? null,
+    jugadas: alineacion.jugadas ?? [],
   };
 }
 
@@ -335,7 +337,7 @@ export function alineacionDesdeDocumento(
     cancha: doc.cancha,
     jugadoresPersonalizados: doc.jugadoresPersonalizados,
     secuencia: doc.secuencia,
-    jugadaCerrada: doc.jugadaCerrada,
+    jugadas: doc.jugadas,
     creadaEn: base.creadaEn,
     modificadaEn,
   };
@@ -1307,12 +1309,12 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     actualizarJugadorRival: (id, dorsal, apellido) =>
       mutar((doc) => {
         // El dorsal y el apellido son del jugador, no de una fase: se cambian en
-        // la pizarra y en todas las fases de la jugada, abierta o cerrada.
+        // la pizarra y en todas las fases de todas las jugadas, abiertas o cerradas.
         const listas = [
           doc.rival?.jugadores,
           ...(doc.secuencia?.frames ?? []).map((f) => f.jugadoresRival),
           doc.secuencia?.pizarra?.jugadoresRival,
-          ...(doc.jugadaCerrada?.frames ?? []).map((f) => f.jugadoresRival),
+          ...doc.jugadas.flatMap((j) => j.frames.map((f) => f.jugadoresRival)),
         ];
         for (const lista of listas) {
           const jugador = lista?.find((j) => j.id === id);
@@ -1369,9 +1371,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // --- Jugadas animadas ---
     iniciarSecuencia: () =>
       mutar((doc) => {
-        // Una jugada por alineación: con una cerrada, se abre esa (⋯ → Abrir jugada).
-        if (doc.secuencia || doc.jugadaCerrada) return;
+        // Hasta la ventana Jugadas (F5.4b, paso 5), una jugada por alineación: con una cerrada, se abre esa.
+        if (doc.secuencia || doc.jugadas.length > 0) return;
         doc.secuencia = {
+          id: generarId(),
+          posicion: doc.jugadas.length,
           frames: [frameDesdeDocumento(doc, generarId(), { nombre: 'Inicio' })],
           indiceActivo: 0,
           pizarra: tableroDesdeDocumento(doc),
@@ -1379,12 +1383,16 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, 'Jugada iniciada'),
 
     descartarSecuencia: () => {
-      const { secuencia, jugadaCerrada } = get().historial.presente;
-      if (!secuencia && !jugadaCerrada) return;
+      const { secuencia, jugadas } = get().historial.presente;
+      if (!secuencia && jugadas.length === 0) return;
       const hecho = mutar((doc) => {
-        if (doc.secuencia?.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
-        doc.secuencia = null;
-        doc.jugadaCerrada = null;
+        // Se borra la abierta; si no hay, la primera cerrada (hasta la ventana Jugadas solo hay una).
+        if (doc.secuencia) {
+          if (doc.secuencia.pizarra) aplicarFrameADocumento(doc, doc.secuencia.pizarra);
+          doc.secuencia = null;
+        } else {
+          doc.jugadas.splice(0, 1);
+        }
       }, 'Jugada borrada');
       if (hecho) avisarConDeshacer('Jugada borrada.');
     },
@@ -1400,9 +1408,11 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
           const secuencia = doc.secuencia;
           if (!secuencia) return;
           capturado = capturarFrameActivo(doc);
-          const { pizarra, ...jugada } = secuencia;
+          const { pizarra, posicion, ...jugada } = secuencia;
           if (pizarra) aplicarFrameADocumento(doc, pizarra);
-          doc.jugadaCerrada = jugada;
+          // Vuelve a su sitio en la lista.
+          const sitio = Math.min(Math.max(0, posicion ?? doc.jugadas.length), doc.jugadas.length);
+          doc.jugadas.splice(sitio, 0, jugada);
           doc.secuencia = null;
         },
         'Jugada cerrada',
@@ -1420,12 +1430,14 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       let abierta = false;
       mutar(
         (doc) => {
-          const jugada = doc.jugadaCerrada;
+          // Hasta la ventana Jugadas (F5.4b, paso 5) se abre la primera de la lista.
+          const posicion = 0;
+          const jugada = doc.jugadas[posicion];
           if (!jugada || doc.secuencia) return;
           const indiceActivo = Math.min(Math.max(0, jugada.indiceActivo), jugada.frames.length - 1);
           const activo = jugada.frames[indiceActivo];
-          doc.secuencia = { ...jugada, indiceActivo, pizarra: tableroDesdeDocumento(doc) };
-          doc.jugadaCerrada = null;
+          doc.secuencia = { ...jugada, indiceActivo, posicion, pizarra: tableroDesdeDocumento(doc) };
+          doc.jugadas.splice(posicion, 1);
           if (activo) aplicarFrameADocumento(doc, activo);
           abierta = true;
         },

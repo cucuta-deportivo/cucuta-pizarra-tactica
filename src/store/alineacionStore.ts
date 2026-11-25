@@ -45,6 +45,7 @@ import {
 import { posicionEfectivaBalon } from '../utils/balon';
 import { fichasActualizadas } from '../utils/fichas';
 import { AVISO_ACTUALIZAR_APP, conJugadasEnLista, esDeUnaVersionMasNueva, FORMATO_ALINEACION } from '../utils/formatoAlineacion';
+import { enKB, PESO_AVISO, PESO_TOPE, pesoEnServidor, TOPE_SERVIDOR } from '../utils/pesoAlineacion';
 import { destinoDeTrayectoria, trayectoriaDe } from '../utils/trayectorias';
 import { DURACION_MAXIMA_MS, DURACION_MINIMA_MS } from '../utils/interpolacion';
 import { useUiStore } from './uiStore';
@@ -589,6 +590,8 @@ interface AlineacionState {
   cerrarJugada: () => void;
   /** Abre una jugada de la lista (por defecto la primera), en la fase en que se dejó; si había otra abierta, la cierra antes. */
   abrirJugada: (id?: string) => void;
+  /** F5.4b: lo que ocuparía ahora la alineación en el servidor, en bytes (tope: 1 MB; ver utils/pesoAlineacion). */
+  pesoAlineacion: () => number;
   /** F5.4b: nombre, descripción, copia y borrado de cualquier jugada, abierta o cerrada. */
   renombrarJugada: (id: string, nombre: string) => void;
   describirJugada: (id: string, descripcion: string) => void;
@@ -657,6 +660,7 @@ let aperturaSinGuardar = false;
 let colaDeGuardado: Promise<void> = Promise.resolve();
 /** Cuándo se avisó por última vez de que la abierta es de solo lectura, para no repetir el aviso en cada toque. */
 let ultimoAvisoSoloLectura = 0;
+let ultimoAvisoPeso = 0;
 
 export const useAlineacionStore = create<AlineacionState>((set, get) => {
   function marcarPendiente(): void {
@@ -687,6 +691,51 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     if (ahora - ultimoAvisoSoloLectura < 4000) return;
     ultimoAvisoSoloLectura = ahora;
     useUiStore.getState().mostrarToast({ tipo: 'info', mensaje: AVISO_ACTUALIZAR_APP });
+  }
+
+  /** Lo que ocuparía ahora la alineación en el servidor (ver utils/pesoAlineacion). */
+  function pesoActual(): number {
+    const estado = get();
+    return pesoEnServidor(alineacionDesdeDocumento(estado, estado.historial.presente, estado.modificadaEn));
+  }
+
+  /**
+   * F5.4b: lo que hace crecer la alineación (una fase o una jugada más) solo se
+   * hace si no ha llegado al tope de 900 KB; al pasar de 700 KB se avisa una vez.
+   * Editar, mover y borrar nunca se bloquean. Si una sola acción la llevara por
+   * encima de 1 MB (el servidor ya no la aceptaría), se deshace.
+   */
+  function crecer(accion: () => void, que: 'fases' | 'jugadas'): void {
+    const antes = pesoActual();
+    if (antes >= PESO_TOPE) {
+      const ahora = Date.now();
+      // Grabando, cada movimiento intenta añadir una fase: un aviso cada 4 s basta.
+      if (ahora - ultimoAvisoPeso >= 4000) {
+        ultimoAvisoPeso = ahora;
+        useUiStore.getState().mostrarToast({
+          tipo: 'error',
+          mensaje: `La alineación ocupa ${enKB(antes)} KB de 1 MB: no caben más ${que}. Borra fases o jugadas que no uses, o sigue en una alineación nueva.`,
+        });
+      }
+      return;
+    }
+    const historialAntes = get().historial;
+    accion();
+    const despues = pesoActual();
+    if (despues > TOPE_SERVIDOR) {
+      set({ historial: historialAntes });
+      useUiStore.getState().mostrarToast({
+        tipo: 'error',
+        mensaje: `No cabe: la alineación pasaría de 1 MB (${enKB(despues)} KB). Borra fases o jugadas que no uses.`,
+      });
+      return;
+    }
+    if (antes < PESO_AVISO && despues >= PESO_AVISO) {
+      useUiStore.getState().mostrarToast({
+        tipo: 'info',
+        mensaje: `La alineación ya ocupa ${enKB(despues)} KB de 1 MB. Desde 900 KB no se podrán añadir más fases ni jugadas.`,
+      });
+    }
   }
 
   /**
@@ -1520,18 +1569,19 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // --- Jugadas animadas ---
     iniciarSecuencia: () => {
       if (get().historial.presente.secuencia) return;
-      mutar((doc) => crearJugadaEn(doc), 'Jugada iniciada');
+      crecer(() => mutar((doc) => crearJugadaEn(doc), 'Jugada iniciada'), 'jugadas');
     },
 
     // F5.4b: parte de la pizarra, no de la fase que se esté viendo; la que estaba abierta queda guardada en su sitio.
-    nuevaJugada: () => {
-      const hecho = mutar((doc) => {
-        cerrarAbiertaEn(doc);
-        crearJugadaEn(doc);
-      }, 'Jugada nueva');
-      // Crear es editar: se guarda, y lo guardado ya tiene esta jugada abierta.
-      if (hecho) aperturaSinGuardar = false;
-    },
+    nuevaJugada: () =>
+      crecer(() => {
+        const hecho = mutar((doc) => {
+          cerrarAbiertaEn(doc);
+          crearJugadaEn(doc);
+        }, 'Jugada nueva');
+        // Crear es editar: se guarda, y lo guardado ya tiene esta jugada abierta.
+        if (hecho) aperturaSinGuardar = false;
+      }, 'jugadas'),
 
     descartarSecuencia: () => {
       const { secuencia, jugadas } = get().historial.presente;
@@ -1614,7 +1664,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     // La copia va justo detrás de la original y no se abre. Con ids nuevos (la jugada y sus fases).
     duplicarJugada: (id) => {
       if (!buscarJugada(get().historial.presente, id)) return;
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         if (doc.secuencia?.id === id) {
           capturarFrameActivo(doc);
           // En la lista, en el sitio de la abierta: queda justo detrás de ella.
@@ -1628,8 +1678,10 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         doc.jugadas.splice(indice + 1, 0, copiaDeJugada(original, original.vista));
         // Si la abierta iba detrás de la original, ahora va detrás de la copia.
         if (doc.secuencia && (doc.secuencia.posicion ?? 0) > indice) doc.secuencia.posicion = (doc.secuencia.posicion ?? 0) + 1;
-      }, 'Jugada duplicada');
+      }, 'Jugada duplicada'), 'jugadas');
     },
+
+    pesoAlineacion: () => pesoActual(),
 
     borrarJugada: (id) => {
       const jugada = buscarJugada(get().historial.presente, id);
@@ -1653,17 +1705,17 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
     },
 
     agregarFrame: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         // El frame nuevo arranca como copia del estado actual: así el entrenador
         // mueve solo lo que cambia en ese paso, en vez de recolocarlo todo.
         capturarFrameActivo(doc);
         insertarFrameTrasActivo(doc);
-      }, 'Frame añadido'),
+      }, 'Frame añadido'), 'fases'),
 
     grabarFrame: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         const activo = secuencia?.frames[secuencia.indiceActivo];
         if (!secuencia || !activo) return;
@@ -1676,10 +1728,10 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         // las posiciones de partida. El activo conserva el "antes" y el nuevo
         // guarda el "después", que es lo que hace que la jugada se anime.
         insertarFrameTrasActivo(doc);
-      }, 'Movimiento grabado'),
+      }, 'Movimiento grabado'), 'fases'),
 
     duplicarFrame: (indice) =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         capturarFrameActivo(doc);
@@ -1688,7 +1740,7 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
         secuencia.frames.splice(indice + 1, 0, { ...original, id: generarId(), nombre: undefined });
         secuencia.indiceActivo = indice + 1;
         aplicarFrameADocumento(doc, secuencia.frames[secuencia.indiceActivo]!);
-      }, 'Frame duplicado'),
+      }, 'Frame duplicado'), 'fases'),
 
     eliminarFrame: (indice) =>
       mutar((doc) => {
@@ -1757,13 +1809,13 @@ export const useAlineacionStore = create<AlineacionState>((set, get) => {
       }, 'Jugada renombrada'),
 
     agregarFrameAlFinal: () =>
-      mutar((doc) => {
+      crecer(() => mutar((doc) => {
         const secuencia = doc.secuencia;
         if (!secuencia) return;
         capturarFrameActivo(doc);
         secuencia.frames.push(frameDesdeDocumento(doc, generarId()));
         secuencia.indiceActivo = secuencia.frames.length - 1;
-      }, 'Fase añadida al final'),
+      }, 'Fase añadida al final'), 'fases'),
 
     agregarNodoTrayectoria: (indiceFrame, tipo, id, punto, indiceInsercion) =>
       mutar((doc) => {
